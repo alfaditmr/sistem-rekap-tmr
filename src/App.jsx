@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download } from 'lucide-react';
+import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
 
 // ==========================================
@@ -94,9 +94,20 @@ const getLocalYMD = () => {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null });
   const [pdfLoading, setPdfLoading] = useState(false);
+
+  // --- STATE LOGIN & AUTHENTICATION ---
+  const [user, setUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // --- STATE FIREBASE & SYNC ---
+  const [dbReady, setDbReady] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('offline'); 
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -105,16 +116,42 @@ export default function App() {
     document.body.appendChild(script);
   }, []);
 
-  const [user, setUser] = useState(null);
-  const [dbReady, setDbReady] = useState(false);
-  const [syncStatus, setSyncStatus] = useState('offline'); 
+  // --- CEK STATUS LOGIN ---
+  useEffect(() => {
+    if (!auth) return;
+    const unsub = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthReady(true);
+    });
+    return () => unsub();
+  }, []);
+
+  // --- FUNGSI LOGIN & LOGOUT ---
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoginError('');
+    setIsLoggingIn(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+      setLoginError('Akses Ditolak! Email atau Password salah.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    showConfirm("Anda yakin ingin keluar dari aplikasi?", async () => {
+      await signOut(auth);
+    });
+  };
 
   const getInitialState = (key, defaultValue) => {
     try { const saved = localStorage.getItem(key); if (saved) return JSON.parse(saved); } catch (e) {}
     return defaultValue;
   };
 
-  const [signatures, setSignatures] = useState(() => getInitialState('tmr_v16_signatures', {
+  const [signatures, setSignatures] = useState(() => getInitialState('tmr_v17_signatures', {
     leftRole: 'Kepala Seksi Pelayanan dan Informasi',
     leftName: 'Afriana Pulungan S.Si. MAP',
     rightRole: 'Bendahara Penerimaan',
@@ -122,7 +159,7 @@ export default function App() {
     location: 'Jakarta'
   }));
 
-  const [categories, setCategories] = useState(() => getInitialState('tmr_v16_categories', [
+  const [categories, setCategories] = useState(() => getInitialState('tmr_v17_categories', [
     { id: 'cat_1', name: 'pemakaian fasilitas TMR', type: 'utama', items: [{ id: 'item_1a', name: 'Promo Penjualan Produk' }, { id: 'item_1b', name: 'Penempatan banner promosi' }, { id: 'item_1c', name: 'Panggung' }] },
     { id: 'cat_2', name: 'Retribusi Pedagang', type: 'utama', items: [{ id: 'item_2a', name: 'Retribusi pedagang Hari Biasa' }, { id: 'item_2b', name: 'Retribusi pedagang Hari Besar' }] },
     { id: 'cat_3', name: 'Pendapatan Retribusi Juru Foto', type: 'utama', items: [] },
@@ -154,7 +191,7 @@ export default function App() {
     }
   };
 
-  const [allReports, setAllReports] = useState(() => getInitialState('tmr_v16_allReports', { [getLocalYMD()]: defaultReportData }));
+  const [allReports, setAllReports] = useState(() => getInitialState('tmr_v17_allReports', { [getLocalYMD()]: defaultReportData }));
 
   const [reportDate, setReportDate] = useState(getLocalYMD());
   const [activeType, setActiveType] = useState('utama'); 
@@ -162,25 +199,9 @@ export default function App() {
   const [selectedItemToAdd, setSelectedItemToAdd] = useState('');
   const [calendarMonth, setCalendarMonth] = useState(new Date());
 
-  useEffect(() => { localStorage.setItem('tmr_v16_signatures', JSON.stringify(signatures)); }, [signatures]);
-  useEffect(() => { localStorage.setItem('tmr_v16_categories', JSON.stringify(categories)); }, [categories]);
-  useEffect(() => { localStorage.setItem('tmr_v16_allReports', JSON.stringify(allReports)); }, [allReports]);
-
-  useEffect(() => {
-    if (!auth) return;
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch(e) { console.error(e); }
-    };
-    initAuth();
-    const unsub = onAuthStateChanged(auth, setUser);
-    return () => unsub();
-  }, []);
+  useEffect(() => { localStorage.setItem('tmr_v17_signatures', JSON.stringify(signatures)); }, [signatures]);
+  useEffect(() => { localStorage.setItem('tmr_v17_categories', JSON.stringify(categories)); }, [categories]);
+  useEffect(() => { localStorage.setItem('tmr_v17_allReports', JSON.stringify(allReports)); }, [allReports]);
 
   const getDocRef = () => {
     return doc(db, 'tmr_data', 'rekapitulasi_laporan');
@@ -454,6 +475,74 @@ export default function App() {
   };
 
 
+  // ==========================================
+  // RENDER LAYAR LOGIN JIKA BELUM MASUK
+  // ==========================================
+  if (!authReady) {
+    return <div className="min-h-screen flex items-center justify-center bg-gray-100 text-gray-500 font-bold">Memuat Sistem Keamanan...</div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-700 to-green-900 p-4">
+        <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-300">
+          <div className="flex justify-center mb-6">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center shadow-inner">
+              <Lock size={32} className="text-green-600" />
+            </div>
+          </div>
+          <h1 className="text-2xl font-black text-center text-gray-800 mb-2">Sistem Laporan TMR</h1>
+          <p className="text-center text-gray-500 text-sm mb-8">Silakan login untuk mengakses brankas data STSU.</p>
+          
+          {loginError && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-6 flex items-center gap-2 border border-red-100">
+              <AlertCircle size={18} className="shrink-0" /> {loginError}
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div>
+              <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Email / Username</label>
+              <input 
+                type="email" 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+                required
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 focus:bg-white transition-all font-medium"
+                placeholder="kasir@tmr.com"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Password</label>
+              <input 
+                type="password" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                required
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 focus:bg-white transition-all font-medium"
+                placeholder="••••••••"
+              />
+            </div>
+            <button 
+              type="submit" 
+              disabled={isLoggingIn}
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-md mt-2 disabled:bg-gray-400"
+            >
+              {isLoggingIn ? 'Memeriksa Kredensial...' : 'Masuk ke Aplikasi'}
+            </button>
+          </form>
+          <div className="mt-8 text-center text-xs text-gray-400">
+            Akses Terbatas &bull; TMR Jakarta
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+
+  // ==========================================
+  // RENDER APLIKASI UTAMA JIKA SUDAH LOGIN
+  // ==========================================
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 font-sans pb-36 relative">
       <style>{`
@@ -476,7 +565,7 @@ export default function App() {
             <p className="text-gray-600 mb-8 leading-relaxed font-medium">{confirmDialog.message}</p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setConfirmDialog({isOpen: false, message: '', onConfirm: null})} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors">Batal</button>
-              <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({isOpen: false, message: '', onConfirm: null}); }} className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors shadow-md">Tutup & Lanjutkan</button>
+              <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({isOpen: false, message: '', onConfirm: null}); }} className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors shadow-md">Lanjutkan</button>
             </div>
           </div>
         </div>
@@ -492,17 +581,25 @@ export default function App() {
               {syncStatus === 'syncing' ? <RefreshCw className="animate-spin text-white" size={14}/> :
                syncStatus === 'synced' ? <Cloud size={14} className="text-blue-300"/> : 
                <CloudOff size={14} className="text-red-300"/>}
-              <span>
+              <span className="hidden md:inline">
                 {syncStatus === 'syncing' ? 'Menyimpan...' : 
-                 syncStatus === 'synced' ? 'Tersimpan di Cloud' : 'Mode Offline'}
+                 syncStatus === 'synced' ? 'Tersimpan' : 'Mode Offline'}
               </span>
             </div>
           </div>
-          <div className="flex space-x-1 sm:space-x-2 shrink-0 overflow-x-auto no-scrollbar">
+          
+          <div className="flex space-x-1 sm:space-x-2 shrink-0 overflow-x-auto no-scrollbar items-center">
             <button onClick={() => setActiveTab('dashboard')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'dashboard' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Dashboard</span></button>
             <button onClick={() => setActiveTab('input')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'input' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Edit size={18} /> <span className="hidden md:inline">Input</span></button>
             <button onClick={() => setActiveTab('settings')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Settings size={18} /> <span className="hidden md:inline">Master</span></button>
             <button onClick={() => setActiveTab('print')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'print' ? 'bg-green-800' : 'hover:bg-green-600'}`}><FileText size={18} /> <span className="hidden md:inline">Cetak</span></button>
+            
+            {/* TOMBOL LOGOUT BARU */}
+            <div className="pl-2 border-l border-green-600 ml-1">
+              <button onClick={handleLogout} className="px-2 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 hover:bg-red-600 transition-colors" title="Keluar Akun">
+                <LogOut size={18} />
+              </button>
+            </div>
           </div>
         </div>
       </nav>
@@ -759,7 +856,7 @@ export default function App() {
                  {pdfLoading ? 'Memproses...' : 'Unduh PDF'}
                </button>
 
-               <button onClick={handlePrint} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md" title="Membuka dialog cetak mesin printer (Berfungsi penuh setelah di-hosting)">
+               <button onClick={handlePrint} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md" title="Membuka dialog cetak mesin printer">
                  <Printer size={18} /> Cetak Printer
                </button>
              </div>
