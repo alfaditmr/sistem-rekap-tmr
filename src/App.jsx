@@ -399,13 +399,13 @@ export default function App() {
     return cat.items.filter(item => !isAdded(item.id));
   }, [selectedCatToAdd, categories, currentReport.activeItems, isAddingSusulan, susulanValidDate]);
 
-  // --- LOGIK GROUPING BARU (MENDUKUNG SUSULAN) ---
+  // --- LOGIK GROUPING BARU (MENDUKUNG SUSULAN DI BAWAH) ---
   const activeGroups = useMemo(() => {
     if (!Array.isArray(categories)) return [];
     const activeI = Array.isArray(currentReport.activeItems) ? currentReport.activeItems : [];
     const groups = [];
 
-    categories.forEach(cat => {
+    categories.forEach((cat, index) => {
       const configsForCat = [];
       activeI.forEach(ai => {
         if (ai.catId === cat.id) {
@@ -414,13 +414,6 @@ export default function App() {
             configsForCat.push({ key, isSusulan: !!ai.isSusulan, validDate: ai.validDate });
           }
         }
-      });
-
-      // Urutkan: Yang Normal selalu di atas, baru Susulan diurutkan berdasarkan tanggal
-      configsForCat.sort((a, b) => {
-        if (a.key === 'normal') return -1;
-        if (b.key === 'normal') return 1;
-        return (a.validDate || '').localeCompare(b.validDate || '');
       });
 
       configsForCat.forEach(config => {
@@ -443,10 +436,31 @@ export default function App() {
             name: cat.name,
             isSusulan: config.isSusulan,
             validDate: config.validDate,
-            activeItems: displayItems
+            activeItems: displayItems,
+            catIndex: index // Simpan urutan asli kategori
           });
         }
       });
+    });
+
+    // URUTKAN: Yang normal di atas, Susulan di paling bawah
+    groups.sort((a, b) => {
+      // 1. Jika A normal dan B susulan, A selalu di atas
+      if (!a.isSusulan && b.isSusulan) return -1;
+      
+      // 2. Jika A susulan dan B normal, B selalu di atas
+      if (a.isSusulan && !b.isSusulan) return 1;
+      
+      // 3. Jika KEDUANYA adalah susulan, urutkan berdasarkan tanggal validasi dulu
+      if (a.isSusulan && b.isSusulan) {
+        if (a.validDate !== b.validDate) {
+          return (a.validDate || '').localeCompare(b.validDate || '');
+        }
+      }
+      
+      // 4. Jika tipenya sama (sama-sama normal atau sama-sama susulan tanggal yg sama), 
+      // kembalikan ke urutan asli dari Master Kategori
+      return a.catIndex - b.catIndex;
     });
 
     return groups;
