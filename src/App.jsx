@@ -30,7 +30,6 @@ try {
   console.error("Firebase init error", e);
 }
 
-
 // --- FUNGSI FORMATTING (KOREKSI TERBILANG) ---
 function terbilang(angka) {
   angka = Math.floor(Math.abs(angka));
@@ -116,7 +115,6 @@ export default function App() {
     document.body.appendChild(script);
   }, []);
 
-  // --- CEK STATUS LOGIN ---
   useEffect(() => {
     if (!auth) return;
     const unsub = onAuthStateChanged(auth, (currentUser) => {
@@ -126,7 +124,6 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // --- FUNGSI LOGIN & LOGOUT ---
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
@@ -199,6 +196,10 @@ export default function App() {
   const [selectedItemToAdd, setSelectedItemToAdd] = useState('');
   const [calendarMonth, setCalendarMonth] = useState(new Date());
 
+  // --- STATE FITUR SUSULAN ---
+  const [isAddingSusulan, setIsAddingSusulan] = useState(false);
+  const [susulanValidDate, setSusulanValidDate] = useState('');
+
   useEffect(() => { localStorage.setItem('tmr_v17_signatures', JSON.stringify(signatures)); }, [signatures]);
   useEffect(() => { localStorage.setItem('tmr_v17_categories', JSON.stringify(categories)); }, [categories]);
   useEffect(() => { localStorage.setItem('tmr_v17_allReports', JSON.stringify(allReports)); }, [allReports]);
@@ -246,7 +247,6 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [signatures, categories, allReports, user, dbReady]);
 
-
   const showConfirm = (message, onConfirmAction) => {
     setConfirmDialog({ isOpen: true, message, onConfirm: onConfirmAction });
   };
@@ -277,11 +277,15 @@ export default function App() {
   const handleDateChange = (newDateStr) => {
     setReportDate(newDateStr);
     setSelectedCatToAdd(''); setSelectedItemToAdd('');
+    setIsAddingSusulan(false);
+    setSusulanValidDate('');
   };
 
   const handleTypeSwitch = (type) => {
     setActiveType(type);
     setSelectedCatToAdd(''); setSelectedItemToAdd('');
+    setIsAddingSusulan(false);
+    setSusulanValidDate('');
   };
 
   const clearCurrentReport = () => {
@@ -301,20 +305,45 @@ export default function App() {
     else setSelectedItemToAdd('');
   };
 
+  // --- HELPER UNTUK KODE INPUT FIREBASE ---
+  const getInputKey = (catId, itemId, isSus, validDate) => {
+    if (isSus) return `${catId}_${itemId}_susulan_${validDate}`;
+    return `${catId}_${itemId}`;
+  };
+
   const handleAddActiveItem = () => {
     if (!selectedCatToAdd || !selectedItemToAdd) return;
+    if (isAddingSusulan && !susulanValidDate) {
+      alert("Mohon pilih Tanggal Validasi untuk pendapatan susulan!");
+      return;
+    }
+
     const catIdToFocus = selectedCatToAdd;
     const itemIdToFocus = selectedItemToAdd;
+    const inputKey = getInputKey(selectedCatToAdd, selectedItemToAdd, isAddingSusulan, susulanValidDate);
 
     updateCurrentReport(prev => {
       const currentItems = Array.isArray(prev.activeItems) ? prev.activeItems : [];
       const currentForm = prev.formData || {};
-      const exists = currentItems.find(i => i.catId === selectedCatToAdd && i.itemId === selectedItemToAdd);
+      
+      const exists = currentItems.find(i => 
+        i.catId === selectedCatToAdd && 
+        i.itemId === selectedItemToAdd && 
+        !!i.isSusulan === isAddingSusulan && 
+        (i.validDate || '') === (susulanValidDate || '')
+      );
       if (exists) return prev;
+
+      const newItem = { catId: selectedCatToAdd, itemId: selectedItemToAdd };
+      if (isAddingSusulan) {
+        newItem.isSusulan = true;
+        newItem.validDate = susulanValidDate;
+      }
+
       return {
         ...prev,
-        activeItems: [...currentItems, { catId: selectedCatToAdd, itemId: selectedItemToAdd }],
-        formData: { ...currentForm, [`${selectedCatToAdd}_${selectedItemToAdd}`]: 0 }
+        activeItems: [...currentItems, newItem],
+        formData: { ...currentForm, [inputKey]: 0 }
       };
     });
     
@@ -323,25 +352,26 @@ export default function App() {
     setSelectedItemToAdd('');
 
     setTimeout(() => {
-      const inputElement = document.getElementById(`input_${catIdToFocus}_${itemIdToFocus}`);
+      const inputElement = document.getElementById(`input_${inputKey}`);
       if (inputElement) inputElement.focus();
     }, 100);
   };
 
-  const handleRemoveActiveItem = (catId, itemId) => {
+  const handleRemoveActiveItem = (catId, itemId, isSusulan, validDate) => {
+    const inputKey = getInputKey(catId, itemId, isSusulan, validDate);
     updateCurrentReport(prev => {
       const currentItems = Array.isArray(prev.activeItems) ? prev.activeItems : [];
-      const newActive = currentItems.filter(i => !(i.catId === catId && i.itemId === itemId));
+      const newActive = currentItems.filter(i => !(i.catId === catId && i.itemId === itemId && !!i.isSusulan === !!isSusulan && (i.validDate || '') === (validDate || '')));
       const newFormData = { ...(prev.formData || {}) };
-      delete newFormData[`${catId}_${itemId}`];
+      delete newFormData[inputKey];
       return { ...prev, activeItems: newActive, formData: newFormData };
     });
   };
 
-  const handleInputChange = (catId, itemId, value) => {
+  const handleInputChange = (inputKey, value) => {
     const rawValue = value.replace(/[^0-9]/g, '');
     updateCurrentReport(prev => ({
-      ...prev, formData: { ...(prev.formData || {}), [`${catId}_${itemId}`]: Number(rawValue) || 0 }
+      ...prev, formData: { ...(prev.formData || {}), [inputKey]: Number(rawValue) || 0 }
     }));
   };
 
@@ -358,39 +388,84 @@ export default function App() {
     const cat = categories.find(c => c.id === selectedCatToAdd);
     if (!cat) return [];
     const activeI = Array.isArray(currentReport.activeItems) ? currentReport.activeItems : [];
-    if (!Array.isArray(cat.items) || cat.items.length === 0) {
-      const isAlreadyActive = activeI.some(a => a.catId === selectedCatToAdd && a.itemId === 'direct');
-      return isAlreadyActive ? [] : [{ id: 'direct', name: cat.name }];
-    }
-    return cat.items.filter(item => !activeI.some(a => a.catId === selectedCatToAdd && a.itemId === item.id));
-  }, [selectedCatToAdd, categories, currentReport.activeItems]);
+    
+    const isAdded = (iId) => {
+      return activeI.some(a => a.catId === selectedCatToAdd && a.itemId === iId && !!a.isSusulan === isAddingSusulan && (a.validDate || '') === (susulanValidDate || ''));
+    };
 
-  const activeCategories = useMemo(() => {
+    if (!Array.isArray(cat.items) || cat.items.length === 0) {
+      return isAdded('direct') ? [] : [{ id: 'direct', name: cat.name }];
+    }
+    return cat.items.filter(item => !isAdded(item.id));
+  }, [selectedCatToAdd, categories, currentReport.activeItems, isAddingSusulan, susulanValidDate]);
+
+  // --- LOGIK GROUPING BARU (MENDUKUNG SUSULAN) ---
+  const activeGroups = useMemo(() => {
     if (!Array.isArray(categories)) return [];
     const activeI = Array.isArray(currentReport.activeItems) ? currentReport.activeItems : [];
-    return categories.map(cat => {
-      const itemsForThisCat = [];
-      if (!Array.isArray(cat.items) || cat.items.length === 0) {
-        if (activeI.some(a => a.catId === cat.id && a.itemId === 'direct')) itemsForThisCat.push({ id: 'direct', name: cat.name });
-      } else {
-        cat.items.forEach(item => {
-           if (activeI.some(a => a.catId === cat.id && a.itemId === item.id)) itemsForThisCat.push(item);
-        });
-      }
-      return { ...cat, activeItems: itemsForThisCat };
-    }).filter(cat => cat.activeItems.length > 0);
+    const groups = [];
+
+    categories.forEach(cat => {
+      const configsForCat = [];
+      activeI.forEach(ai => {
+        if (ai.catId === cat.id) {
+          const key = ai.isSusulan ? `susulan_${ai.validDate}` : 'normal';
+          if (!configsForCat.find(c => c.key === key)) {
+            configsForCat.push({ key, isSusulan: !!ai.isSusulan, validDate: ai.validDate });
+          }
+        }
+      });
+
+      // Urutkan: Yang Normal selalu di atas, baru Susulan diurutkan berdasarkan tanggal
+      configsForCat.sort((a, b) => {
+        if (a.key === 'normal') return -1;
+        if (b.key === 'normal') return 1;
+        return (a.validDate || '').localeCompare(b.validDate || '');
+      });
+
+      configsForCat.forEach(config => {
+        const displayItems = [];
+        const matchedItems = activeI.filter(ai => ai.catId === cat.id && !!ai.isSusulan === config.isSusulan && (ai.validDate || '') === (config.validDate || ''));
+        const matchedItemIds = matchedItems.map(m => m.itemId);
+
+        if (!Array.isArray(cat.items) || cat.items.length === 0) {
+          if (matchedItemIds.includes('direct')) displayItems.push({ id: 'direct', name: cat.name });
+        } else {
+          cat.items.forEach(mi => {
+            if (matchedItemIds.includes(mi.id)) displayItems.push(mi);
+          });
+        }
+
+        if (displayItems.length > 0) {
+          groups.push({
+            groupId: `${cat.id}_${config.key}`,
+            catId: cat.id,
+            name: cat.name,
+            isSusulan: config.isSusulan,
+            validDate: config.validDate,
+            activeItems: displayItems
+          });
+        }
+      });
+    });
+
+    return groups;
   }, [categories, currentReport.activeItems]);
 
   const { subtotals, grandTotal } = useMemo(() => {
     let gt = 0; const subs = {};
     const cForm = currentReport.formData || {};
-    activeCategories.forEach(cat => {
+    activeGroups.forEach(group => {
       let sub = 0;
-      cat.activeItems.forEach(item => { sub += cForm[`${cat.id}_${item.id}`] || 0; });
-      subs[cat.id] = sub; gt += sub;
+      group.activeItems.forEach(item => { 
+        const key = getInputKey(group.catId, item.id, group.isSusulan, group.validDate);
+        sub += cForm[key] || 0; 
+      });
+      subs[group.groupId] = sub; 
+      gt += sub;
     });
     return { subtotals: subs, grandTotal: gt };
-  }, [currentReport.formData, activeCategories]);
+  }, [currentReport.formData, activeGroups]);
 
   const addCategory = () => setCategories([...(categories||[]), { id: `cat_${Date.now()}`, name: 'Kategori Baru', type: 'utama', items: [] }]);
   const updateCategory = (catId, key, value) => setCategories((categories||[]).map(c => c.id === catId ? { ...c, [key]: value } : c));
@@ -436,14 +511,11 @@ export default function App() {
   };
   const { blanks, days } = getDaysArray();
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = () => { window.print(); };
 
   const handleDownloadPDF = () => {
     const element = document.getElementById('printable-area');
     if (!element) return;
-
     if (window.html2pdf) {
       setPdfLoading(true);
       const opt = {
@@ -453,10 +525,7 @@ export default function App() {
         html2canvas:  { scale: 2, useCORS: true },
         jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
       };
-      
-      window.html2pdf().set(opt).from(element).save().then(() => {
-        setPdfLoading(false);
-      }).catch(err => {
+      window.html2pdf().set(opt).from(element).save().then(() => setPdfLoading(false)).catch(err => {
         console.error("Gagal buat PDF", err);
         setPdfLoading(false);
       });
@@ -523,11 +592,7 @@ export default function App() {
                 placeholder="••••••••"
               />
             </div>
-            <button 
-              type="submit" 
-              disabled={isLoggingIn}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-md mt-2 disabled:bg-gray-400"
-            >
+            <button type="submit" disabled={isLoggingIn} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-md mt-2 disabled:bg-gray-400">
               {isLoggingIn ? 'Memeriksa Kredensial...' : 'Masuk ke Aplikasi'}
             </button>
           </form>
@@ -541,7 +606,7 @@ export default function App() {
 
 
   // ==========================================
-  // RENDER APLIKASI UTAMA JIKA SUDAH LOGIN
+  // RENDER APLIKASI UTAMA
   // ==========================================
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 font-sans pb-36 relative">
@@ -594,7 +659,6 @@ export default function App() {
             <button onClick={() => setActiveTab('settings')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Settings size={18} /> <span className="hidden md:inline">Master</span></button>
             <button onClick={() => setActiveTab('print')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'print' ? 'bg-green-800' : 'hover:bg-green-600'}`}><FileText size={18} /> <span className="hidden md:inline">Cetak</span></button>
             
-            {/* TOMBOL LOGOUT BARU */}
             <div className="pl-2 border-l border-green-600 ml-1">
               <button onClick={handleLogout} className="px-2 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 hover:bg-red-600 transition-colors" title="Keluar Akun">
                 <LogOut size={18} />
@@ -604,8 +668,6 @@ export default function App() {
         </div>
       </nav>
 
-      {/* --- KONTEN UTAMA --- */}
-      
       {/* === TAB: DASHBOARD === */}
       {activeTab === 'dashboard' && (
         <div className="max-w-4xl mx-auto px-4 py-6 no-print">
@@ -752,7 +814,30 @@ export default function App() {
           </div>
 
           <div className={`${activeType === 'utama' ? 'bg-green-50 border-green-200' : 'bg-purple-50 border-purple-200'} rounded-xl shadow-sm border p-4 mb-6 transition-colors`}>
-            <h2 className={`text-sm font-bold mb-3 flex items-center gap-2 uppercase tracking-wide ${activeType === 'utama' ? 'text-green-800' : 'text-purple-800'}`}><Plus size={18} /> Tambah Transaksi {activeType === 'utama' ? 'SU' : 'SU/L'}</h2>
+            
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
+              <h2 className={`text-sm font-bold flex items-center gap-2 uppercase tracking-wide ${activeType === 'utama' ? 'text-green-800' : 'text-purple-800'}`}>
+                <Plus size={18} /> Tambah Transaksi {activeType === 'utama' ? 'SU' : 'SU/L'}
+              </h2>
+              
+              {/* TOMBOL TOGGLE SUSULAN BARU */}
+              <label className="flex items-center gap-2 text-sm font-bold cursor-pointer text-yellow-700 bg-yellow-100/80 px-3 py-1.5 rounded-lg border border-yellow-300 hover:bg-yellow-200 transition-colors shadow-sm w-fit">
+                <input type="checkbox" checked={isAddingSusulan} onChange={e => setIsAddingSusulan(e.target.checked)} className="w-4 h-4 accent-yellow-600" />
+                Mode Susulan
+              </label>
+            </div>
+
+            {/* INPUT TANGGAL VALIDASI JIKA MODE SUSULAN AKTIF */}
+            {isAddingSusulan && (
+              <div className="mb-4 p-3 bg-yellow-100/50 border border-yellow-200 rounded-lg flex items-center gap-3 animate-in fade-in zoom-in duration-200">
+                <AlertCircle size={18} className="text-yellow-600 shrink-0" />
+                <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2">
+                  <span className="text-xs font-bold text-yellow-800 uppercase">Tanggal Validasi Susulan:</span>
+                  <input type="date" value={susulanValidDate} onChange={e => setSusulanValidDate(e.target.value)} className="border border-yellow-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-yellow-500 bg-white" />
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
               <div className="sm:col-span-5">
                 <label className={`block text-xs font-semibold mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'}`}>Kategori</label>
@@ -778,39 +863,50 @@ export default function App() {
           </div>
 
           <div className="space-y-5">
-            {activeCategories.length === 0 ? (
+            {activeGroups.length === 0 ? (
               <div className="text-center py-10 bg-white border border-dashed border-gray-300 rounded-xl">
                 <AlertCircle size={40} className="mx-auto text-gray-300 mb-2" />
                 <p className="text-gray-500 font-medium">Belum ada pendapatan yang dimasukkan.</p>
               </div>
             ) : (
-              activeCategories.map((cat, idx) => (
-                <div key={cat.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className={`px-4 py-3 border-b flex justify-between items-center ${activeType === 'utama' ? 'bg-green-50/50 border-green-100' : 'bg-purple-50/50 border-purple-100'}`}>
-                    <h3 className="font-bold text-gray-800 flex items-center gap-2 capitalize"><span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${activeType === 'utama' ? 'bg-green-200 text-green-800' : 'bg-purple-200 text-purple-800'}`}>{idx + 1}</span> {cat.name}</h3>
+              activeGroups.map((group, idx) => (
+                <div key={group.groupId} className={`bg-white rounded-xl shadow-sm border overflow-hidden ${group.isSusulan ? 'border-yellow-300' : 'border-gray-200'}`}>
+                  <div className={`px-4 py-3 border-b flex justify-between items-center ${group.isSusulan ? 'bg-yellow-50 border-yellow-200' : (activeType === 'utama' ? 'bg-green-50/50 border-green-100' : 'bg-purple-50/50 border-purple-100')}`}>
+                    <h3 className="font-bold text-gray-800 flex items-center gap-2 capitalize">
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${group.isSusulan ? 'bg-yellow-400 text-yellow-900' : (activeType === 'utama' ? 'bg-green-200 text-green-800' : 'bg-purple-200 text-purple-800')}`}>{idx + 1}</span> 
+                      {group.name}
+                      {group.isSusulan && (
+                        <span className="text-[10px] bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ml-1 shadow-sm">
+                          Susulan: {formatTanggalTtd(group.validDate)}
+                        </span>
+                      )}
+                    </h3>
                   </div>
                   <div className="p-4 space-y-3">
-                    {cat.activeItems.map(item => (
-                      <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-50 pb-3 last:border-0 last:pb-0">
-                        <div className="flex items-center gap-2 sm:w-1/2">
-                          <button onClick={() => handleRemoveActiveItem(cat.id, item.id)} className="text-red-400 hover:text-red-600 p-2 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm"><Trash size={18} /></button>
-                          <label className="text-gray-700 font-medium">{item.id === 'direct' ? 'Nominal Pemasukan' : item.name}</label>
+                    {group.activeItems.map(item => {
+                      const inputKey = getInputKey(group.catId, item.id, group.isSusulan, group.validDate);
+                      return (
+                        <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-50 pb-3 last:border-0 last:pb-0">
+                          <div className="flex items-center gap-2 sm:w-1/2">
+                            <button onClick={() => handleRemoveActiveItem(group.catId, item.id, group.isSusulan, group.validDate)} className="text-red-400 hover:text-red-600 p-2 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm"><Trash size={18} /></button>
+                            <label className="text-gray-700 font-medium">{item.id === 'direct' ? 'Nominal Pemasukan' : item.name}</label>
+                          </div>
+                          <div className="relative w-full sm:w-1/2 md:w-2/5">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">Rp</span>
+                            <input 
+                              id={`input_${inputKey}`}
+                              type="text" inputMode="numeric" 
+                              value={currentReport.formData[inputKey] ? formatRp(currentReport.formData[inputKey]) : ''} 
+                              onChange={(e) => handleInputChange(inputKey, e.target.value)} 
+                              className={`w-full border rounded-lg pl-10 pr-3 py-2.5 text-right font-bold focus:ring-2 outline-none ${group.isSusulan ? 'border-yellow-300 focus:ring-yellow-500' : 'border-gray-300 focus:ring-green-500'}`} 
+                              placeholder="0" 
+                            />
+                          </div>
                         </div>
-                        <div className="relative w-full sm:w-1/2 md:w-2/5">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">Rp</span>
-                          <input 
-                            id={`input_${cat.id}_${item.id}`}
-                            type="text" inputMode="numeric" 
-                            value={currentReport.formData[`${cat.id}_${item.id}`] ? formatRp(currentReport.formData[`${cat.id}_${item.id}`]) : ''} 
-                            onChange={(e) => handleInputChange(cat.id, item.id, e.target.value)} 
-                            className={`w-full border border-gray-300 rounded-lg pl-10 pr-3 py-2.5 text-right font-bold focus:ring-2 outline-none ${activeType === 'utama' ? 'focus:ring-green-500 focus:border-green-500' : 'focus:ring-purple-500 focus:border-purple-500'}`} 
-                            placeholder="0" 
-                          />
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     <div className="pt-3 mt-2 border-t border-dashed border-gray-300 flex justify-between items-center text-sm font-bold text-gray-600">
-                      <span>Sub Total:</span><span className="text-gray-800 text-base">Rp {formatRp(subtotals[cat.id])}</span>
+                      <span>Sub Total:</span><span className="text-gray-800 text-base">Rp {formatRp(subtotals[group.groupId])}</span>
                     </div>
                   </div>
                 </div>
@@ -818,7 +914,7 @@ export default function App() {
             )}
           </div>
 
-          {/* Baris Bawah Mengambang (Floating Footer) */}
+          {/* Baris Bawah Mengambang */}
           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] p-4 z-40 no-print">
             <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
               <div className="flex-1 w-full flex items-center justify-between sm:justify-start gap-4">
@@ -830,7 +926,7 @@ export default function App() {
               </div>
               <div className="flex w-full sm:w-auto gap-2">
                 <button onClick={clearCurrentReport} className="px-4 py-3 text-red-500 hover:bg-red-50 font-bold rounded-xl transition-colors text-sm border border-transparent hover:border-red-200">Reset</button>
-                <button onClick={() => setActiveTab('print')} disabled={activeCategories.length === 0} className={`flex-1 sm:flex-none text-white px-6 py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors shadow-sm disabled:bg-gray-300 ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}><FileText size={20} /> Lihat PDF</button>
+                <button onClick={() => setActiveTab('print')} disabled={activeGroups.length === 0} className={`flex-1 sm:flex-none text-white px-6 py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors shadow-sm disabled:bg-gray-300 ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}><FileText size={20} /> Lihat PDF</button>
               </div>
             </div>
           </div>
@@ -850,17 +946,14 @@ export default function App() {
              
              <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                <button onClick={() => setActiveTab('input')} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none">Kembali Edit</button>
-               
                <button onClick={handleDownloadPDF} disabled={pdfLoading} className={`px-4 py-2 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'} disabled:opacity-50`}>
                  {pdfLoading ? <RefreshCw size={18} className="animate-spin" /> : <Download size={18} />}
                  {pdfLoading ? 'Memproses...' : 'Unduh PDF'}
                </button>
-
-               <button onClick={handlePrint} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md" title="Membuka dialog cetak mesin printer">
+               <button onClick={handlePrint} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md">
                  <Printer size={18} /> Cetak Printer
                </button>
              </div>
-
           </div>
 
           <div id="printable-area" className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative">
@@ -876,19 +969,25 @@ export default function App() {
             </div>
 
             <div className="space-y-2">
-              {activeCategories.map((cat, index) => {
-                if (subtotals[cat.id] === 0) return null;
-                const isDirect = Array.isArray(cat.activeItems) && cat.activeItems.length === 1 && cat.activeItems[0].id === 'direct';
+              {activeGroups.map((group, index) => {
+                if (subtotals[group.groupId] === 0) return null;
+                const isDirect = Array.isArray(group.activeItems) && group.activeItems.length === 1 && group.activeItems[0].id === 'direct';
+                
+                // FORMAT JUDUL UNTUK MODE SUSULAN
+                const groupTitle = group.isSusulan 
+                  ? `${group.name} susulan (validasi ${formatTanggalTtd(group.validDate)})`
+                  : group.name;
 
                 return (
-                  <div key={cat.id} className="text-[11pt] pb-3">
+                  <div key={group.groupId} className="text-[11pt] pb-3">
                     <div className="font-bold mb-1">
-                      {index + 1}. Diterima uang hasil pendapatan {cat.name} sebagai berikut :
+                      {index + 1}. Diterima uang hasil pendapatan {groupTitle} sebagai berikut :
                     </div>
                     
                     <div className="w-full">
-                      {!isDirect && cat.activeItems.map(item => {
-                        const val = (currentReport.formData || {})[`${cat.id}_${item.id}`] || 0;
+                      {!isDirect && group.activeItems.map(item => {
+                        const inputKey = getInputKey(group.catId, item.id, group.isSusulan, group.validDate);
+                        const val = currentReport.formData[inputKey] || 0;
                         if (val === 0) return null;
                         return (
                           <div key={item.id} className="flex w-full max-w-[450px] mb-0.5 pl-4 sm:pl-6">
@@ -902,10 +1001,9 @@ export default function App() {
                       <div className={`flex w-full font-bold ${isDirect ? '' : 'mt-1 pt-1'}`}>
                         <span className="flex-1 text-right pr-6">{isDirect ? 'Nominal' : 'Sub Total'}</span>
                         <span className="w-[40px] text-left">Rp.</span>
-                        <span className="w-[120px] text-right">{formatRp(subtotals[cat.id])}</span>
+                        <span className="w-[120px] text-right">{formatRp(subtotals[group.groupId])}</span>
                       </div>
                     </div>
-
                   </div>
                 );
               })}
