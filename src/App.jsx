@@ -686,7 +686,7 @@ export default function App() {
 
             <form onSubmit={handleConfirmReset}>
               <div className="mb-6">
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Masukkan Password Kasir</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Masukkan Password Admin</label>
                 <input 
                   type="password" 
                   value={resetDialog.password}
