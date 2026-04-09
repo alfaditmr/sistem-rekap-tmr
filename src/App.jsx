@@ -322,7 +322,6 @@ export default function App() {
   };
 
   // --- KUNCI PENANDA UNTUK ITEM YANG MEMILIKI TANGGAL ATAU SUSULAN ---
-  // Fungsi ini sangat aman untuk data lama, jika itemDate / isSus tidak ada, sistem akan membaca format lama dengan mulus.
   const getActiveItemKey = (catId, itemId, isSus, validDate, itemDate) => {
     if (isSus) return `${catId}_${itemId}_susulan_${validDate}`;
     if (itemDate) return `${catId}_${itemId}_date_${itemDate}`;
@@ -424,7 +423,7 @@ export default function App() {
     return cat.items.filter(item => !isAdded(item.id));
   }, [selectedCatToAdd, categories, currentReport.activeItems, isAddingSusulan, susulanValidDate, activeType, lainItemDate]);
 
-  // --- LOGIK GROUPING BARU MENDUKUNG TANGGAL SU/L DAN SUSULAN SU ---
+  // --- LOGIK GROUPING (STSU LAIN-LAIN DI KELOMPOKKAN BERDASARKAN TANGGAL) ---
   const activeGroups = useMemo(() => {
     if (!Array.isArray(categories)) return [];
     const activeI = Array.isArray(currentReport.activeItems) ? currentReport.activeItems : [];
@@ -462,30 +461,47 @@ export default function App() {
           });
         });
       } else {
-        // Untuk STSU Lain-lain (Lainnya), satukan semua di kategori yang sama.
-        const displayItems = itemsForCat.map(ai => {
-          if (ai.itemId === 'direct') return { ...ai, id: 'direct', name: cat.name };
-          const found = cat.items?.find(i => i.id === ai.itemId);
-          return { ...ai, id: ai.itemId, name: found ? found.name : 'Item' };
+        // Untuk STSU Lain-lain (SU/L), dikelompokkan berdasarkan tanggal transaksi
+        const configsForCat = [];
+        itemsForCat.forEach(ai => {
+          const key = ai.itemDate ? `date_${ai.itemDate}` : 'nodate';
+          if (!configsForCat.find(c => c.key === key)) {
+            configsForCat.push({ key, itemDate: ai.itemDate });
+          }
         });
 
-        groups.push({
-          groupId: `${cat.id}_normal`,
-          catId: cat.id,
-          name: cat.name,
-          isSusulan: false,
-          activeItems: displayItems,
-          catIndex: index
+        configsForCat.forEach(config => {
+          const matchedItems = itemsForCat.filter(ai => (ai.itemDate || '') === (config.itemDate || ''));
+          const displayItems = matchedItems.map(ai => {
+            if (ai.itemId === 'direct') return { ...ai, id: 'direct', name: cat.name };
+            const found = cat.items?.find(i => i.id === ai.itemId);
+            return { ...ai, id: ai.itemId, name: found ? found.name : 'Item' };
+          });
+
+          groups.push({
+            groupId: `${cat.id}_${config.key}`,
+            catId: cat.id,
+            name: cat.name,
+            isSusulan: false,
+            itemDate: config.itemDate,
+            activeItems: displayItems,
+            catIndex: index
+          });
         });
       }
     });
 
-    // PENGURUTAN GROUP (Prioritas: Kategori Asli -> lalu taruh susulan di bawah)
+    // PENGURUTAN GROUP (Prioritas: Kategori Asli -> lalu tanggal)
     groups.sort((a, b) => {
-      if (!a.isSusulan && b.isSusulan) return -1;
-      if (a.isSusulan && !b.isSusulan) return 1;
-      if (a.isSusulan && b.isSusulan) {
-        if (a.validDate !== b.validDate) return (a.validDate || '').localeCompare(b.validDate || '');
+      if (activeType === 'utama') {
+          if (!a.isSusulan && b.isSusulan) return -1;
+          if (a.isSusulan && !b.isSusulan) return 1;
+          if (a.isSusulan && b.isSusulan) {
+            if (a.validDate !== b.validDate) return (a.validDate || '').localeCompare(b.validDate || '');
+          }
+      } else {
+          if (a.catIndex !== b.catIndex) return a.catIndex - b.catIndex;
+          if (a.itemDate !== b.itemDate) return (a.itemDate || '').localeCompare(b.itemDate || '');
       }
       return a.catIndex - b.catIndex;
     });
@@ -499,7 +515,7 @@ export default function App() {
     activeGroups.forEach(group => {
       let sub = 0;
       group.activeItems.forEach(item => { 
-        const key = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, item.itemDate);
+        const key = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate);
         sub += cForm[key] || 0; 
       });
       subs[group.groupId] = sub; 
@@ -692,7 +708,7 @@ export default function App() {
         </div>
       )}
 
-      {/* --- RESET PASSWORD MODAL BARU --- */}
+      {/* --- RESET PASSWORD MODAL --- */}
       {resetDialog.isOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in fade-in zoom-in duration-200">
@@ -995,22 +1011,22 @@ export default function App() {
                           Susulan: {formatTanggalTtd(group.validDate)}
                         </span>
                       )}
+                      {activeType === 'lain' && group.itemDate && (
+                        <span className="text-[10px] bg-purple-400 text-purple-900 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ml-1 shadow-sm">
+                          Tanggal: {formatTanggalTtd(group.itemDate)}
+                        </span>
+                      )}
                     </h3>
                   </div>
                   <div className="p-4 space-y-3">
                     {group.activeItems.map(item => {
-                      const inputKey = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, item.itemDate);
+                      const inputKey = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate);
                       return (
                         <div key={inputKey} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-50 pb-3 last:border-0 last:pb-0">
                           <div className="flex items-center gap-2 sm:w-1/2">
                             <button onClick={() => handleRemoveActiveItem(item)} className="text-red-400 hover:text-red-600 p-2 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm"><Trash size={18} /></button>
                             <label className="text-gray-700 font-medium">
                                {item.id === 'direct' ? 'Nominal Pemasukan' : item.name}
-                               {item.itemDate && activeType === 'lain' && (
-                                 <span className="text-purple-600 font-bold ml-1 text-sm bg-purple-50 px-2 py-0.5 rounded border border-purple-100">
-                                   (Tgl: {formatTanggalTtd(item.itemDate)})
-                                 </span>
-                               )}
                             </label>
                           </div>
                           <div className="relative w-full sm:w-1/2 md:w-2/5">
@@ -1095,32 +1111,29 @@ export default function App() {
                 if (subtotals[group.groupId] === 0) return null;
                 const isDirect = Array.isArray(group.activeItems) && group.activeItems.length === 1 && group.activeItems[0].id === 'direct';
                 
-                // FORMAT JUDUL UNTUK MODE SUSULAN
-                const groupTitle = group.isSusulan 
-                  ? `${group.name} susulan (validasi ${formatTanggalTtd(group.validDate)})`
-                  : group.name;
+                // --- PERUBAHAN JUDUL DI SINI ---
+                let groupTitle = group.name;
+                if (activeType === 'utama' && group.isSusulan) {
+                  groupTitle = `${group.name} susulan (validasi ${formatTanggalTtd(group.validDate)})`;
+                } else if (activeType === 'lain' && group.itemDate) {
+                  groupTitle = `${group.name} tanggal ${formatTanggalTtd(group.itemDate)}`;
+                }
 
                 return (
                   <div key={group.groupId} className="text-[11pt] pb-3">
                     <div className="font-bold mb-1">
-                      {index + 1}. Diterima uang hasil pendapatan {groupTitle} sebagai berikut :
+                      {index + 1}. Diterima uang hasil pendapatan {groupTitle}, sebagai berikut :
                     </div>
                     
                     <div className="w-full">
                       {!isDirect && group.activeItems.map(item => {
-                        const inputKey = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, item.itemDate);
+                        const inputKey = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate);
                         const val = currentReport.formData[inputKey] || 0;
                         if (val === 0) return null;
 
-                        // FORMAT NAMA ITEM MENDUKUNG TANGGAL SU/L (PERSIS SEPERTI FOTO)
-                        let itemName = item.name;
-                        if (activeType === 'lain' && item.itemDate) {
-                           itemName = `${item.name} Tanggal ${formatTanggalTtd(item.itemDate)}`;
-                        }
-
                         return (
                           <div key={inputKey} className="flex w-full max-w-[450px] mb-0.5 pl-4 sm:pl-6">
-                            <span className="flex-1 pr-2">{itemName}</span>
+                            <span className="flex-1 pr-2">{item.name}</span>
                             <span className="w-[40px] text-left">Rp.</span>
                             <span className="w-[100px] text-right">{formatRp(val)}</span>
                           </div>
