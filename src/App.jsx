@@ -94,7 +94,6 @@ const getLocalYMD = () => {
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null });
-  // STATE MODAL RESET PASSWORD
   const [resetDialog, setResetDialog] = useState({ isOpen: false, password: '', error: '', isVerifying: false });
   const [pdfLoading, setPdfLoading] = useState(false);
 
@@ -198,7 +197,6 @@ export default function App() {
   const [selectedItemToAdd, setSelectedItemToAdd] = useState('');
   const [calendarMonth, setCalendarMonth] = useState(new Date());
 
-  // --- STATE FITUR SUSULAN ---
   const [isAddingSusulan, setIsAddingSusulan] = useState(false);
   const [susulanValidDate, setSusulanValidDate] = useState('');
 
@@ -290,20 +288,15 @@ export default function App() {
     setSusulanValidDate('');
   };
 
-  // PEMANGGILAN RESET SEKARANG MEMBUKA MODAL PASSWORD
   const clearCurrentReport = () => {
     setResetDialog({ isOpen: true, password: '', error: '', isVerifying: false });
   };
 
-  // LOGIKA VERIFIKASI PASSWORD UNTUK RESET DATA
   const handleConfirmReset = async (e) => {
     e.preventDefault();
     setResetDialog(prev => ({ ...prev, isVerifying: true, error: '' }));
     try {
-      // Memverifikasi menggunakan email pengguna yang sedang aktif
       await signInWithEmailAndPassword(auth, user.email, resetDialog.password);
-      
-      // Jika berhasil, lakukan reset (mengosongkan data)
       updateCurrentReport({ sequence: '', signatureDate: reportDate, activeItems: [], formData: {} });
       setResetDialog({ isOpen: false, password: '', error: '', isVerifying: false });
     } catch (error) {
@@ -322,7 +315,6 @@ export default function App() {
     else setSelectedItemToAdd('');
   };
 
-  // --- HELPER UNTUK KODE INPUT FIREBASE ---
   const getInputKey = (catId, itemId, isSus, validDate) => {
     if (isSus) return `${catId}_${itemId}_susulan_${validDate}`;
     return `${catId}_${itemId}`;
@@ -415,7 +407,6 @@ export default function App() {
     return cat.items.filter(item => !isAdded(item.id));
   }, [selectedCatToAdd, categories, currentReport.activeItems, isAddingSusulan, susulanValidDate]);
 
-  // --- LOGIK GROUPING BARU (MENDUKUNG SUSULAN DI BAWAH) ---
   const activeGroups = useMemo(() => {
     if (!Array.isArray(categories)) return [];
     const activeI = Array.isArray(currentReport.activeItems) ? currentReport.activeItems : [];
@@ -440,6 +431,7 @@ export default function App() {
         if (!Array.isArray(cat.items) || cat.items.length === 0) {
           if (matchedItemIds.includes('direct')) displayItems.push({ id: 'direct', name: cat.name });
         } else {
+          // Melakukan pencocokan HANYA pada urutan item di Master Data
           cat.items.forEach(mi => {
             if (matchedItemIds.includes(mi.id)) displayItems.push(mi);
           });
@@ -453,29 +445,20 @@ export default function App() {
             isSusulan: config.isSusulan,
             validDate: config.validDate,
             activeItems: displayItems,
-            catIndex: index // Simpan urutan asli kategori
+            catIndex: index
           });
         }
       });
     });
 
-    // URUTKAN: Yang normal di atas, Susulan di paling bawah
     groups.sort((a, b) => {
-      // 1. Jika A normal dan B susulan, A selalu di atas
       if (!a.isSusulan && b.isSusulan) return -1;
-      
-      // 2. Jika A susulan dan B normal, B selalu di atas
       if (a.isSusulan && !b.isSusulan) return 1;
-      
-      // 3. Jika KEDUANYA adalah susulan, urutkan berdasarkan tanggal validasi dulu
       if (a.isSusulan && b.isSusulan) {
         if (a.validDate !== b.validDate) {
           return (a.validDate || '').localeCompare(b.validDate || '');
         }
       }
-      
-      // 4. Jika tipenya sama (sama-sama normal atau sama-sama susulan tanggal yg sama), 
-      // kembalikan ke urutan asli dari Master Kategori
       return a.catIndex - b.catIndex;
     });
 
@@ -519,6 +502,22 @@ export default function App() {
   const addItem = (catId) => setCategories((categories||[]).map(c => c.id === catId ? { ...c, items: [...(c.items||[]), { id: `item_${Date.now()}`, name: 'Item Baru' }] } : c));
   const updateItemName = (catId, itemId, newName) => setCategories((categories||[]).map(c => c.id === catId ? { ...c, items: (c.items||[]).map(i => i.id === itemId ? { ...i, name: newName } : i) } : c));
   const deleteItem = (catId, itemId) => setCategories((categories||[]).map(c => c.id === catId ? { ...c, items: (c.items||[]).filter(i => i.id !== itemId) } : c));
+
+  // --- FUNGSI BARU: MENGGESER SUB-KATEGORI ---
+  const moveItem = (catId, itemIndex, direction) => {
+    const newCats = [...(categories || [])];
+    const catIndex = newCats.findIndex(c => c.id === catId);
+    if (catIndex > -1) {
+      const newItems = [...(newCats[catIndex].items || [])];
+      if (direction === 'up' && itemIndex > 0) {
+        [newItems[itemIndex - 1], newItems[itemIndex]] = [newItems[itemIndex], newItems[itemIndex - 1]];
+      } else if (direction === 'down' && itemIndex < newItems.length - 1) {
+        [newItems[itemIndex + 1], newItems[itemIndex]] = [newItems[itemIndex], newItems[itemIndex + 1]];
+      }
+      newCats[catIndex] = { ...newCats[catIndex], items: newItems };
+      setCategories(newCats);
+    }
+  };
 
   const nextMonth = () => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1));
   const prevMonth = () => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1));
@@ -686,7 +685,7 @@ export default function App() {
 
             <form onSubmit={handleConfirmReset}>
               <div className="mb-6">
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Masukkan Password Admin</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Masukkan Password Kasir</label>
                 <input 
                   type="password" 
                   value={resetDialog.password}
@@ -814,8 +813,8 @@ export default function App() {
                     
                     <div className="flex-1 flex items-center gap-2">
                       <div className="flex flex-col gap-0.5 mr-1">
-                        <button onClick={() => moveCategory(index, 'up')} disabled={index === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-30"><ArrowUp size={16}/></button>
-                        <button onClick={() => moveCategory(index, 'down')} disabled={index === categories.length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-30"><ArrowDown size={16}/></button>
+                        <button onClick={() => moveCategory(index, 'up')} disabled={index === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowUp size={14}/></button>
+                        <button onClick={() => moveCategory(index, 'down')} disabled={index === categories.length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowDown size={14}/></button>
                       </div>
                       <span className={`font-bold w-6 h-6 flex items-center justify-center rounded-full text-xs text-white shrink-0 ${cat.type === 'utama' ? 'bg-green-600' : 'bg-purple-600'}`}>{index + 1}</span>
                       <input type="text" value={cat.name || ''} onChange={(e) => updateCategory(cat.id, 'name', e.target.value)} className="bg-white border border-gray-300 rounded px-2 py-1.5 w-full max-w-md font-bold text-sm outline-none" placeholder="Nama Kategori..." />
@@ -832,9 +831,13 @@ export default function App() {
                     {Array.isArray(cat.items) && cat.items.length === 0 && (
                       <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 mb-2 font-medium flex items-center gap-1"><CheckCircle size={14} /> Mode Langsung Input Nominal.</div>
                     )}
-                    {Array.isArray(cat.items) && cat.items.map((item) => (
+                    {Array.isArray(cat.items) && cat.items.map((item, itemIdx) => (
                       <div key={item.id} className="flex items-center gap-2">
-                        <Tag size={14} className="text-gray-400"/>
+                        <div className="flex flex-col gap-0.5">
+                          <button onClick={() => moveItem(cat.id, itemIdx, 'up')} disabled={itemIdx === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowUp size={14}/></button>
+                          <button onClick={() => moveItem(cat.id, itemIdx, 'down')} disabled={itemIdx === cat.items.length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowDown size={14}/></button>
+                        </div>
+                        <Tag size={14} className="text-gray-400 hidden sm:block"/>
                         <input type="text" value={item.name || ''} onChange={(e) => updateItemName(cat.id, item.id, e.target.value)} className="bg-gray-50 border border-gray-200 rounded px-3 py-1.5 flex-1 text-sm outline-none focus:border-blue-400 focus:bg-white" placeholder="Nama Tiket..." />
                         <button onClick={() => deleteItem(cat.id, item.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg"><Trash size={18} /></button>
                       </div>
@@ -892,14 +895,12 @@ export default function App() {
                 <Plus size={18} /> Tambah Transaksi {activeType === 'utama' ? 'SU' : 'SU/L'}
               </h2>
               
-              {/* TOMBOL TOGGLE SUSULAN BARU */}
               <label className="flex items-center gap-2 text-sm font-bold cursor-pointer text-yellow-700 bg-yellow-100/80 px-3 py-1.5 rounded-lg border border-yellow-300 hover:bg-yellow-200 transition-colors shadow-sm w-fit">
                 <input type="checkbox" checked={isAddingSusulan} onChange={e => setIsAddingSusulan(e.target.checked)} className="w-4 h-4 accent-yellow-600" />
                 Mode Susulan
               </label>
             </div>
 
-            {/* INPUT TANGGAL VALIDASI JIKA MODE SUSULAN AKTIF */}
             {isAddingSusulan && (
               <div className="mb-4 p-3 bg-yellow-100/50 border border-yellow-200 rounded-lg flex items-center gap-3 animate-in fade-in zoom-in duration-200">
                 <AlertCircle size={18} className="text-yellow-600 shrink-0" />
