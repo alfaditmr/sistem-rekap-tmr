@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, LogOut, Lock } from 'lucide-react';
+import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
@@ -91,6 +91,7 @@ const getLocalYMD = () => {
   return `${year}-${month}-${day}`;
 };
 
+// Fungsi helper mendapatkan nama hari (Untuk Dot Matrix)
 const getDayName = (dateStr) => {
   if (!dateStr) return "";
   const d = new Date(dateStr);
@@ -102,6 +103,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null });
   const [resetDialog, setResetDialog] = useState({ isOpen: false, password: '', error: '', isVerifying: false });
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  // --- STATE PRINT MODE (PDF GABUNGAN / NCR PER KATEGORI) ---
+  const [printMode, setPrintMode] = useState('pdf'); // 'pdf' atau 'ncr'
+  const [selectedNcrGroup, setSelectedNcrGroup] = useState(null);
 
   // --- STATE LOGIN & AUTHENTICATION ---
   const [user, setUser] = useState(null);
@@ -114,6 +120,13 @@ export default function App() {
   // --- STATE FIREBASE & SYNC ---
   const [dbReady, setDbReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState('offline'); 
+
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    script.async = true;
+    document.body.appendChild(script);
+  }, []);
 
   useEffect(() => {
     if (!auth) return;
@@ -149,12 +162,12 @@ export default function App() {
   };
 
   const [signatures, setSignatures] = useState(() => getInitialState('tmr_v17_signatures', {
-    leftRole: 'Seksi Pelayanan & Informasi',
-    leftName: 'Afriana Pulungan, S.Si., M.AP.',
-    leftNip: '197304212007012021',
+    leftRole: 'Kepala Seksi Pelayanan dan Informasi',
+    leftName: 'Afriana Pulungan S.Si. MAP',
+    leftNip: '',
     rightRole: 'Bendahara Penerimaan',
     rightName: 'Evi Irmawati',
-    rightNip: '198101082009042006',
+    rightNip: '',
     location: 'Jakarta'
   }));
 
@@ -194,14 +207,19 @@ export default function App() {
 
   const [reportDate, setReportDate] = useState(getLocalYMD());
   const [activeType, setActiveType] = useState('utama'); 
+  
+  // --- STATE DOKUMEN INDEX (FITUR DINAMIS) ---
   const [activeLainIndex, setActiveLainIndex] = useState(1); 
 
   const [selectedCatToAdd, setSelectedCatToAdd] = useState('');
   const [selectedItemToAdd, setSelectedItemToAdd] = useState('');
   const [calendarMonth, setCalendarMonth] = useState(new Date());
 
+  // --- STATE FITUR SUSULAN (Hanya SU) ---
   const [isAddingSusulan, setIsAddingSusulan] = useState(false);
   const [susulanValidDate, setSusulanValidDate] = useState('');
+  
+  // --- STATE DINAMIS (Hanya SU/L) ---
   const [lainItemDate, setLainItemDate] = useState('');
   const [lainItemNote, setLainItemNote] = useState('');
 
@@ -209,7 +227,9 @@ export default function App() {
   useEffect(() => { localStorage.setItem('tmr_v17_categories', JSON.stringify(categories)); }, [categories]);
   useEffect(() => { localStorage.setItem('tmr_v17_allReports', JSON.stringify(allReports)); }, [allReports]);
 
-  const getDocRef = () => { return doc(db, 'tmr_data', 'rekapitulasi_laporan'); };
+  const getDocRef = () => {
+    return doc(db, 'tmr_data', 'rekapitulasi_laporan');
+  };
 
   useEffect(() => {
     if (!user || !db) return;
@@ -238,7 +258,9 @@ export default function App() {
     setSyncStatus('syncing');
     const saveData = async () => {
       try {
-        await setDoc(getDocRef(), { signatures, categories, allReports, lastUpdated: new Date().toISOString() });
+        await setDoc(getDocRef(), {
+          signatures, categories, allReports, lastUpdated: new Date().toISOString()
+        });
         setSyncStatus('synced');
       } catch(e) {
         setSyncStatus('offline');
@@ -248,37 +270,51 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [signatures, categories, allReports, user, dbReady]);
 
-  const showConfirm = (message, onConfirmAction) => { setConfirmDialog({ isOpen: true, message, onConfirm: onConfirmAction }); };
+  const showConfirm = (message, onConfirmAction) => {
+    setConfirmDialog({ isOpen: true, message, onConfirm: onConfirmAction });
+  };
 
+  // --- FUNGSI MENDAPATKAN KUNCI TIPE AKTIF ---
   const activeTypeKey = useMemo(() => {
     if (activeType === 'utama') return 'utama';
     return activeLainIndex === 1 ? 'lain' : `lain_${activeLainIndex}`;
   }, [activeType, activeLainIndex]);
 
+  // --- MENGAMBIL DAFTAR INDEKS DOKUMEN YANG ADA HARI INI ---
   const lainDocIndices = useMemo(() => {
     const dayData = allReports[reportDate] || {};
-    const indices = [1]; 
+    const indices = [1]; // Dokumen 1 selalu ada secara visual
     Object.keys(dayData).forEach(k => {
       if (k.startsWith('lain_')) {
         const num = parseInt(k.split('_')[1], 10);
-        if (!isNaN(num) && !indices.includes(num)) indices.push(num);
+        if (!isNaN(num) && !indices.includes(num)) {
+          indices.push(num);
+        }
       }
     });
     return indices.sort((a, b) => a - b);
   }, [allReports, reportDate]);
 
+  // --- FUNGSI MENAMBAH TAB DOKUMEN ---
   const handleAddLainDoc = () => {
     const nextIndex = Math.max(...lainDocIndices) + 1;
     const nextKey = `lain_${nextIndex}`;
     setAllReports(prev => {
       const dayData = prev[reportDate] || {};
-      return { ...prev, [reportDate]: { ...dayData, [nextKey]: { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} } } };
+      return {
+        ...prev,
+        [reportDate]: {
+          ...dayData,
+          [nextKey]: { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} }
+        }
+      };
     });
     setActiveLainIndex(nextIndex);
     setSelectedCatToAdd(''); setSelectedItemToAdd('');
     setLainItemDate(''); setLainItemNote('');
   };
 
+  // --- FUNGSI MENGHAPUS TAB DOKUMEN ---
   const handleRemoveLainDoc = (indexToRemove) => {
     showConfirm(`Hapus Dokumen Ke-${indexToRemove}? Semua data di dalam dokumen ini akan ikut terhapus.`, () => {
       setAllReports(prev => {
@@ -287,7 +323,9 @@ export default function App() {
         delete dayData[keyToRemove];
         return { ...prev, [reportDate]: dayData };
       });
-      if (activeLainIndex === indexToRemove) setActiveLainIndex(1); 
+      if (activeLainIndex === indexToRemove) {
+         setActiveLainIndex(1); // Kembali ke Dokumen 1 jika yang aktif dihapus
+      }
     });
   };
 
@@ -317,18 +355,28 @@ export default function App() {
   const handleDateChange = (newDateStr) => {
     setReportDate(newDateStr);
     setSelectedCatToAdd(''); setSelectedItemToAdd('');
-    setIsAddingSusulan(false); setSusulanValidDate(''); setLainItemDate(''); setLainItemNote('');
-    setActiveLainIndex(1); 
+    setIsAddingSusulan(false);
+    setSusulanValidDate('');
+    setLainItemDate('');
+    setLainItemNote('');
+    setActiveLainIndex(1); // Reset dokumen ke-1 tiap ganti hari
+    setPrintMode('pdf'); // Reset Mode Print
   };
 
   const handleTypeSwitch = (type) => {
     setActiveType(type);
     setSelectedCatToAdd(''); setSelectedItemToAdd('');
-    setIsAddingSusulan(false); setSusulanValidDate(''); setLainItemDate(''); setLainItemNote('');
-    setActiveLainIndex(1); 
+    setIsAddingSusulan(false);
+    setSusulanValidDate('');
+    setLainItemDate('');
+    setLainItemNote('');
+    setActiveLainIndex(1); // Reset ke dokumen 1 tiap ganti tab
+    setPrintMode('pdf'); // Reset Mode Print
   };
 
-  const clearCurrentReport = () => { setResetDialog({ isOpen: true, password: '', error: '', isVerifying: false }); };
+  const clearCurrentReport = () => {
+    setResetDialog({ isOpen: true, password: '', error: '', isVerifying: false });
+  };
 
   const handleConfirmReset = async (e) => {
     e.preventDefault();
@@ -359,7 +407,10 @@ export default function App() {
     if (itemDate) key += `_date_${itemDate}`;
     if (itemNote) {
        let hash = 0;
-       for (let i = 0; i < itemNote.length; i++) { hash = ((hash << 5) - hash) + itemNote.charCodeAt(i); hash = hash & hash; }
+       for (let i = 0; i < itemNote.length; i++) {
+         hash = ((hash << 5) - hash) + itemNote.charCodeAt(i);
+         hash = hash & hash;
+       }
        key += `_note_${Math.abs(hash)}`;
     }
     return key;
@@ -367,16 +418,22 @@ export default function App() {
 
   const handleAddActiveItem = () => {
     if (!selectedCatToAdd || !selectedItemToAdd) return;
+    
     const newItem = { catId: selectedCatToAdd, itemId: selectedItemToAdd };
 
     if (activeType === 'utama') {
       if (isAddingSusulan) {
         if (!susulanValidDate) return alert("Mohon pilih Tanggal Validasi untuk pendapatan susulan!");
-        newItem.isSusulan = true; newItem.validDate = susulanValidDate;
+        newItem.isSusulan = true;
+        newItem.validDate = susulanValidDate;
       }
     } else if (activeType === 'lain') {
-      if (lainItemDate) newItem.itemDate = lainItemDate;
-      if (lainItemNote.trim()) newItem.itemNote = lainItemNote.trim();
+      if (lainItemDate) {
+        newItem.itemDate = lainItemDate;
+      }
+      if (lainItemNote.trim()) {
+        newItem.itemNote = lainItemNote.trim();
+      }
     }
 
     const inputKey = getActiveItemKey(newItem.catId, newItem.itemId, newItem.isSusulan, newItem.validDate, newItem.itemDate, newItem.itemNote);
@@ -384,9 +441,18 @@ export default function App() {
     updateCurrentReport(prev => {
       const currentItems = Array.isArray(prev.activeItems) ? prev.activeItems : [];
       const currentForm = prev.formData || {};
-      const exists = currentItems.find(i => getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote) === inputKey);
+      
+      const exists = currentItems.find(i => {
+         const iKey = getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote);
+         return iKey === inputKey;
+      });
       if (exists) return prev;
-      return { ...prev, activeItems: [...currentItems, newItem], formData: { ...currentForm, [inputKey]: 0 } };
+
+      return {
+        ...prev,
+        activeItems: [...currentItems, newItem],
+        formData: { ...currentForm, [inputKey]: 0 }
+      };
     });
     
     const cat = categories.find(c => c.id === selectedCatToAdd);
@@ -394,14 +460,20 @@ export default function App() {
     setSelectedItemToAdd('');
     setLainItemNote('');
 
-    setTimeout(() => { const inputElement = document.getElementById(`input_${inputKey}`); if (inputElement) inputElement.focus(); }, 100);
+    setTimeout(() => {
+      const inputElement = document.getElementById(`input_${inputKey}`);
+      if (inputElement) inputElement.focus();
+    }, 100);
   };
 
   const handleRemoveActiveItem = (itemToRemove) => {
     const inputKeyToRemove = getActiveItemKey(itemToRemove.catId, itemToRemove.itemId, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate, itemToRemove.itemNote);
     updateCurrentReport(prev => {
       const currentItems = Array.isArray(prev.activeItems) ? prev.activeItems : [];
-      const newActive = currentItems.filter(i => getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote) !== inputKeyToRemove);
+      const newActive = currentItems.filter(i => {
+         const iKey = getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote);
+         return iKey !== inputKeyToRemove;
+      });
       const newFormData = { ...(prev.formData || {}) };
       delete newFormData[inputKeyToRemove];
       return { ...prev, activeItems: newActive, formData: newFormData };
@@ -410,7 +482,9 @@ export default function App() {
 
   const handleInputChange = (inputKey, value) => {
     const rawValue = value.replace(/[^0-9]/g, '');
-    updateCurrentReport(prev => ({ ...prev, formData: { ...(prev.formData || {}), [inputKey]: Number(rawValue) || 0 } }));
+    updateCurrentReport(prev => ({
+      ...prev, formData: { ...(prev.formData || {}), [inputKey]: Number(rawValue) || 0 }
+    }));
   };
 
   const computedStsuNo = useMemo(() => {
@@ -435,7 +509,9 @@ export default function App() {
       }
     };
 
-    if (!Array.isArray(cat.items) || cat.items.length === 0) return isAdded('direct') ? [] : [{ id: 'direct', name: cat.name }];
+    if (!Array.isArray(cat.items) || cat.items.length === 0) {
+      return isAdded('direct') ? [] : [{ id: 'direct', name: cat.name }];
+    }
     return cat.items.filter(item => !isAdded(item.id));
   }, [selectedCatToAdd, categories, currentReport.activeItems, isAddingSusulan, susulanValidDate, activeType, lainItemDate, lainItemNote]);
 
@@ -452,7 +528,9 @@ export default function App() {
         const configsForCat = [];
         itemsForCat.forEach(ai => {
           const key = ai.isSusulan ? `susulan_${ai.validDate}` : 'normal';
-          if (!configsForCat.find(c => c.key === key)) configsForCat.push({ key, isSusulan: !!ai.isSusulan, validDate: ai.validDate });
+          if (!configsForCat.find(c => c.key === key)) {
+            configsForCat.push({ key, isSusulan: !!ai.isSusulan, validDate: ai.validDate });
+          }
         });
 
         configsForCat.forEach(config => {
@@ -462,7 +540,16 @@ export default function App() {
             const found = cat.items?.find(i => i.id === ai.itemId);
             return { ...ai, id: ai.itemId, name: found ? found.name : 'Item' };
           });
-          groups.push({ groupId: `${cat.id}_${config.key}`, catId: cat.id, name: cat.name, isSusulan: config.isSusulan, validDate: config.validDate, activeItems: displayItems, catIndex: index });
+
+          groups.push({
+            groupId: `${cat.id}_${config.key}`,
+            catId: cat.id,
+            name: cat.name,
+            isSusulan: config.isSusulan,
+            validDate: config.validDate,
+            activeItems: displayItems,
+            catIndex: index 
+          });
         });
       } else {
         const configsForCat = [];
@@ -470,17 +557,34 @@ export default function App() {
           const dateKey = ai.itemDate ? `date_${ai.itemDate}` : 'nodate';
           const noteStr = ai.itemNote ? ai.itemNote.trim() : '';
           const key = `${dateKey}_note_${noteStr}`;
-          if (!configsForCat.find(c => c.key === key)) configsForCat.push({ key, itemDate: ai.itemDate, itemNote: noteStr });
+
+          if (!configsForCat.find(c => c.key === key)) {
+            configsForCat.push({ key, itemDate: ai.itemDate, itemNote: noteStr });
+          }
         });
 
         configsForCat.forEach(config => {
-          const matchedItems = itemsForCat.filter(ai => (ai.itemDate || '') === (config.itemDate || '') && (ai.itemNote ? ai.itemNote.trim() : '') === config.itemNote);
+          const matchedItems = itemsForCat.filter(ai => 
+            (ai.itemDate || '') === (config.itemDate || '') && 
+            (ai.itemNote ? ai.itemNote.trim() : '') === config.itemNote
+          );
+          
           const displayItems = matchedItems.map(ai => {
             if (ai.itemId === 'direct') return { ...ai, id: 'direct', name: cat.name };
             const found = cat.items?.find(i => i.id === ai.itemId);
             return { ...ai, id: ai.itemId, name: found ? found.name : 'Item' };
           });
-          groups.push({ groupId: `${cat.id}_${config.key}`, catId: cat.id, name: cat.name, isSusulan: false, itemDate: config.itemDate, itemNote: config.itemNote, activeItems: displayItems, catIndex: index });
+
+          groups.push({
+            groupId: `${cat.id}_${config.key}`,
+            catId: cat.id,
+            name: cat.name,
+            isSusulan: false,
+            itemDate: config.itemDate,
+            itemNote: config.itemNote,
+            activeItems: displayItems,
+            catIndex: index
+          });
         });
       }
     });
@@ -489,7 +593,9 @@ export default function App() {
       if (activeType === 'utama') {
           if (!a.isSusulan && b.isSusulan) return -1;
           if (a.isSusulan && !b.isSusulan) return 1;
-          if (a.isSusulan && b.isSusulan) if (a.validDate !== b.validDate) return (a.validDate || '').localeCompare(b.validDate || '');
+          if (a.isSusulan && b.isSusulan) {
+            if (a.validDate !== b.validDate) return (a.validDate || '').localeCompare(b.validDate || '');
+          }
       } else {
           if (a.catIndex !== b.catIndex) return a.catIndex - b.catIndex;
           if (a.itemDate !== b.itemDate) return (a.itemDate || '').localeCompare(b.itemDate || '');
@@ -518,11 +624,20 @@ export default function App() {
 
   const addCategory = () => setCategories([...(categories||[]), { id: `cat_${Date.now()}`, name: 'Kategori Baru', type: 'utama', items: [] }]);
   const updateCategory = (catId, key, value) => setCategories((categories||[]).map(c => c.id === catId ? { ...c, [key]: value } : c));
-  const deleteCategory = (catId) => showConfirm('Hapus kategori ini?', () => setCategories((categories||[]).filter(c => c.id !== catId)));
+  
+  const deleteCategory = (catId) => {
+    showConfirm('Hapus kategori ini? Data lama tidak akan hilang, tapi kategori tidak bisa dipilih lagi.', () => {
+      setCategories((categories||[]).filter(c => c.id !== catId));
+    });
+  };
+  
   const moveCategory = (index, direction) => {
     const newCats = [...(categories || [])];
-    if (direction === 'up' && index > 0) [newCats[index - 1], newCats[index]] = [newCats[index], newCats[index - 1]];
-    else if (direction === 'down' && index < newCats.length - 1) [newCats[index + 1], newCats[index]] = [newCats[index], newCats[index + 1]];
+    if (direction === 'up' && index > 0) {
+      [newCats[index - 1], newCats[index]] = [newCats[index], newCats[index - 1]];
+    } else if (direction === 'down' && index < newCats.length - 1) {
+      [newCats[index + 1], newCats[index]] = [newCats[index], newCats[index + 1]];
+    }
     setCategories(newCats);
   };
 
@@ -535,8 +650,11 @@ export default function App() {
     const catIndex = newCats.findIndex(c => c.id === catId);
     if (catIndex > -1) {
       const newItems = [...(newCats[catIndex].items || [])];
-      if (direction === 'up' && itemIndex > 0) [newItems[itemIndex - 1], newItems[itemIndex]] = [newItems[itemIndex], newItems[itemIndex - 1]];
-      else if (direction === 'down' && itemIndex < newItems.length - 1) [newItems[itemIndex + 1], newItems[itemIndex]] = [newItems[itemIndex], newItems[itemIndex + 1]];
+      if (direction === 'up' && itemIndex > 0) {
+        [newItems[itemIndex - 1], newItems[itemIndex]] = [newItems[itemIndex], newItems[itemIndex - 1]];
+      } else if (direction === 'down' && itemIndex < newItems.length - 1) {
+        [newItems[itemIndex + 1], newItems[itemIndex]] = [newItems[itemIndex], newItems[itemIndex + 1]];
+      }
       newCats[catIndex] = { ...newCats[catIndex], items: newItems };
       setCategories(newCats);
     }
@@ -555,8 +673,11 @@ export default function App() {
       const d = i + 1;
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const dayData = allReports[dateStr] || {};
+      
       const utamaItems = Array.isArray(dayData.utama?.activeItems) ? dayData.utama.activeItems : [];
+      // Mengecek semua dokumen 'lain', 'lain_2', 'lain_3', dst
       const hasLain = Object.keys(dayData).some(k => (k === 'lain' || k.startsWith('lain_')) && Array.isArray(dayData[k].activeItems) && dayData[k].activeItems.length > 0);
+      
       return { day: d, dateStr, hasUtama: utamaItems.length > 0, hasLain };
     });
     return { blanks, days };
@@ -564,6 +685,37 @@ export default function App() {
   const { blanks, days } = getDaysArray();
 
   const handlePrint = () => { window.print(); };
+
+  const handleDownloadPDF = () => {
+    const element = document.getElementById('printable-area');
+    if (!element) return;
+    if (window.html2pdf) {
+      setPdfLoading(true);
+      const opt = {
+        margin:       [10, 10, 10, 10], 
+        filename:     `Laporan_TMR_${activeType.toUpperCase()}${activeType === 'lain' ? `_Dok${activeLainIndex}` : ''}_${reportDate}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      window.html2pdf().set(opt).from(element).save().then(() => setPdfLoading(false)).catch(err => {
+        console.error("Gagal buat PDF", err);
+        setPdfLoading(false);
+      });
+    } else {
+      showConfirm("Modul pembuat PDF sedang dimuat oleh sistem. Mohon tunggu 3 detik lalu coba tekan lagi.", null);
+    }
+  };
+
+  const formatTanggalCetak = (dateStr) => {
+    if(!dateStr) return "";
+    return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).replace(',', ', tanggal');
+  };
+  const formatTanggalTtd = (dateStr) => {
+    if(!dateStr) return "";
+    return new Date(dateStr).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: '2-digit' });
+  };
+
 
   // ==========================================
   // RENDER LAYAR LOGIN JIKA BELUM MASUK
@@ -593,82 +745,82 @@ export default function App() {
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
               <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Email / Username</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 focus:bg-white transition-all font-medium" placeholder="kasir@tmr.com" />
+              <input 
+                type="email" 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+                required
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 focus:bg-white transition-all font-medium"
+                placeholder="kasir@tmr.com"
+              />
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 focus:bg-white transition-all font-medium" placeholder="••••••••" />
+              <input 
+                type="password" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                required
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 focus:bg-white transition-all font-medium"
+                placeholder="••••••••"
+              />
             </div>
             <button type="submit" disabled={isLoggingIn} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-md mt-2 disabled:bg-gray-400">
               {isLoggingIn ? 'Memeriksa Kredensial...' : 'Masuk ke Aplikasi'}
             </button>
           </form>
-          <div className="mt-8 text-center text-xs text-gray-400">Akses Terbatas &bull; TMR Jakarta</div>
+          <div className="mt-8 text-center text-xs text-gray-400">
+            Akses Terbatas &bull; TMR Jakarta
+          </div>
         </div>
       </div>
     );
   }
 
-  // ==========================================
-  // CONFIGURASI KOORDINAT CSS (MILIMETER)
-  // Berdasarkan estimasi jarak baris/kolom Excel
-  // ==========================================
-  const printConfig = {
-    // Baris 8 (Sekitar 34mm dari atas)
-    hari: { top: '34mm', left: '80mm' },
-    tanggalAtas: { top: '34mm', left: '120mm' },
-    
-    // Baris 11 (Kategori)
-    kategori: { top: '46.5mm', left: '80mm' },
-    
-    // Baris 12 & 13 (Item List, mulai di kiri)
-    rincian: { top: '51mm', left: '15mm', maxWidth: '170mm', lineHeight: '1.5' },
-    
-    // Baris 14 (Jabatan Kiri)
-    jabatanKiri: { top: '59.2mm', left: '80mm' },
-    
-    // Baris 16 & 17 (Nominal & Terbilang Kiri)
-    nominalKiri: { top: '68mm', left: '80mm', fontSize: '13pt', fontWeight: 'bold' },
-    terbilang: { top: '72mm', left: '15mm', maxWidth: '170mm', fontStyle: 'italic', fontWeight: 'bold' },
-    
-    // Baris 20 & 21 (Tanggal & Nominal Kanan)
-    tanggalBawah: { top: '85mm', left: '135mm' },
-    nominalKanan: { top: '89mm', left: '135mm', fontSize: '12pt', fontWeight: 'bold' },
-    
-    // Baris 27 & 28 (Nama dan NIP Bawah)
-    namaKiri: { top: '115mm', left: '15mm', width: '80mm', textAlign: 'center' },
-    nipKiri: { top: '120mm', left: '15mm', width: '80mm', textAlign: 'center' },
-    namaKanan: { top: '115mm', left: '120mm', width: '80mm', textAlign: 'center' },
-    nipKanan: { top: '120mm', left: '120mm', width: '80mm', textAlign: 'center' }
-  };
 
-
+  // ==========================================
+  // RENDER APLIKASI UTAMA
+  // ==========================================
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 font-sans pb-36 relative">
       <style>{`
-        /* CSS KHUSUS PRINTER DOT MATRIX NCR */
+        /* CSS DINAMIS UNTUK MODE CETAK (PDF vs DOT MATRIX NCR) */
         @media print {
           body { background-color: white; margin: 0; padding: 0; }
           .no-print { display: none !important; }
           
-          /* Gunakan font monospace sistem agar cetakan pas di spasi Dot Matrix */
-          .print-container { 
-            width: 210mm; 
-            margin: 0; 
-            padding: 0; 
-            font-family: 'Courier New', Courier, monospace !important; 
-            font-size: 11pt; 
-            color: black; 
-            box-shadow: none; 
-            border: none; 
-            position: relative;
-          }
-          
-          /* Reset margin browser agar koordinat tepat, tidak digeser oleh header browser */
-          @page { margin: 0; size: A4 portrait; }
+          ${printMode === 'ncr' ? `
+            /* Mode Dot Matrix (NCR): Ukuran absolute, margin browser dihilangkan */
+            .print-container { 
+              width: 100%; 
+              margin: 0; 
+              padding: 0; 
+              font-family: 'Courier New', Courier, monospace !important; 
+              font-size: 11pt; 
+              color: black; 
+              box-shadow: none; 
+              border: none; 
+            }
+            @page { margin: 0; size: auto; }
+          ` : `
+            /* Mode PDF Gabungan: Layout standar surat resmi (Asli Bapak Fatah) */
+            .print-container { 
+              width: 100%; 
+              max-width: 100%; 
+              margin: 0; 
+              padding: 0; 
+              font-family: 'Times New Roman', Times, serif; 
+              font-size: 11pt; 
+              color: black; 
+              box-shadow: none; 
+              border: none; 
+            }
+            @page { margin: 15mm; }
+          `}
         }
       `}</style>
 
+      {/* --- CUSTOM CONFIRM MODAL --- */}
       {confirmDialog.isOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in fade-in zoom-in duration-200">
@@ -685,6 +837,7 @@ export default function App() {
         </div>
       )}
 
+      {/* --- RESET PASSWORD MODAL --- */}
       {resetDialog.isOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in fade-in zoom-in duration-200">
@@ -704,7 +857,7 @@ export default function App() {
 
             <form onSubmit={handleConfirmReset}>
               <div className="mb-6">
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Masukkan Password Kasir</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Masukkan Password ADMIN</label>
                 <input 
                   type="password" 
                   value={resetDialog.password}
@@ -744,10 +897,10 @@ export default function App() {
           </div>
           
           <div className="flex space-x-1 sm:space-x-2 shrink-0 overflow-x-auto no-scrollbar items-center">
-            <button onClick={() => setActiveTab('dashboard')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'dashboard' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Dashboard</span></button>
-            <button onClick={() => setActiveTab('input')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'input' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Edit size={18} /> <span className="hidden md:inline">Input</span></button>
-            <button onClick={() => setActiveTab('settings')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Settings size={18} /> <span className="hidden md:inline">Master</span></button>
-            <button onClick={() => setActiveTab('print')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'print' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Printer size={18} /> <span className="hidden md:inline">Cetak</span></button>
+            <button onClick={() => { setActiveTab('dashboard'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'dashboard' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Dashboard</span></button>
+            <button onClick={() => { setActiveTab('input'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'input' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Edit size={18} /> <span className="hidden md:inline">Input</span></button>
+            <button onClick={() => { setActiveTab('settings'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Settings size={18} /> <span className="hidden md:inline">Master</span></button>
+            <button onClick={() => { setActiveTab('print'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'print' ? 'bg-green-800' : 'hover:bg-green-600'}`}><FileText size={18} /> <span className="hidden md:inline">Cetak</span></button>
             
             <div className="pl-2 border-l border-green-600 ml-1">
               <button onClick={handleLogout} className="px-2 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 hover:bg-red-600 transition-colors" title="Keluar Akun">
@@ -804,20 +957,20 @@ export default function App() {
       {activeTab === 'settings' && (
         <div className="max-w-4xl mx-auto px-4 py-6 no-print space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Edit size={20} className="text-blue-500"/> Pejabat Penandatangan Form</h2>
+            <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Edit size={20} className="text-blue-500"/> Pejabat Penandatangan</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
                 <h3 className="font-semibold text-gray-700 text-sm border-b pb-2">Pihak Kiri (Penyetor)</h3>
                 <div><label className="text-xs text-gray-500 uppercase">Jabatan</label><input type="text" value={signatures.leftRole || ''} onChange={(e) => setSignatures({...signatures, leftRole: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
                 <div><label className="text-xs text-gray-500 uppercase">Nama</label><input type="text" value={signatures.leftName || ''} onChange={(e) => setSignatures({...signatures, leftName: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none font-bold focus:border-blue-500" /></div>
-                <div><label className="text-xs text-gray-500 uppercase">NIP</label><input type="text" value={signatures.leftNip || ''} onChange={(e) => setSignatures({...signatures, leftNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" placeholder="1973xxxx" /></div>
+                <div><label className="text-xs text-gray-500 uppercase">NIP (Khusus Print NCR)</label><input type="text" value={signatures.leftNip || ''} onChange={(e) => setSignatures({...signatures, leftNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
               </div>
               <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
                 <h3 className="font-semibold text-gray-700 text-sm border-b pb-2">Pihak Kanan (Bendahara)</h3>
                 <div><label className="text-xs text-gray-500 uppercase">Lokasi</label><input type="text" value={signatures.location || ''} onChange={(e) => setSignatures({...signatures, location: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
                 <div><label className="text-xs text-gray-500 uppercase">Jabatan</label><input type="text" value={signatures.rightRole || ''} onChange={(e) => setSignatures({...signatures, rightRole: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
                 <div><label className="text-xs text-gray-500 uppercase">Nama</label><input type="text" value={signatures.rightName || ''} onChange={(e) => setSignatures({...signatures, rightName: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none font-bold focus:border-blue-500" /></div>
-                <div><label className="text-xs text-gray-500 uppercase">NIP</label><input type="text" value={signatures.rightNip || ''} onChange={(e) => setSignatures({...signatures, rightNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" placeholder="1981xxxx" /></div>
+                <div><label className="text-xs text-gray-500 uppercase">NIP (Khusus Print NCR)</label><input type="text" value={signatures.rightNip || ''} onChange={(e) => setSignatures({...signatures, rightNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
               </div>
             </div>
           </div>
@@ -902,6 +1055,7 @@ export default function App() {
                     Dokumen Ke-{num}
                   </button>
                   
+                  {/* TOMBOL HAPUS (Kecuali Dokumen 1) */}
                   {num > 1 && (
                     <button 
                        onClick={(e) => { e.stopPropagation(); handleRemoveLainDoc(num); }}
@@ -914,6 +1068,7 @@ export default function App() {
                 </div>
               ))}
               
+              {/* TOMBOL TAMBAH DOKUMEN BARU */}
               <button 
                 onClick={handleAddLainDoc}
                 className="px-3 py-2 ml-1 rounded-lg font-bold text-sm whitespace-nowrap transition-colors border bg-purple-50 text-purple-600 border-purple-300 hover:bg-purple-100 flex items-center gap-1.5 shadow-sm"
@@ -1037,12 +1192,12 @@ export default function App() {
                       {group.name}
                       {group.isSusulan && (
                         <span className="text-[10px] bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ml-1 shadow-sm">
-                          Susulan: {new Date(group.validDate).toLocaleDateString('id-ID')}
+                          Susulan: {formatTanggalTtd(group.validDate)}
                         </span>
                       )}
                       {activeType === 'lain' && group.itemDate && (
                         <span className="text-[10px] bg-purple-400 text-purple-900 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ml-1 shadow-sm">
-                          Tanggal: {new Date(group.itemDate).toLocaleDateString('id-ID')}
+                          Tanggal: {formatTanggalTtd(group.itemDate)}
                         </span>
                       )}
                     </h3>
@@ -1098,144 +1253,267 @@ export default function App() {
               </div>
               <div className="flex w-full sm:w-auto gap-2">
                 <button onClick={clearCurrentReport} className="px-4 py-3 text-red-500 hover:bg-red-50 font-bold rounded-xl transition-colors text-sm border border-transparent hover:border-red-200">Reset</button>
-                <button onClick={() => setActiveTab('print')} disabled={activeGroups.length === 0} className={`flex-1 sm:flex-none text-white px-6 py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors shadow-sm disabled:bg-gray-300 ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}><Printer size={20} /> Cetak Printer</button>
+                <button onClick={() => { setActiveTab('print'); setPrintMode('pdf'); }} disabled={activeGroups.length === 0} className={`flex-1 sm:flex-none text-white px-6 py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors shadow-sm disabled:bg-gray-300 ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}><FileText size={20} /> Lihat Draft Cetak</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* === TAB: CETAK DOT MATRIX NCR === */}
+      {/* === TAB: CETAK (MODE PDF & MODE NCR DOT MATRIX) === */}
       {activeTab === 'print' && (
-        <div className="max-w-4xl mx-auto px-2 sm:px-4 py-6 mb-32">
+        <div className="max-w-4xl mx-auto px-2 sm:px-4 py-6">
           
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-blue-200 mb-6 flex flex-col no-print bg-blue-50/30">
-             <div className="flex justify-between items-start mb-4">
-               <div>
-                 <h2 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-                   <Printer size={22} className="text-blue-600"/> 
-                   Mode Cetak Kertas NCR (Epson LX/LQ)
-                 </h2>
-                 <p className="text-sm text-gray-600 mt-1">Dokumen yang akan dicetak: <strong>{activeType === 'utama' ? 'STSU Pendapatan Utama' : `STSU Lain-lain (Dokumen Ke-${activeLainIndex})`}</strong></p>
-               </div>
-               
-               <div className="flex gap-2">
-                 <button onClick={() => setActiveTab('input')} className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors shadow-sm">Kembali</button>
-                 <button onClick={handlePrint} className="px-6 py-2 bg-gray-900 hover:bg-black text-white rounded-lg font-bold flex items-center gap-2 shadow-md transition-all transform hover:scale-105">
-                   <Printer size={18} /> Cetak Sekarang
-                 </button>
-               </div>
+          {/* TOP BAR CETAK BERUBAH BERDASARKAN MODE */}
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4 no-print">
+             <div>
+               <h2 className="font-bold text-gray-800 text-lg flex items-center gap-2">
+                 {printMode === 'pdf' ? (
+                   <><FileText size={20} className={activeType === 'utama' ? 'text-green-600' : 'text-purple-600'}/> Preview & Download Laporan Gabungan</>
+                 ) : (
+                   <><Printer size={20} className="text-purple-600"/> Mode Cetak NCR: {selectedNcrGroup?.name}</>
+                 )}
+               </h2>
+               {printMode === 'ncr' && <p className="text-xs text-gray-500 mt-1">Pastikan kertas rangkap 3 sudah masuk ke printer Epson Dot Matrix Bapak.</p>}
              </div>
-
-             <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg flex items-start gap-3">
-               <AlertCircle size={20} className="text-yellow-600 shrink-0 mt-0.5" />
-               <div className="text-sm text-yellow-800 leading-relaxed">
-                 <strong className="block mb-1">PENTING SEBELUM MENCETAK:</strong>
-                 Saat jendela print browser muncul, pastikan pengaturan berikut benar agar posisi teks pas di kotak kertas NCR:
-                 <ul className="list-disc pl-5 mt-1 font-semibold space-y-0.5">
-                   <li>Ukuran Kertas: <strong>A4</strong> atau ukuran bawaan kertas NCR.</li>
-                   <li>Margin: Pilih <strong>None (Tidak Ada)</strong> atau <strong>Custom</strong> lalu geser ke paling atas/kiri.</li>
-                   <li>Scale (Skala): Pilih <strong>Default</strong> atau <strong>100%</strong>.</li>
-                   <li>Header & Footer: <strong>Matikan (Uncheck)</strong> agar tulisan URL browser tidak ikut tercetak.</li>
-                 </ul>
-               </div>
+             
+             <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+               {printMode === 'pdf' ? (
+                 <>
+                   <button onClick={() => setActiveTab('input')} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none hover:bg-gray-200 transition-colors">Kembali Edit</button>
+                   <button onClick={handleDownloadPDF} disabled={pdfLoading} className={`px-4 py-2 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'} disabled:opacity-50 transition-colors`}>
+                     {pdfLoading ? <RefreshCw size={18} className="animate-spin" /> : <Download size={18} />}
+                     {pdfLoading ? 'Memproses...' : 'Unduh PDF'}
+                   </button>
+                   <button onClick={handlePrint} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md transition-colors">
+                     <Printer size={18} /> Cetak Printer
+                   </button>
+                 </>
+               ) : (
+                 <>
+                   <button onClick={() => { setPrintMode('pdf'); setSelectedNcrGroup(null); }} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none hover:bg-gray-200 transition-colors">Kembali ke PDF</button>
+                   <button onClick={handlePrint} className="px-6 py-2 bg-purple-700 hover:bg-purple-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md transition-colors">
+                     <Printer size={18} /> Print Kertas NCR
+                   </button>
+                 </>
+               )}
              </div>
           </div>
 
-          {/* AREA CETAK DOT MATRIX (Presisi Posisi Absolut) 
-            Sengaja dibuat background putih polos dan margin 0.
-            Di layar (screen) dikasih border agar kelihatan batas kertasnya.
-          */}
-          <div id="printable-area" className="print-container bg-white mx-auto relative border border-gray-300 shadow-xl print:border-none print:shadow-none" style={{ minHeight: '297mm', width: '210mm', overflow: 'hidden' }}>
-            
-            {/* Teks Watermark hanya tampil di layar komputer, hilang saat di-print */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-gray-100 font-black text-6xl opacity-40 uppercase tracking-widest print:opacity-0 pointer-events-none -rotate-45 whitespace-nowrap z-0">
-              PREVIEW KERTAS NCR
+          {/* PILIHAN KATEGORI UNTUK NCR (HANYA MUNCUL DI MODE PDF GABUNGAN) */}
+          {printMode === 'pdf' && activeGroups.length > 0 && (
+            <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 mb-6 no-print">
+               <h3 className="font-bold text-purple-900 mb-2 flex items-center gap-2 text-sm"><Printer size={16}/> Cetak NCR Kertas Rangkap 3 (Per Kategori)</h3>
+               <p className="text-xs text-purple-700 mb-3">Klik kategori di bawah ini untuk beralih ke mode cetak posisi absolut di atas blangko NCR.</p>
+               <div className="flex flex-wrap gap-2">
+                 {activeGroups.map(group => (
+                    <button 
+                       key={group.groupId} 
+                       onClick={() => { setSelectedNcrGroup(group); setPrintMode('ncr'); }} 
+                       className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-2 transition-transform hover:scale-105"
+                    >
+                       🖨️ Kategori: {group.name}
+                    </button>
+                 ))}
+               </div>
             </div>
+          )}
 
-            {/* Elemen-elemen ini menggunakan CSS absolut dari printConfig di atas */}
+
+          {/* AREA RENDER DOKUMEN BERDASARKAN MODE */}
+          {printMode === 'pdf' ? (
             
-            {/* --- Baris 8 (Hari & Tanggal Laporan) --- */}
-            <div className="absolute font-bold z-10" style={printConfig.hari}>{getDayName(reportDate)}</div>
-            <div className="absolute font-bold z-10" style={printConfig.tanggalAtas}>{reportDate}</div>
+            /* ========================================================
+               MODE 1: PDF GABUNGAN (TIDAK DIGANGGU GUGAT - SESUAI ASLINYA) 
+               ======================================================== */
+            <div id="printable-area" className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative">
+              <div className="absolute top-10 right-10 text-gray-200 font-bold text-3xl opacity-50 uppercase tracking-widest print:opacity-0 pointer-events-none">
+                DRAFT {activeType === 'utama' ? 'SU' : 'SU/L'}
+              </div>
 
-            {/* --- Baris 11 (Nama Kategori) --- */}
-            <div className="absolute font-bold z-10" style={printConfig.kategori}>
-              {activeGroups.map(g => {
-                  let title = g.name;
-                  if (activeType === 'lain' && g.itemDate) {
-                     title += ` tgl ${new Date(g.itemDate).toLocaleDateString('id-ID')}`;
-                  }
-                  return title;
-              }).join(', ')}
-            </div>
+              <div className="font-bold underline mb-8 text-[11pt]">No. {computedStsuNo}</div>
 
-            {/* --- Baris 12 & 13 (Rincian Item / Uraian) --- */}
-            <div className="absolute z-10" style={printConfig.rincian}>
-               {activeGroups.map(group => {
+              <div className="mb-6 text-[11pt]">
+                Diterima uang hasil pendapatan {formatTanggalCetak(reportDate)} sebagai berikut;
+              </div>
+
+              <div className="space-y-2">
+                {activeGroups.map((group, index) => {
                   if (subtotals[group.groupId] === 0) return null;
-                  
                   const isDirect = Array.isArray(group.activeItems) && group.activeItems.length === 1 && group.activeItems[0].id === 'direct';
-                  let itemsToPrint = group.activeItems.filter(i => {
-                    const key = getActiveItemKey(group.catId, i.id, group.isSusulan, group.validDate, group.itemDate, i.itemNote);
-                    return (currentReport.formData[key] || 0) > 0;
-                  });
-
-                  if (isDirect) {
-                    const note = group.activeItems[0].itemNote;
-                    return note ? note.replace(/\n/g, ', ') : '';
+                  
+                  let groupTitle = group.name;
+                  if (activeType === 'utama' && group.isSusulan) {
+                    groupTitle = `${group.name} susulan (validasi ${formatTanggalTtd(group.validDate)})`;
+                  } else if (activeType === 'lain') {
+                    let parts = [group.name];
+                    if (group.itemNote) parts.push(`dari ${group.itemNote.replace(/\n/g, ' ')}`);
+                    if (group.itemDate) parts.push(`tanggal ${formatTanggalTtd(group.itemDate)}`);
+                    groupTitle = parts.join(' ');
                   }
 
-                  return itemsToPrint.map(i => {
-                    let text = i.name;
-                    if (i.itemNote) text += ` (${i.itemNote.replace(/\n/g, ' ')})`;
-                    return text;
-                  }).join(', ');
-               }).filter(Boolean).join(' | ')}
+                  return (
+                    <div key={group.groupId} className="text-[11pt] pb-3">
+                      <div className="font-bold mb-1 leading-relaxed">
+                        {index + 1}. Diterima uang hasil pendapatan {groupTitle}, sebagai berikut :
+                      </div>
+                      
+                      <div className="w-full">
+                        {!isDirect && group.activeItems.map(item => {
+                          const inputKey = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate, item.itemNote);
+                          const val = currentReport.formData[inputKey] || 0;
+                          if (val === 0) return null;
+
+                          return (
+                            <div key={inputKey} className="flex w-full max-w-[450px] mb-0.5 pl-4 sm:pl-6">
+                              <div className="flex-1 pr-2 font-normal">
+                                 {item.name}
+                              </div>
+                              <span className="w-[40px] text-left">Rp.</span>
+                              <span className="w-[100px] text-right">{formatRp(val)}</span>
+                            </div>
+                          );
+                        })}
+                        
+                        <div className={`flex w-full font-bold ${isDirect ? '' : 'mt-1 pt-1'}`}>
+                          <span className="flex-1 text-right pr-6">{isDirect ? 'Nominal' : 'Sub Total'}</span>
+                          <span className="w-[40px] text-left">Rp.</span>
+                          <span className="w-[120px] text-right">{formatRp(subtotals[group.groupId])}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex w-full mt-6 border-t border-b-2 border-black py-2 mb-6 font-bold text-[11pt]">
+                 <span className="flex-1 text-right pr-6">Jumlah Total</span>
+                 <span className="w-[40px] text-left">Rp.</span>
+                 <span className="w-[120px] text-right">{formatRp(grandTotal)}</span>
+              </div>
+
+              <div className="mt-8 text-[11pt]">
+                <p className="mb-4"><strong>Terbilang : </strong> <i className="capitalize">{terbilang(grandTotal)} rupiah</i></p>
+                <p className="text-justify leading-relaxed">
+                  Disetor uang kebendahara penerimaan hasil retribusi layanan masuk tempat rekreasi dan pemakaian fasilitas TMR Pada hari {formatTanggalCetak(reportDate)} dengan STSU No. {computedStsuNo} dengan uang sebesar Rp. {formatRp(grandTotal)}
+                </p>
+              </div>
+
+              <div className="flex justify-between mt-16 text-center text-[11pt]">
+                <div className="w-[45%] flex flex-col justify-between">
+                  <div><br/>{signatures.leftRole}</div>
+                  <div className="mt-28 font-bold underline">({signatures.leftName})</div>
+                </div>
+                <div className="w-[45%] flex flex-col justify-between">
+                  <div>{signatures.location}, {formatTanggalTtd(currentReport.signatureDate)}<br/>{signatures.rightRole}</div>
+                  <div className="mt-24 font-bold underline">({signatures.rightName})</div>
+                </div>
+              </div>
             </div>
 
-            {/* --- Baris 14 (Jabatan Penyetor Kiri) --- */}
-            <div className="absolute z-10" style={printConfig.jabatanKiri}>
-              {signatures.leftRole}
+          ) : (
+
+            /* ========================================================
+               MODE 2: DOT MATRIX NCR (POSISI ABSOLUT SESUAI EXCEL) 
+               ======================================================== */
+            <div id="printable-area-ncr" className="print-container bg-white mx-auto relative overflow-hidden shadow-lg border border-gray-300" style={{ minHeight: '297mm', width: '210mm' }}>
+              
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-purple-100 font-black text-6xl opacity-30 uppercase tracking-widest print:opacity-0 pointer-events-none -rotate-45 whitespace-nowrap">
+                PREVIEW NCR DOT MATRIX
+              </div>
+
+              {selectedNcrGroup && (() => {
+                 // Hitung total hanya untuk kategori terpilih
+                 const ncrTotal = subtotals[selectedNcrGroup.groupId] || 0;
+                 const isDirect = Array.isArray(selectedNcrGroup.activeItems) && selectedNcrGroup.activeItems.length === 1 && selectedNcrGroup.activeItems[0].id === 'direct';
+                 
+                 // Ambil sub-item yang ada nominalnya saja
+                 let itemsToPrint = selectedNcrGroup.activeItems.filter(i => {
+                   const key = getActiveItemKey(selectedNcrGroup.catId, i.id, selectedNcrGroup.isSusulan, selectedNcrGroup.validDate, selectedNcrGroup.itemDate, i.itemNote);
+                   return (currentReport.formData[key] || 0) > 0;
+                 });
+
+                 // Susun string rincian sub-item
+                 let ncrItemsString = '';
+                 if (isDirect) {
+                   const note = selectedNcrGroup.activeItems[0].itemNote;
+                   ncrItemsString = note ? note.replace(/\n/g, ', ') : '';
+                 } else {
+                   ncrItemsString = itemsToPrint.map(i => {
+                     let text = i.name;
+                     if (i.itemNote) text += ` (${i.itemNote.replace(/\n/g, ' ')})`;
+                     return text;
+                   }).join(', ');
+                 }
+
+                 return (
+                   <>
+                      {/* Baris 8: Hari dan Tanggal */}
+                      <div className="absolute font-bold" style={{ top: '35mm', left: '60mm' }}>
+                        {getDayName(reportDate)}
+                      </div>
+                      <div className="absolute font-bold" style={{ top: '35mm', left: '100mm' }}>
+                        {reportDate}
+                      </div>
+
+                      {/* Baris 11: NAMA KATEGORI BESAR */}
+                      <div className="absolute" style={{ top: '50mm', left: '70mm', right: '10mm', textAlign: 'center' }}>
+                        {selectedNcrGroup.name}
+                      </div>
+
+                      {/* Baris 12 & 13: RINCIAN ITEM / SUB-KATEGORI */}
+                      <div className="absolute" style={{ top: '56mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
+                         {ncrItemsString}
+                      </div>
+
+                      {/* Baris 14: JABATAN PENYETOR */}
+                      <div className="absolute" style={{ top: '65mm', left: '60mm' }}>
+                        {signatures.leftRole}
+                      </div>
+
+                      {/* Baris 16: NOMINAL ANGKA */}
+                      <div className="absolute font-bold text-lg" style={{ top: '75mm', left: '50mm' }}>
+                        {formatRp(ncrTotal)}
+                      </div>
+
+                      {/* Baris 17: TERBILANG */}
+                      <div className="absolute italic font-bold capitalize" style={{ top: '80mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
+                        # {terbilang(ncrTotal)} rupiah #
+                      </div>
+
+                      {/* Baris 20: TANGGAL TTD BAWAH KANAN */}
+                      <div className="absolute" style={{ top: '100mm', left: '150mm' }}>
+                        {currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}
+                      </div>
+
+                      {/* Baris 21: NOMINAL TOTAL (BAWAH) */}
+                      <div className="absolute font-bold" style={{ top: '105mm', left: '150mm' }}>
+                        {formatRp(ncrTotal)}
+                      </div>
+
+                      {/* Baris 27 & 28: NAMA & NIP PEJABAT */}
+                      <div className="absolute w-full" style={{ top: '135mm', left: '0' }}>
+                         <div className="flex justify-between w-full" style={{ paddingLeft: '15mm', paddingRight: '15mm' }}>
+                            {/* KIRI (PENYETOR) */}
+                            <div className="text-center w-[80mm]">
+                              <div className="font-bold underline">{signatures.leftName}</div>
+                              {signatures.leftNip ? <div>NIP. {signatures.leftNip}</div> : <div>NIP. ..............................</div>}
+                            </div>
+                            
+                            {/* KANAN (BENDAHARA) */}
+                            <div className="text-center w-[80mm]">
+                              <div className="font-bold underline">{signatures.rightName}</div>
+                              {signatures.rightNip ? <div>NIP. {signatures.rightNip}</div> : <div>NIP. ..............................</div>}
+                            </div>
+                         </div>
+                      </div>
+                   </>
+                 );
+              })()}
             </div>
 
-            {/* --- Baris 16 (Nominal Kiri Atas) --- */}
-            <div className="absolute z-10" style={printConfig.nominalKiri}>
-              {formatRp(grandTotal)}
-            </div>
+          )}
 
-            {/* --- Baris 17 (Terbilang Rupiah) --- */}
-            <div className="absolute z-10" style={printConfig.terbilang}>
-              # {terbilang(grandTotal)} rupiah #
-            </div>
-
-            {/* --- Baris 20 (Tanggal Cetak Bawah) --- */}
-            <div className="absolute z-10" style={printConfig.tanggalBawah}>
-              {currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}
-            </div>
-
-            {/* --- Baris 21 (Nominal Kanan Bawah) --- */}
-            <div className="absolute z-10" style={printConfig.nominalKanan}>
-              {formatRp(grandTotal)}
-            </div>
-
-            {/* --- Baris 27 & 28 (Nama dan NIP Pejabat Kiri) --- */}
-            <div className="absolute z-10" style={printConfig.namaKiri}>
-              <span className="font-bold underline">{signatures.leftName}</span>
-            </div>
-            <div className="absolute z-10 text-sm" style={printConfig.nipKiri}>
-              NIP. {signatures.leftNip}
-            </div>
-
-            {/* --- Baris 27 & 28 (Nama dan NIP Pejabat Kanan) --- */}
-            <div className="absolute z-10" style={printConfig.namaKanan}>
-              <span className="font-bold underline">{signatures.rightName}</span>
-            </div>
-            <div className="absolute z-10 text-sm" style={printConfig.nipKanan}>
-              NIP. {signatures.rightNip}
-            </div>
-
-          </div>
         </div>
       )}
 
