@@ -201,8 +201,9 @@ export default function App() {
   const [isAddingSusulan, setIsAddingSusulan] = useState(false);
   const [susulanValidDate, setSusulanValidDate] = useState('');
   
-  // --- STATE TANGGAL TRANSAKSI KHUSUS (Hanya SU/L) ---
+  // --- STATE DINAMIS (Hanya SU/L) ---
   const [lainItemDate, setLainItemDate] = useState('');
+  const [lainItemNote, setLainItemNote] = useState('');
 
   useEffect(() => { localStorage.setItem('tmr_v17_signatures', JSON.stringify(signatures)); }, [signatures]);
   useEffect(() => { localStorage.setItem('tmr_v17_categories', JSON.stringify(categories)); }, [categories]);
@@ -284,6 +285,7 @@ export default function App() {
     setIsAddingSusulan(false);
     setSusulanValidDate('');
     setLainItemDate('');
+    setLainItemNote('');
   };
 
   const handleTypeSwitch = (type) => {
@@ -292,6 +294,7 @@ export default function App() {
     setIsAddingSusulan(false);
     setSusulanValidDate('');
     setLainItemDate('');
+    setLainItemNote('');
   };
 
   const clearCurrentReport = () => {
@@ -321,11 +324,22 @@ export default function App() {
     else setSelectedItemToAdd('');
   };
 
-  // --- KUNCI PENANDA UNTUK ITEM YANG MEMILIKI TANGGAL ATAU SUSULAN ---
-  const getActiveItemKey = (catId, itemId, isSus, validDate, itemDate) => {
-    if (isSus) return `${catId}_${itemId}_susulan_${validDate}`;
-    if (itemDate) return `${catId}_${itemId}_date_${itemDate}`;
-    return `${catId}_${itemId}`;
+  // --- KUNCI PENANDA UNTUK ITEM YANG MEMILIKI TANGGAL, SUSULAN, DAN URAIAN ---
+  // Fungsi ini sangat aman untuk data lama, string hash memastikan data tidak tabrakan
+  const getActiveItemKey = (catId, itemId, isSus, validDate, itemDate, itemNote) => {
+    let key = `${catId}_${itemId}`;
+    if (isSus) key += `_susulan_${validDate}`;
+    if (itemDate) key += `_date_${itemDate}`;
+    if (itemNote) {
+       // Buat hash sederhana dari itemNote supaya key tidak kepanjangan
+       let hash = 0;
+       for (let i = 0; i < itemNote.length; i++) {
+         hash = ((hash << 5) - hash) + itemNote.charCodeAt(i);
+         hash = hash & hash;
+       }
+       key += `_note_${Math.abs(hash)}`;
+    }
+    return key;
   };
 
   const handleAddActiveItem = () => {
@@ -343,16 +357,19 @@ export default function App() {
       if (lainItemDate) {
         newItem.itemDate = lainItemDate;
       }
+      if (lainItemNote.trim()) {
+        newItem.itemNote = lainItemNote.trim();
+      }
     }
 
-    const inputKey = getActiveItemKey(newItem.catId, newItem.itemId, newItem.isSusulan, newItem.validDate, newItem.itemDate);
+    const inputKey = getActiveItemKey(newItem.catId, newItem.itemId, newItem.isSusulan, newItem.validDate, newItem.itemDate, newItem.itemNote);
 
     updateCurrentReport(prev => {
       const currentItems = Array.isArray(prev.activeItems) ? prev.activeItems : [];
       const currentForm = prev.formData || {};
       
       const exists = currentItems.find(i => {
-         const iKey = getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate);
+         const iKey = getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote);
          return iKey === inputKey;
       });
       if (exists) return prev;
@@ -367,6 +384,7 @@ export default function App() {
     const cat = categories.find(c => c.id === selectedCatToAdd);
     if (cat && Array.isArray(cat.items) && cat.items.length === 0) setSelectedCatToAdd('');
     setSelectedItemToAdd('');
+    setLainItemNote(''); // Reset Keterangan setelah ditambahkan
 
     setTimeout(() => {
       const inputElement = document.getElementById(`input_${inputKey}`);
@@ -375,11 +393,11 @@ export default function App() {
   };
 
   const handleRemoveActiveItem = (itemToRemove) => {
-    const inputKeyToRemove = getActiveItemKey(itemToRemove.catId, itemToRemove.itemId, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate);
+    const inputKeyToRemove = getActiveItemKey(itemToRemove.catId, itemToRemove.itemId, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate, itemToRemove.itemNote);
     updateCurrentReport(prev => {
       const currentItems = Array.isArray(prev.activeItems) ? prev.activeItems : [];
       const newActive = currentItems.filter(i => {
-         const iKey = getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate);
+         const iKey = getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote);
          return iKey !== inputKeyToRemove;
       });
       const newFormData = { ...(prev.formData || {}) };
@@ -413,7 +431,8 @@ export default function App() {
       if (activeType === 'utama') {
          return activeI.some(a => a.catId === selectedCatToAdd && a.itemId === iId && !!a.isSusulan === isAddingSusulan && (a.validDate || '') === (susulanValidDate || ''));
       } else {
-         return activeI.some(a => a.catId === selectedCatToAdd && a.itemId === iId && (a.itemDate || '') === (lainItemDate || ''));
+         // Di SU/L, jika Uraian Dinamisnya berbeda, anggap item belum ada (Bisa Add Banyak)
+         return activeI.some(a => a.catId === selectedCatToAdd && a.itemId === iId && (a.itemDate || '') === (lainItemDate || '') && (a.itemNote || '') === (lainItemNote.trim() || ''));
       }
     };
 
@@ -421,7 +440,7 @@ export default function App() {
       return isAdded('direct') ? [] : [{ id: 'direct', name: cat.name }];
     }
     return cat.items.filter(item => !isAdded(item.id));
-  }, [selectedCatToAdd, categories, currentReport.activeItems, isAddingSusulan, susulanValidDate, activeType, lainItemDate]);
+  }, [selectedCatToAdd, categories, currentReport.activeItems, isAddingSusulan, susulanValidDate, activeType, lainItemDate, lainItemNote]);
 
   // --- LOGIK GROUPING (STSU LAIN-LAIN DI KELOMPOKKAN BERDASARKAN TANGGAL) ---
   const activeGroups = useMemo(() => {
@@ -515,7 +534,7 @@ export default function App() {
     activeGroups.forEach(group => {
       let sub = 0;
       group.activeItems.forEach(item => { 
-        const key = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate);
+        const key = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, item.itemDate, item.itemNote);
         sub += cForm[key] || 0; 
       });
       subs[group.groupId] = sub; 
@@ -963,33 +982,48 @@ export default function App() {
               <div className="mb-4 p-3 bg-purple-100/50 border border-purple-200 rounded-lg flex items-center gap-3 animate-in fade-in zoom-in duration-200">
                 <Calendar size={18} className="text-purple-600 shrink-0" />
                 <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2">
-                  <span className="text-xs font-bold text-purple-800 uppercase">Tanggal Transaksi (Jika Ada):</span>
-                  <input type="date" value={lainItemDate} onChange={e => setLainItemDate(e.target.value)} className="border border-purple-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-purple-500 bg-white" title="Pilih tanggal jika ingin keterangan tanggal tercetak pada nota (seperti di foto E-Car)" />
+                  <span className="text-xs font-bold text-purple-800 uppercase">Pilih Tanggal Transaksi:</span>
+                  <input type="date" value={lainItemDate} onChange={e => setLainItemDate(e.target.value)} className="border border-purple-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-purple-500 bg-white" title="Pilih tanggal jika ingin keterangan tanggal tercetak pada nota" />
                 </div>
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-              <div className="sm:col-span-5">
-                <label className={`block text-xs font-semibold mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'}`}>Kategori</label>
-                <select value={selectedCatToAdd} onChange={(e) => handleCatChange(e.target.value)} className="w-full border border-gray-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                  <option value="">-- Pilih Kategori --</option>
-                  {filteredCategories.map(cat => <option key={cat.id} value={cat.id} className="capitalize">{cat.name}</option>)}
-                </select>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={`block text-xs font-semibold mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'}`}>Kategori</label>
+                  <select value={selectedCatToAdd} onChange={(e) => handleCatChange(e.target.value)} className="w-full border border-gray-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="">-- Pilih Kategori --</option>
+                    {filteredCategories.map(cat => <option key={cat.id} value={cat.id} className="capitalize">{cat.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={`block text-xs font-semibold mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'}`}>Sub-Kategori</label>
+                  <select value={selectedItemToAdd} onChange={(e) => setSelectedItemToAdd(e.target.value)} disabled={!selectedCatToAdd || availableItemsToAdd.length === 0 || (availableItemsToAdd.length === 1 && availableItemsToAdd[0].id === 'direct')} className="w-full border border-gray-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500">
+                    {!selectedCatToAdd ? <option value="">Pilih Kategori Dulu</option> : 
+                     availableItemsToAdd.length === 0 ? <option value="">Semua item ditambahkan</option> :
+                     (availableItemsToAdd.length === 1 && availableItemsToAdd[0].id === 'direct') ? <option value="direct">Langsung isi nominal</option> :
+                     <option value="">-- Pilih Item --</option>}
+                    {availableItemsToAdd.map(item => item.id !== 'direct' && <option key={item.id} value={item.id}>{item.name}</option>)}
+                  </select>
+                </div>
               </div>
-              <div className="sm:col-span-5">
-                <label className={`block text-xs font-semibold mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'}`}>Sub-Kategori</label>
-                <select value={selectedItemToAdd} onChange={(e) => setSelectedItemToAdd(e.target.value)} disabled={!selectedCatToAdd || availableItemsToAdd.length === 0 || (availableItemsToAdd.length === 1 && availableItemsToAdd[0].id === 'direct')} className="w-full border border-gray-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500">
-                  {!selectedCatToAdd ? <option value="">Pilih Kategori Dulu</option> : 
-                   availableItemsToAdd.length === 0 ? <option value="">Semua item ditambahkan</option> :
-                   (availableItemsToAdd.length === 1 && availableItemsToAdd[0].id === 'direct') ? <option value="direct">Langsung isi nominal</option> :
-                   <option value="">-- Pilih Item --</option>}
-                  {availableItemsToAdd.map(item => item.id !== 'direct' && <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
-              </div>
-              <div className="sm:col-span-2 mt-2 sm:mt-0">
-                <button onClick={handleAddActiveItem} disabled={!selectedCatToAdd || !selectedItemToAdd} className={`w-full text-white p-2.5 rounded-lg font-bold flex justify-center items-center transition-colors disabled:bg-gray-300 ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}>Add</button>
-              </div>
+
+              {/* INPUT URAIAN DINAMIS / MULTILINE KHUSUS LAIN-LAIN */}
+              {activeType === 'lain' && (
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-purple-700">Keterangan Tambahan / Uraian Dinamis (Bisa di-Enter)</label>
+                  <textarea
+                    value={lainItemNote}
+                    onChange={(e) => setLainItemNote(e.target.value)}
+                    rows={2}
+                    className="w-full border border-purple-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-purple-500 outline-none resize-none"
+                    placeholder="Contoh: Keluarga besar Saminem&#10;Pemakaian tanggal 26 April 2026"
+                  ></textarea>
+                </div>
+              )}
+
+              <button onClick={handleAddActiveItem} disabled={!selectedCatToAdd || !selectedItemToAdd} className={`w-full mt-2 text-white p-3 rounded-lg font-bold flex justify-center items-center transition-colors shadow-sm disabled:bg-gray-300 ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}>Add Transaksi</button>
             </div>
           </div>
 
@@ -1020,16 +1054,22 @@ export default function App() {
                   </div>
                   <div className="p-4 space-y-3">
                     {group.activeItems.map(item => {
-                      const inputKey = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate);
+                      const inputKey = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate, item.itemNote);
                       return (
                         <div key={inputKey} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-50 pb-3 last:border-0 last:pb-0">
-                          <div className="flex items-center gap-2 sm:w-1/2">
-                            <button onClick={() => handleRemoveActiveItem(item)} className="text-red-400 hover:text-red-600 p-2 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm"><Trash size={18} /></button>
-                            <label className="text-gray-700 font-medium">
-                               {item.id === 'direct' ? 'Nominal Pemasukan' : item.name}
-                            </label>
+                          <div className="flex items-start gap-2 sm:w-1/2">
+                            <button onClick={() => handleRemoveActiveItem(item)} className="text-red-400 hover:text-red-600 p-2 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm mt-0.5 shrink-0"><Trash size={18} /></button>
+                            <div className="flex flex-col">
+                              <label className="text-gray-700 font-medium">
+                                 {item.id === 'direct' ? 'Nominal Pemasukan' : item.name}
+                              </label>
+                              {/* MENAMPILKAN URAIAN DINAMIS DI MODE INPUT */}
+                              {item.itemNote && (
+                                <span className="text-xs text-purple-600 mt-1 whitespace-pre-wrap font-medium">{item.itemNote}</span>
+                              )}
+                            </div>
                           </div>
-                          <div className="relative w-full sm:w-1/2 md:w-2/5">
+                          <div className="relative w-full sm:w-1/2 md:w-2/5 shrink-0">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">Rp</span>
                             <input 
                               id={`input_${inputKey}`}
@@ -1111,7 +1151,6 @@ export default function App() {
                 if (subtotals[group.groupId] === 0) return null;
                 const isDirect = Array.isArray(group.activeItems) && group.activeItems.length === 1 && group.activeItems[0].id === 'direct';
                 
-                // --- PERUBAHAN JUDUL DI SINI ---
                 let groupTitle = group.name;
                 if (activeType === 'utama' && group.isSusulan) {
                   groupTitle = `${group.name} susulan (validasi ${formatTanggalTtd(group.validDate)})`;
@@ -1127,13 +1166,21 @@ export default function App() {
                     
                     <div className="w-full">
                       {!isDirect && group.activeItems.map(item => {
-                        const inputKey = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate);
+                        const inputKey = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate, item.itemNote);
                         const val = currentReport.formData[inputKey] || 0;
                         if (val === 0) return null;
 
                         return (
                           <div key={inputKey} className="flex w-full max-w-[450px] mb-0.5 pl-4 sm:pl-6">
-                            <span className="flex-1 pr-2">{item.name}</span>
+                            <div className="flex-1 pr-2">
+                               {/* NAMA ITEM UTAMA */}
+                               <div className="font-normal">{item.name}</div>
+                               
+                               {/* CETAK URAIAN DINAMIS DI BAWAHNYA DGN FORMAT BARIS BARU (Jika ada) */}
+                               {item.itemNote && (
+                                 <div className="whitespace-pre-wrap leading-tight mt-0.5 text-[11pt]">{item.itemNote}</div>
+                               )}
+                            </div>
                             <span className="w-[40px] text-left">Rp.</span>
                             <span className="w-[100px] text-right">{formatRp(val)}</span>
                           </div>
