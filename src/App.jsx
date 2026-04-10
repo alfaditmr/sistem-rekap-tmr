@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, LogOut, Lock } from 'lucide-react';
+import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
@@ -161,14 +161,13 @@ export default function App() {
     return defaultValue;
   };
 
-  // Tambah field NIP untuk pejabat
   const [signatures, setSignatures] = useState(() => getInitialState('tmr_v17_signatures', {
-    leftRole: 'Seksi Pelayanan & Informasi',
-    leftName: 'Afriana Pulungan, S.Si., M.AP.',
-    leftNip: '197304212007012021',
+    leftRole: 'Kepala Seksi Pelayanan dan Informasi',
+    leftName: 'Afriana Pulungan S.Si. MAP',
+    leftNip: '',
     rightRole: 'Bendahara Penerimaan',
     rightName: 'Evi Irmawati',
-    rightNip: '198101082009042006',
+    rightNip: '',
     location: 'Jakarta'
   }));
 
@@ -209,7 +208,7 @@ export default function App() {
   const [reportDate, setReportDate] = useState(getLocalYMD());
   const [activeType, setActiveType] = useState('utama'); 
   
-  // --- STATE DOKUMEN INDEX ---
+  // --- STATE DOKUMEN INDEX (FITUR DINAMIS) ---
   const [activeLainIndex, setActiveLainIndex] = useState(1); 
 
   const [selectedCatToAdd, setSelectedCatToAdd] = useState('');
@@ -284,7 +283,7 @@ export default function App() {
   // --- MENGAMBIL DAFTAR INDEKS DOKUMEN YANG ADA HARI INI ---
   const lainDocIndices = useMemo(() => {
     const dayData = allReports[reportDate] || {};
-    const indices = [1]; 
+    const indices = [1]; // Dokumen 1 selalu ada secara visual
     Object.keys(dayData).forEach(k => {
       if (k.startsWith('lain_')) {
         const num = parseInt(k.split('_')[1], 10);
@@ -296,6 +295,7 @@ export default function App() {
     return indices.sort((a, b) => a - b);
   }, [allReports, reportDate]);
 
+  // --- FUNGSI MENAMBAH TAB DOKUMEN ---
   const handleAddLainDoc = () => {
     const nextIndex = Math.max(...lainDocIndices) + 1;
     const nextKey = `lain_${nextIndex}`;
@@ -314,6 +314,7 @@ export default function App() {
     setLainItemDate(''); setLainItemNote('');
   };
 
+  // --- FUNGSI MENGHAPUS TAB DOKUMEN ---
   const handleRemoveLainDoc = (indexToRemove) => {
     showConfirm(`Hapus Dokumen Ke-${indexToRemove}? Semua data di dalam dokumen ini akan ikut terhapus.`, () => {
       setAllReports(prev => {
@@ -323,7 +324,7 @@ export default function App() {
         return { ...prev, [reportDate]: dayData };
       });
       if (activeLainIndex === indexToRemove) {
-         setActiveLainIndex(1); 
+         setActiveLainIndex(1); // Kembali ke Dokumen 1 jika yang aktif dihapus
       }
     });
   };
@@ -358,8 +359,8 @@ export default function App() {
     setSusulanValidDate('');
     setLainItemDate('');
     setLainItemNote('');
-    setActiveLainIndex(1); 
-    setPrintMode('pdf'); // Reset ke PDF setiap ganti tanggal
+    setActiveLainIndex(1); // Reset dokumen ke-1 tiap ganti hari
+    setPrintMode('pdf'); // Reset Mode Print
   };
 
   const handleTypeSwitch = (type) => {
@@ -369,8 +370,8 @@ export default function App() {
     setSusulanValidDate('');
     setLainItemDate('');
     setLainItemNote('');
-    setActiveLainIndex(1); 
-    setPrintMode('pdf'); // Reset ke PDF setiap ganti tipe
+    setActiveLainIndex(1); // Reset ke dokumen 1 tiap ganti tab
+    setPrintMode('pdf'); // Reset Mode Print
   };
 
   const clearCurrentReport = () => {
@@ -674,6 +675,7 @@ export default function App() {
       const dayData = allReports[dateStr] || {};
       
       const utamaItems = Array.isArray(dayData.utama?.activeItems) ? dayData.utama.activeItems : [];
+      // Mengecek semua dokumen 'lain', 'lain_2', 'lain_3', dst
       const hasLain = Object.keys(dayData).some(k => (k === 'lain' || k.startsWith('lain_')) && Array.isArray(dayData[k].activeItems) && dayData[k].activeItems.length > 0);
       
       return { day: d, dateStr, hasUtama: utamaItems.length > 0, hasLain };
@@ -685,7 +687,7 @@ export default function App() {
   const handlePrint = () => { window.print(); };
 
   const handleDownloadPDF = () => {
-    const element = document.getElementById('printable-area-pdf');
+    const element = document.getElementById('printable-area');
     if (!element) return;
     if (window.html2pdf) {
       setPdfLoading(true);
@@ -801,7 +803,7 @@ export default function App() {
             }
             @page { margin: 0; size: auto; }
           ` : `
-            /* Mode PDF Gabungan: Layout standar surat resmi */
+            /* Mode PDF Gabungan: Layout standar surat resmi (Asli Bapak Fatah) */
             .print-container { 
               width: 100%; 
               max-width: 100%; 
@@ -855,7 +857,7 @@ export default function App() {
 
             <form onSubmit={handleConfirmReset}>
               <div className="mb-6">
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Masukkan Password Kasir</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Masukkan Password ADMIN</label>
                 <input 
                   type="password" 
                   value={resetDialog.password}
@@ -955,20 +957,20 @@ export default function App() {
       {activeTab === 'settings' && (
         <div className="max-w-4xl mx-auto px-4 py-6 no-print space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Edit size={20} className="text-blue-500"/> Pejabat Penandatangan PDF</h2>
+            <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Edit size={20} className="text-blue-500"/> Pejabat Penandatangan</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
                 <h3 className="font-semibold text-gray-700 text-sm border-b pb-2">Pihak Kiri (Penyetor)</h3>
                 <div><label className="text-xs text-gray-500 uppercase">Jabatan</label><input type="text" value={signatures.leftRole || ''} onChange={(e) => setSignatures({...signatures, leftRole: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
                 <div><label className="text-xs text-gray-500 uppercase">Nama</label><input type="text" value={signatures.leftName || ''} onChange={(e) => setSignatures({...signatures, leftName: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none font-bold focus:border-blue-500" /></div>
-                <div><label className="text-xs text-gray-500 uppercase">NIP</label><input type="text" value={signatures.leftNip || ''} onChange={(e) => setSignatures({...signatures, leftNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
+                <div><label className="text-xs text-gray-500 uppercase">NIP (Khusus Print NCR)</label><input type="text" value={signatures.leftNip || ''} onChange={(e) => setSignatures({...signatures, leftNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
               </div>
               <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
                 <h3 className="font-semibold text-gray-700 text-sm border-b pb-2">Pihak Kanan (Bendahara)</h3>
                 <div><label className="text-xs text-gray-500 uppercase">Lokasi</label><input type="text" value={signatures.location || ''} onChange={(e) => setSignatures({...signatures, location: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
                 <div><label className="text-xs text-gray-500 uppercase">Jabatan</label><input type="text" value={signatures.rightRole || ''} onChange={(e) => setSignatures({...signatures, rightRole: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
                 <div><label className="text-xs text-gray-500 uppercase">Nama</label><input type="text" value={signatures.rightName || ''} onChange={(e) => setSignatures({...signatures, rightName: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none font-bold focus:border-blue-500" /></div>
-                <div><label className="text-xs text-gray-500 uppercase">NIP</label><input type="text" value={signatures.rightNip || ''} onChange={(e) => setSignatures({...signatures, rightNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
+                <div><label className="text-xs text-gray-500 uppercase">NIP (Khusus Print NCR)</label><input type="text" value={signatures.rightNip || ''} onChange={(e) => setSignatures({...signatures, rightNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
               </div>
             </div>
           </div>
@@ -1053,6 +1055,7 @@ export default function App() {
                     Dokumen Ke-{num}
                   </button>
                   
+                  {/* TOMBOL HAPUS (Kecuali Dokumen 1) */}
                   {num > 1 && (
                     <button 
                        onClick={(e) => { e.stopPropagation(); handleRemoveLainDoc(num); }}
@@ -1065,6 +1068,7 @@ export default function App() {
                 </div>
               ))}
               
+              {/* TOMBOL TAMBAH DOKUMEN BARU */}
               <button 
                 onClick={handleAddLainDoc}
                 className="px-3 py-2 ml-1 rounded-lg font-bold text-sm whitespace-nowrap transition-colors border bg-purple-50 text-purple-600 border-purple-300 hover:bg-purple-100 flex items-center gap-1.5 shadow-sm"
@@ -1256,12 +1260,11 @@ export default function App() {
         </div>
       )}
 
-
-      {/* === TAB: CETAK (MODE PDF GABUNGAN & MODE NCR) === */}
+      {/* === TAB: CETAK (MODE PDF & MODE NCR DOT MATRIX) === */}
       {activeTab === 'print' && (
         <div className="max-w-4xl mx-auto px-2 sm:px-4 py-6">
           
-          {/* TOP BAR CETAK (BERUBAH SESUAI MODE) */}
+          {/* TOP BAR CETAK BERUBAH BERDASARKAN MODE */}
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4 no-print">
              <div>
                <h2 className="font-bold text-gray-800 text-lg flex items-center gap-2">
@@ -1277,19 +1280,19 @@ export default function App() {
              <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                {printMode === 'pdf' ? (
                  <>
-                   <button onClick={() => setActiveTab('input')} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none hover:bg-gray-200">Kembali Edit</button>
-                   <button onClick={handleDownloadPDF} disabled={pdfLoading} className={`px-4 py-2 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'} disabled:opacity-50`}>
+                   <button onClick={() => setActiveTab('input')} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none hover:bg-gray-200 transition-colors">Kembali Edit</button>
+                   <button onClick={handleDownloadPDF} disabled={pdfLoading} className={`px-4 py-2 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'} disabled:opacity-50 transition-colors`}>
                      {pdfLoading ? <RefreshCw size={18} className="animate-spin" /> : <Download size={18} />}
                      {pdfLoading ? 'Memproses...' : 'Unduh PDF'}
                    </button>
-                   <button onClick={handlePrint} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md">
-                     <Printer size={18} /> Cetak (Biasa)
+                   <button onClick={handlePrint} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md transition-colors">
+                     <Printer size={18} /> Cetak Printer
                    </button>
                  </>
                ) : (
                  <>
-                   <button onClick={() => { setPrintMode('pdf'); setSelectedNcrGroup(null); }} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none hover:bg-gray-200">Kembali ke PDF</button>
-                   <button onClick={handlePrint} className="px-6 py-2 bg-purple-700 hover:bg-purple-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md">
+                   <button onClick={() => { setPrintMode('pdf'); setSelectedNcrGroup(null); }} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none hover:bg-gray-200 transition-colors">Kembali ke PDF</button>
+                   <button onClick={handlePrint} className="px-6 py-2 bg-purple-700 hover:bg-purple-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md transition-colors">
                      <Printer size={18} /> Print Kertas NCR
                    </button>
                  </>
@@ -1297,11 +1300,11 @@ export default function App() {
              </div>
           </div>
 
-          {/* FITUR TAMBAHAN: TOMBOL CETAK NCR (HANYA MUNCUL DI MODE PDF) */}
+          {/* PILIHAN KATEGORI UNTUK NCR (HANYA MUNCUL DI MODE PDF GABUNGAN) */}
           {printMode === 'pdf' && activeGroups.length > 0 && (
             <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 mb-6 no-print">
-               <h3 className="font-bold text-purple-900 mb-2 flex items-center gap-2 text-sm"><Printer size={16}/> Cetak Dot Matrix NCR (Per Kategori)</h3>
-               <p className="text-xs text-purple-700 mb-3">Klik salah satu kategori di bawah ini untuk mencetaknya secara terpisah ke atas blangko NCR 3 rangkap.</p>
+               <h3 className="font-bold text-purple-900 mb-2 flex items-center gap-2 text-sm"><Printer size={16}/> Cetak NCR Kertas Rangkap 3 (Per Kategori)</h3>
+               <p className="text-xs text-purple-700 mb-3">Klik kategori di bawah ini untuk beralih ke mode cetak posisi absolut di atas blangko NCR.</p>
                <div className="flex flex-wrap gap-2">
                  {activeGroups.map(group => (
                     <button 
@@ -1317,14 +1320,13 @@ export default function App() {
           )}
 
 
-          {/* ========================================================= */}
-          {/* 📄 RENDER AREA CETAK BERDASARKAN MODE (PDF vs NCR) 📄 */}
-          {/* ========================================================= */}
-
+          {/* AREA RENDER DOKUMEN BERDASARKAN MODE */}
           {printMode === 'pdf' ? (
             
-            /* --- LAYOUT 1: PDF STANDAR GABUNGAN (SEPERTI SEBELUMNYA) --- */
-            <div id="printable-area-pdf" className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative">
+            /* ========================================================
+               MODE 1: PDF GABUNGAN (TIDAK DIGANGGU GUGAT - SESUAI ASLINYA) 
+               ======================================================== */
+            <div id="printable-area" className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative">
               <div className="absolute top-10 right-10 text-gray-200 font-bold text-3xl opacity-50 uppercase tracking-widest print:opacity-0 pointer-events-none">
                 DRAFT {activeType === 'utama' ? 'SU' : 'SU/L'}
               </div>
@@ -1401,19 +1403,19 @@ export default function App() {
                 <div className="w-[45%] flex flex-col justify-between">
                   <div><br/>{signatures.leftRole}</div>
                   <div className="mt-28 font-bold underline">({signatures.leftName})</div>
-                  {/* NIP Optionally printed here */}
                 </div>
                 <div className="w-[45%] flex flex-col justify-between">
                   <div>{signatures.location}, {formatTanggalTtd(currentReport.signatureDate)}<br/>{signatures.rightRole}</div>
                   <div className="mt-24 font-bold underline">({signatures.rightName})</div>
-                  {/* NIP Optionally printed here */}
                 </div>
               </div>
             </div>
 
           ) : (
 
-            /* --- LAYOUT 2: DOT MATRIX NCR (POSISI ABSOLUT / PER KATEGORI) --- */
+            /* ========================================================
+               MODE 2: DOT MATRIX NCR (POSISI ABSOLUT SESUAI EXCEL) 
+               ======================================================== */
             <div id="printable-area-ncr" className="print-container bg-white mx-auto relative overflow-hidden shadow-lg border border-gray-300" style={{ minHeight: '297mm', width: '210mm' }}>
               
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-purple-100 font-black text-6xl opacity-30 uppercase tracking-widest print:opacity-0 pointer-events-none -rotate-45 whitespace-nowrap">
@@ -1421,16 +1423,17 @@ export default function App() {
               </div>
 
               {selectedNcrGroup && (() => {
-                 // Ambil total hanya untuk grup yang dipilih
+                 // Hitung total hanya untuk kategori terpilih
                  const ncrTotal = subtotals[selectedNcrGroup.groupId] || 0;
                  const isDirect = Array.isArray(selectedNcrGroup.activeItems) && selectedNcrGroup.activeItems.length === 1 && selectedNcrGroup.activeItems[0].id === 'direct';
                  
-                 // Ambil daftar item untuk dicetak (yang ada nominalnya)
+                 // Ambil sub-item yang ada nominalnya saja
                  let itemsToPrint = selectedNcrGroup.activeItems.filter(i => {
                    const key = getActiveItemKey(selectedNcrGroup.catId, i.id, selectedNcrGroup.isSusulan, selectedNcrGroup.validDate, selectedNcrGroup.itemDate, i.itemNote);
                    return (currentReport.formData[key] || 0) > 0;
                  });
 
+                 // Susun string rincian sub-item
                  let ncrItemsString = '';
                  if (isDirect) {
                    const note = selectedNcrGroup.activeItems[0].itemNote;
@@ -1445,7 +1448,7 @@ export default function App() {
 
                  return (
                    <>
-                      {/* Baris 8: Hari, Kosong, Tanggal */}
+                      {/* Baris 8: Hari dan Tanggal */}
                       <div className="absolute font-bold" style={{ top: '35mm', left: '60mm' }}>
                         {getDayName(reportDate)}
                       </div>
@@ -1453,54 +1456,54 @@ export default function App() {
                         {reportDate}
                       </div>
 
-                      {/* NAMA KATEGORI BESAR (Baris 11) */}
+                      {/* Baris 11: NAMA KATEGORI BESAR */}
                       <div className="absolute" style={{ top: '50mm', left: '70mm', right: '10mm', textAlign: 'center' }}>
                         {selectedNcrGroup.name}
                       </div>
 
-                      {/* RINCIAN ITEM / SUB-KATEGORI (Baris 12 & 13) */}
+                      {/* Baris 12 & 13: RINCIAN ITEM / SUB-KATEGORI */}
                       <div className="absolute" style={{ top: '56mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
                          {ncrItemsString}
                       </div>
 
-                      {/* JABATAN PENYETOR (Baris 14) */}
+                      {/* Baris 14: JABATAN PENYETOR */}
                       <div className="absolute" style={{ top: '65mm', left: '60mm' }}>
                         {signatures.leftRole}
                       </div>
 
-                      {/* NOMINAL ANGKA (Baris 16) */}
+                      {/* Baris 16: NOMINAL ANGKA */}
                       <div className="absolute font-bold text-lg" style={{ top: '75mm', left: '50mm' }}>
                         {formatRp(ncrTotal)}
                       </div>
 
-                      {/* TERBILANG (Baris 17) */}
+                      {/* Baris 17: TERBILANG */}
                       <div className="absolute italic font-bold capitalize" style={{ top: '80mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
                         # {terbilang(ncrTotal)} rupiah #
                       </div>
 
-                      {/* TANGGAL TTD BAWAH KANAN (Baris 20) */}
+                      {/* Baris 20: TANGGAL TTD BAWAH KANAN */}
                       <div className="absolute" style={{ top: '100mm', left: '150mm' }}>
                         {currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}
                       </div>
 
-                      {/* NOMINAL TOTAL (BAWAH) (Baris 21) */}
+                      {/* Baris 21: NOMINAL TOTAL (BAWAH) */}
                       <div className="absolute font-bold" style={{ top: '105mm', left: '150mm' }}>
                         {formatRp(ncrTotal)}
                       </div>
 
-                      {/* NAMA & NIP PEJABAT (Baris 27 & 28) */}
+                      {/* Baris 27 & 28: NAMA & NIP PEJABAT */}
                       <div className="absolute w-full" style={{ top: '135mm', left: '0' }}>
                          <div className="flex justify-between w-full" style={{ paddingLeft: '15mm', paddingRight: '15mm' }}>
                             {/* KIRI (PENYETOR) */}
                             <div className="text-center w-[80mm]">
                               <div className="font-bold underline">{signatures.leftName}</div>
-                              <div>NIP. {signatures.leftNip}</div>
+                              {signatures.leftNip ? <div>NIP. {signatures.leftNip}</div> : <div>NIP. ..............................</div>}
                             </div>
                             
                             {/* KANAN (BENDAHARA) */}
                             <div className="text-center w-[80mm]">
                               <div className="font-bold underline">{signatures.rightName}</div>
-                              <div>NIP. {signatures.rightNip}</div>
+                              {signatures.rightNip ? <div>NIP. {signatures.rightNip}</div> : <div>NIP. ..............................</div>}
                             </div>
                          </div>
                       </div>
