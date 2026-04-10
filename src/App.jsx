@@ -194,8 +194,8 @@ export default function App() {
   const [reportDate, setReportDate] = useState(getLocalYMD());
   const [activeType, setActiveType] = useState('utama'); 
   
-  // --- STATE DOKUMEN INDEX (FITUR BARU) ---
-  const [activeLainIndex, setActiveLainIndex] = useState(1); // 1, 2, 3, 4, 5
+  // --- STATE DOKUMEN INDEX (FITUR DINAMIS) ---
+  const [activeLainIndex, setActiveLainIndex] = useState(1); 
 
   const [selectedCatToAdd, setSelectedCatToAdd] = useState('');
   const [selectedItemToAdd, setSelectedItemToAdd] = useState('');
@@ -261,12 +261,59 @@ export default function App() {
   };
 
   // --- FUNGSI MENDAPATKAN KUNCI TIPE AKTIF ---
-  // Jika utama, key = 'utama'. Jika lain-lain, key = 'lain' (index 1), 'lain_2', 'lain_3', dst.
-  // Ini menjaga kompatibilitas 100% dengan data lama Bapak.
   const activeTypeKey = useMemo(() => {
     if (activeType === 'utama') return 'utama';
     return activeLainIndex === 1 ? 'lain' : `lain_${activeLainIndex}`;
   }, [activeType, activeLainIndex]);
+
+  // --- MENGAMBIL DAFTAR INDEKS DOKUMEN YANG ADA HARI INI ---
+  const lainDocIndices = useMemo(() => {
+    const dayData = allReports[reportDate] || {};
+    const indices = [1]; // Dokumen 1 selalu ada secara visual
+    Object.keys(dayData).forEach(k => {
+      if (k.startsWith('lain_')) {
+        const num = parseInt(k.split('_')[1], 10);
+        if (!isNaN(num) && !indices.includes(num)) {
+          indices.push(num);
+        }
+      }
+    });
+    return indices.sort((a, b) => a - b);
+  }, [allReports, reportDate]);
+
+  // --- FUNGSI MENAMBAH TAB DOKUMEN ---
+  const handleAddLainDoc = () => {
+    const nextIndex = Math.max(...lainDocIndices) + 1;
+    const nextKey = `lain_${nextIndex}`;
+    setAllReports(prev => {
+      const dayData = prev[reportDate] || {};
+      return {
+        ...prev,
+        [reportDate]: {
+          ...dayData,
+          [nextKey]: { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} }
+        }
+      };
+    });
+    setActiveLainIndex(nextIndex);
+    setSelectedCatToAdd(''); setSelectedItemToAdd('');
+    setLainItemDate(''); setLainItemNote('');
+  };
+
+  // --- FUNGSI MENGHAPUS TAB DOKUMEN ---
+  const handleRemoveLainDoc = (indexToRemove) => {
+    showConfirm(`Hapus Dokumen Ke-${indexToRemove}? Semua data di dalam dokumen ini akan ikut terhapus.`, () => {
+      setAllReports(prev => {
+        const dayData = { ...(prev[reportDate] || {}) };
+        const keyToRemove = indexToRemove === 1 ? 'lain' : `lain_${indexToRemove}`;
+        delete dayData[keyToRemove];
+        return { ...prev, [reportDate]: dayData };
+      });
+      if (activeLainIndex === indexToRemove) {
+         setActiveLainIndex(1); // Kembali ke Dokumen 1 jika yang aktif dihapus
+      }
+    });
+  };
 
   const currentReport = useMemo(() => {
     const dayData = allReports[reportDate] || {};
@@ -338,7 +385,6 @@ export default function App() {
     else setSelectedItemToAdd('');
   };
 
-  // --- KUNCI PENANDA UNTUK ITEM YANG MEMILIKI TANGGAL, SUSULAN, DAN URAIAN ---
   const getActiveItemKey = (catId, itemId, isSus, validDate, itemDate, itemNote) => {
     let key = `${catId}_${itemId}`;
     if (isSus) key += `_susulan_${validDate}`;
@@ -453,7 +499,6 @@ export default function App() {
     return cat.items.filter(item => !isAdded(item.id));
   }, [selectedCatToAdd, categories, currentReport.activeItems, isAddingSusulan, susulanValidDate, activeType, lainItemDate, lainItemNote]);
 
-  // --- LOGIK GROUPING (DIPERBARUI: STSU LAIN DIPISAH BERDASARKAN TANGGAL & URAIAN DINAMIS) ---
   const activeGroups = useMemo(() => {
     if (!Array.isArray(categories)) return [];
     const activeI = Array.isArray(currentReport.activeItems) ? currentReport.activeItems : [];
@@ -491,7 +536,6 @@ export default function App() {
           });
         });
       } else {
-        // Untuk STSU Lain-lain (SU/L), dikelompokkan berdasarkan tanggal transaksi DAN Uraian Dinamis (Rombongan)
         const configsForCat = [];
         itemsForCat.forEach(ai => {
           const dateKey = ai.itemDate ? `date_${ai.itemDate}` : 'nodate';
@@ -616,7 +660,7 @@ export default function App() {
       
       const utamaItems = Array.isArray(dayData.utama?.activeItems) ? dayData.utama.activeItems : [];
       // Mengecek semua dokumen 'lain', 'lain_2', 'lain_3', dst
-      const hasLain = Object.keys(dayData).some(k => k.startsWith('lain') && Array.isArray(dayData[k].activeItems) && dayData[k].activeItems.length > 0);
+      const hasLain = Object.keys(dayData).some(k => (k === 'lain' || k.startsWith('lain_')) && Array.isArray(dayData[k].activeItems) && dayData[k].activeItems.length > 0);
       
       return { day: d, dateStr, hasUtama: utamaItems.length > 0, hasLain };
     });
@@ -949,22 +993,43 @@ export default function App() {
             </button>
           </div>
 
-          {/* DOKUMEN SELECTOR (KHUSUS STSU LAIN-LAIN) */}
+          {/* DOKUMEN SELECTOR (TAB DINAMIS KHUSUS STSU LAIN-LAIN) */}
           {activeType === 'lain' && (
-            <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar pb-2">
-              {[1, 2, 3, 4, 5].map(num => (
-                <button
-                  key={num}
-                  onClick={() => {
-                    setActiveLainIndex(num);
-                    setSelectedCatToAdd(''); setSelectedItemToAdd('');
-                    setLainItemDate(''); setLainItemNote('');
-                  }}
-                  className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-colors border ${activeLainIndex === num ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-purple-600 border-purple-200 hover:bg-purple-50'}`}
-                >
-                  Dokumen Ke-{num}
-                </button>
+            <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar pb-2 items-center">
+              {lainDocIndices.map(num => (
+                <div key={num} className="relative flex-shrink-0 group">
+                  <button
+                    onClick={() => {
+                      setActiveLainIndex(num);
+                      setSelectedCatToAdd(''); setSelectedItemToAdd('');
+                      setLainItemDate(''); setLainItemNote('');
+                    }}
+                    className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all border ${activeLainIndex === num ? 'bg-purple-600 text-white border-purple-600 shadow-md scale-105' : 'bg-white text-purple-600 border-purple-200 hover:bg-purple-50'}`}
+                  >
+                    Dokumen Ke-{num}
+                  </button>
+                  
+                  {/* TOMBOL HAPUS (Kecuali Dokumen 1) */}
+                  {num > 1 && (
+                    <button 
+                       onClick={(e) => { e.stopPropagation(); handleRemoveLainDoc(num); }}
+                       className={`absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-black shadow-md z-10 hover:bg-red-600 border border-white transition-opacity ${activeLainIndex === num ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                       title="Hapus Dokumen"
+                    >
+                       ✕
+                    </button>
+                  )}
+                </div>
               ))}
+              
+              {/* TOMBOL TAMBAH DOKUMEN BARU */}
+              <button 
+                onClick={handleAddLainDoc}
+                className="px-3 py-2 ml-1 rounded-lg font-bold text-sm whitespace-nowrap transition-colors border bg-purple-50 text-purple-600 border-purple-300 hover:bg-purple-100 flex items-center gap-1.5 shadow-sm"
+                title="Tambah Dokumen Lain-lain Baru"
+              >
+                <Plus size={16} /> Tambah Dokumen
+              </button>
             </div>
           )}
 
