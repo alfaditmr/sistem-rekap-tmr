@@ -91,7 +91,7 @@ const getLocalYMD = () => {
   return `${year}-${month}-${day}`;
 };
 
-// Fungsi helper mendapatkan nama hari
+// Fungsi helper mendapatkan nama hari (Untuk Dot Matrix)
 const getDayName = (dateStr) => {
   if (!dateStr) return "";
   const d = new Date(dateStr);
@@ -103,6 +103,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null });
   const [resetDialog, setResetDialog] = useState({ isOpen: false, password: '', error: '', isVerifying: false });
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  // --- STATE PRINT MODE (PDF GABUNGAN / NCR PER KATEGORI) ---
+  const [printMode, setPrintMode] = useState('pdf'); // 'pdf' atau 'ncr'
+  const [selectedNcrGroup, setSelectedNcrGroup] = useState(null);
 
   // --- STATE LOGIN & AUTHENTICATION ---
   const [user, setUser] = useState(null);
@@ -115,6 +120,13 @@ export default function App() {
   // --- STATE FIREBASE & SYNC ---
   const [dbReady, setDbReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState('offline'); 
+
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    script.async = true;
+    document.body.appendChild(script);
+  }, []);
 
   useEffect(() => {
     if (!auth) return;
@@ -347,6 +359,7 @@ export default function App() {
     setLainItemDate('');
     setLainItemNote('');
     setActiveLainIndex(1); 
+    setPrintMode('pdf'); // Reset ke PDF setiap ganti tanggal
   };
 
   const handleTypeSwitch = (type) => {
@@ -357,6 +370,7 @@ export default function App() {
     setLainItemDate('');
     setLainItemNote('');
     setActiveLainIndex(1); 
+    setPrintMode('pdf'); // Reset ke PDF setiap ganti tipe
   };
 
   const clearCurrentReport = () => {
@@ -670,6 +684,37 @@ export default function App() {
 
   const handlePrint = () => { window.print(); };
 
+  const handleDownloadPDF = () => {
+    const element = document.getElementById('printable-area-pdf');
+    if (!element) return;
+    if (window.html2pdf) {
+      setPdfLoading(true);
+      const opt = {
+        margin:       [10, 10, 10, 10], 
+        filename:     `Laporan_TMR_${activeType.toUpperCase()}${activeType === 'lain' ? `_Dok${activeLainIndex}` : ''}_${reportDate}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      window.html2pdf().set(opt).from(element).save().then(() => setPdfLoading(false)).catch(err => {
+        console.error("Gagal buat PDF", err);
+        setPdfLoading(false);
+      });
+    } else {
+      showConfirm("Modul pembuat PDF sedang dimuat oleh sistem. Mohon tunggu 3 detik lalu coba tekan lagi.", null);
+    }
+  };
+
+  const formatTanggalCetak = (dateStr) => {
+    if(!dateStr) return "";
+    return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).replace(',', ', tanggal');
+  };
+  const formatTanggalTtd = (dateStr) => {
+    if(!dateStr) return "";
+    return new Date(dateStr).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: '2-digit' });
+  };
+
+
   // ==========================================
   // RENDER LAYAR LOGIN JIKA BELUM MASUK
   // ==========================================
@@ -737,25 +782,39 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 font-sans pb-36 relative">
       <style>{`
-        /* CSS KHUSUS PRINTER DOT MATRIX NCR */
+        /* CSS DINAMIS UNTUK MODE CETAK (PDF vs DOT MATRIX NCR) */
         @media print {
           body { background-color: white; margin: 0; padding: 0; }
           .no-print { display: none !important; }
           
-          /* Gunakan font monospace bawaan sistem untuk dot matrix */
-          .print-container { 
-            width: 100%; 
-            margin: 0; 
-            padding: 0; 
-            font-family: 'Courier New', Courier, monospace !important; 
-            font-size: 11pt; 
-            color: black; 
-            box-shadow: none; 
-            border: none; 
-          }
-          
-          /* Reset margin browser agar koordinat tepat */
-          @page { margin: 0; size: auto; }
+          ${printMode === 'ncr' ? `
+            /* Mode Dot Matrix (NCR): Ukuran absolute, margin browser dihilangkan */
+            .print-container { 
+              width: 100%; 
+              margin: 0; 
+              padding: 0; 
+              font-family: 'Courier New', Courier, monospace !important; 
+              font-size: 11pt; 
+              color: black; 
+              box-shadow: none; 
+              border: none; 
+            }
+            @page { margin: 0; size: auto; }
+          ` : `
+            /* Mode PDF Gabungan: Layout standar surat resmi */
+            .print-container { 
+              width: 100%; 
+              max-width: 100%; 
+              margin: 0; 
+              padding: 0; 
+              font-family: 'Times New Roman', Times, serif; 
+              font-size: 11pt; 
+              color: black; 
+              box-shadow: none; 
+              border: none; 
+            }
+            @page { margin: 15mm; }
+          `}
         }
       `}</style>
 
@@ -836,10 +895,10 @@ export default function App() {
           </div>
           
           <div className="flex space-x-1 sm:space-x-2 shrink-0 overflow-x-auto no-scrollbar items-center">
-            <button onClick={() => setActiveTab('dashboard')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'dashboard' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Dashboard</span></button>
-            <button onClick={() => setActiveTab('input')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'input' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Edit size={18} /> <span className="hidden md:inline">Input</span></button>
-            <button onClick={() => setActiveTab('settings')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Settings size={18} /> <span className="hidden md:inline">Master</span></button>
-            <button onClick={() => setActiveTab('print')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'print' ? 'bg-green-800' : 'hover:bg-green-600'}`}><FileText size={18} /> <span className="hidden md:inline">Cetak</span></button>
+            <button onClick={() => { setActiveTab('dashboard'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'dashboard' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Dashboard</span></button>
+            <button onClick={() => { setActiveTab('input'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'input' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Edit size={18} /> <span className="hidden md:inline">Input</span></button>
+            <button onClick={() => { setActiveTab('settings'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Settings size={18} /> <span className="hidden md:inline">Master</span></button>
+            <button onClick={() => { setActiveTab('print'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'print' ? 'bg-green-800' : 'hover:bg-green-600'}`}><FileText size={18} /> <span className="hidden md:inline">Cetak</span></button>
             
             <div className="pl-2 border-l border-green-600 ml-1">
               <button onClick={handleLogout} className="px-2 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 hover:bg-red-600 transition-colors" title="Keluar Akun">
@@ -1190,126 +1249,268 @@ export default function App() {
               </div>
               <div className="flex w-full sm:w-auto gap-2">
                 <button onClick={clearCurrentReport} className="px-4 py-3 text-red-500 hover:bg-red-50 font-bold rounded-xl transition-colors text-sm border border-transparent hover:border-red-200">Reset</button>
-                <button onClick={() => setActiveTab('print')} disabled={activeGroups.length === 0} className={`flex-1 sm:flex-none text-white px-6 py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors shadow-sm disabled:bg-gray-300 ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}><FileText size={20} /> Lihat Draft Cetak</button>
+                <button onClick={() => { setActiveTab('print'); setPrintMode('pdf'); }} disabled={activeGroups.length === 0} className={`flex-1 sm:flex-none text-white px-6 py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors shadow-sm disabled:bg-gray-300 ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}><FileText size={20} /> Lihat Draft Cetak</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* === TAB: CETAK DOT MATRIX NCR === */}
+
+      {/* === TAB: CETAK (MODE PDF GABUNGAN & MODE NCR) === */}
       {activeTab === 'print' && (
         <div className="max-w-4xl mx-auto px-2 sm:px-4 py-6">
+          
+          {/* TOP BAR CETAK (BERUBAH SESUAI MODE) */}
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4 no-print">
              <div>
                <h2 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-                 <Printer size={20} className={activeType === 'utama' ? 'text-green-600' : 'text-purple-600'}/> 
-                 Mode Cetak NCR (Dot Matrix): {activeType === 'utama' ? 'STSU Pendapatan' : `STSU Lain-lain (Dok ${activeLainIndex})`}
+                 {printMode === 'pdf' ? (
+                   <><FileText size={20} className={activeType === 'utama' ? 'text-green-600' : 'text-purple-600'}/> Preview & Download Laporan Gabungan</>
+                 ) : (
+                   <><Printer size={20} className="text-purple-600"/> Mode Cetak NCR: {selectedNcrGroup?.name}</>
+                 )}
                </h2>
-               <p className="text-xs text-gray-500 mt-1">Pastikan kertas rangkap 3 sudah masuk ke printer Epson.</p>
+               {printMode === 'ncr' && <p className="text-xs text-gray-500 mt-1">Pastikan kertas rangkap 3 sudah masuk ke printer Epson Dot Matrix Bapak.</p>}
              </div>
              
              <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-               <button onClick={() => setActiveTab('input')} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none">Kembali Edit</button>
-               <button onClick={handlePrint} className="px-6 py-2 bg-gray-900 hover:bg-black text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md">
-                 <Printer size={18} /> Cetak (Dot Matrix)
-               </button>
+               {printMode === 'pdf' ? (
+                 <>
+                   <button onClick={() => setActiveTab('input')} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none hover:bg-gray-200">Kembali Edit</button>
+                   <button onClick={handleDownloadPDF} disabled={pdfLoading} className={`px-4 py-2 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'} disabled:opacity-50`}>
+                     {pdfLoading ? <RefreshCw size={18} className="animate-spin" /> : <Download size={18} />}
+                     {pdfLoading ? 'Memproses...' : 'Unduh PDF'}
+                   </button>
+                   <button onClick={handlePrint} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md">
+                     <Printer size={18} /> Cetak (Biasa)
+                   </button>
+                 </>
+               ) : (
+                 <>
+                   <button onClick={() => { setPrintMode('pdf'); setSelectedNcrGroup(null); }} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none hover:bg-gray-200">Kembali ke PDF</button>
+                   <button onClick={handlePrint} className="px-6 py-2 bg-purple-700 hover:bg-purple-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md">
+                     <Printer size={18} /> Print Kertas NCR
+                   </button>
+                 </>
+               )}
              </div>
           </div>
 
-          {/* AREA CETAK DOT MATRIX (Presisi Posisi Absolut/Margin) */}
-          {/* Berdasarkan koordinat baris Excel */}
-          <div id="printable-area" className="print-container bg-white mx-auto relative overflow-hidden" style={{ minHeight: '297mm', width: '210mm' }}>
+          {/* FITUR TAMBAHAN: TOMBOL CETAK NCR (HANYA MUNCUL DI MODE PDF) */}
+          {printMode === 'pdf' && activeGroups.length > 0 && (
+            <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 mb-6 no-print">
+               <h3 className="font-bold text-purple-900 mb-2 flex items-center gap-2 text-sm"><Printer size={16}/> Cetak Dot Matrix NCR (Per Kategori)</h3>
+               <p className="text-xs text-purple-700 mb-3">Klik salah satu kategori di bawah ini untuk mencetaknya secara terpisah ke atas blangko NCR 3 rangkap.</p>
+               <div className="flex flex-wrap gap-2">
+                 {activeGroups.map(group => (
+                    <button 
+                       key={group.groupId} 
+                       onClick={() => { setSelectedNcrGroup(group); setPrintMode('ncr'); }} 
+                       className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-2 transition-transform hover:scale-105"
+                    >
+                       🖨️ Kategori: {group.name}
+                    </button>
+                 ))}
+               </div>
+            </div>
+          )}
+
+
+          {/* ========================================================= */}
+          {/* 📄 RENDER AREA CETAK BERDASARKAN MODE (PDF vs NCR) 📄 */}
+          {/* ========================================================= */}
+
+          {printMode === 'pdf' ? (
             
-            {/* Teks Draft hanya di layar */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-gray-100 font-black text-6xl opacity-30 uppercase tracking-widest print:opacity-0 pointer-events-none -rotate-45 whitespace-nowrap">
-              PREVIEW NCR
-            </div>
+            /* --- LAYOUT 1: PDF STANDAR GABUNGAN (SEPERTI SEBELUMNYA) --- */
+            <div id="printable-area-pdf" className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative">
+              <div className="absolute top-10 right-10 text-gray-200 font-bold text-3xl opacity-50 uppercase tracking-widest print:opacity-0 pointer-events-none">
+                DRAFT {activeType === 'utama' ? 'SU' : 'SU/L'}
+              </div>
 
-            {/* --- BAGIAN HEADER (Sesuai Baris 8 di Excel) --- */}
-            {/* Baris 8: Hari, Kosong, Tanggal */}
-            <div className="absolute font-bold" style={{ top: '35mm', left: '60mm' }}>
-              {getDayName(reportDate)}
-            </div>
-            <div className="absolute font-bold" style={{ top: '35mm', left: '100mm' }}>
-              {reportDate}
-            </div>
+              <div className="font-bold underline mb-8 text-[11pt]">No. {computedStsuNo}</div>
 
-            {/* --- NAMA KATEGORI BESAR (Baris 11) --- */}
-            <div className="absolute" style={{ top: '50mm', left: '70mm', right: '10mm', textAlign: 'center' }}>
-              {activeGroups.map(g => g.name).join(', ')}
-            </div>
+              <div className="mb-6 text-[11pt]">
+                Diterima uang hasil pendapatan {formatTanggalCetak(reportDate)} sebagai berikut;
+              </div>
 
-            {/* --- RINCIAN ITEM / SUB-KATEGORI (Baris 12 & 13) --- */}
-            <div className="absolute" style={{ top: '56mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
-               {activeGroups.map(group => {
+              <div className="space-y-2">
+                {activeGroups.map((group, index) => {
                   if (subtotals[group.groupId] === 0) return null;
                   const isDirect = Array.isArray(group.activeItems) && group.activeItems.length === 1 && group.activeItems[0].id === 'direct';
                   
-                  // Khusus STSU Lain, print Uraian/Note juga
-                  let itemsToPrint = group.activeItems.filter(i => {
-                    const key = getActiveItemKey(group.catId, i.id, group.isSusulan, group.validDate, group.itemDate, i.itemNote);
-                    return (currentReport.formData[key] || 0) > 0;
-                  });
-
-                  if (isDirect) {
-                    // Jika mode nominal langsung, tampilkan uraian dinamisnya jika ada
-                    const note = group.activeItems[0].itemNote;
-                    return note ? note.replace(/\n/g, ', ') : '';
+                  let groupTitle = group.name;
+                  if (activeType === 'utama' && group.isSusulan) {
+                    groupTitle = `${group.name} susulan (validasi ${formatTanggalTtd(group.validDate)})`;
+                  } else if (activeType === 'lain') {
+                    let parts = [group.name];
+                    if (group.itemNote) parts.push(`dari ${group.itemNote.replace(/\n/g, ' ')}`);
+                    if (group.itemDate) parts.push(`tanggal ${formatTanggalTtd(group.itemDate)}`);
+                    groupTitle = parts.join(' ');
                   }
 
-                  return itemsToPrint.map(i => {
-                    let text = i.name;
-                    if (i.itemNote) text += ` (${i.itemNote.replace(/\n/g, ' ')})`;
-                    return text;
-                  }).join(', ');
+                  return (
+                    <div key={group.groupId} className="text-[11pt] pb-3">
+                      <div className="font-bold mb-1 leading-relaxed">
+                        {index + 1}. Diterima uang hasil pendapatan {groupTitle}, sebagai berikut :
+                      </div>
+                      
+                      <div className="w-full">
+                        {!isDirect && group.activeItems.map(item => {
+                          const inputKey = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate, item.itemNote);
+                          const val = currentReport.formData[inputKey] || 0;
+                          if (val === 0) return null;
 
-               }).filter(Boolean).join(' | ')}
+                          return (
+                            <div key={inputKey} className="flex w-full max-w-[450px] mb-0.5 pl-4 sm:pl-6">
+                              <div className="flex-1 pr-2 font-normal">
+                                 {item.name}
+                              </div>
+                              <span className="w-[40px] text-left">Rp.</span>
+                              <span className="w-[100px] text-right">{formatRp(val)}</span>
+                            </div>
+                          );
+                        })}
+                        
+                        <div className={`flex w-full font-bold ${isDirect ? '' : 'mt-1 pt-1'}`}>
+                          <span className="flex-1 text-right pr-6">{isDirect ? 'Nominal' : 'Sub Total'}</span>
+                          <span className="w-[40px] text-left">Rp.</span>
+                          <span className="w-[120px] text-right">{formatRp(subtotals[group.groupId])}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex w-full mt-6 border-t border-b-2 border-black py-2 mb-6 font-bold text-[11pt]">
+                 <span className="flex-1 text-right pr-6">Jumlah Total</span>
+                 <span className="w-[40px] text-left">Rp.</span>
+                 <span className="w-[120px] text-right">{formatRp(grandTotal)}</span>
+              </div>
+
+              <div className="mt-8 text-[11pt]">
+                <p className="mb-4"><strong>Terbilang : </strong> <i className="capitalize">{terbilang(grandTotal)} rupiah</i></p>
+                <p className="text-justify leading-relaxed">
+                  Disetor uang kebendahara penerimaan hasil retribusi layanan masuk tempat rekreasi dan pemakaian fasilitas TMR Pada hari {formatTanggalCetak(reportDate)} dengan STSU No. {computedStsuNo} dengan uang sebesar Rp. {formatRp(grandTotal)}
+                </p>
+              </div>
+
+              <div className="flex justify-between mt-16 text-center text-[11pt]">
+                <div className="w-[45%] flex flex-col justify-between">
+                  <div><br/>{signatures.leftRole}</div>
+                  <div className="mt-28 font-bold underline">({signatures.leftName})</div>
+                  {/* NIP Optionally printed here */}
+                </div>
+                <div className="w-[45%] flex flex-col justify-between">
+                  <div>{signatures.location}, {formatTanggalTtd(currentReport.signatureDate)}<br/>{signatures.rightRole}</div>
+                  <div className="mt-24 font-bold underline">({signatures.rightName})</div>
+                  {/* NIP Optionally printed here */}
+                </div>
+              </div>
             </div>
 
-            {/* --- JABATAN PENYETOR (Baris 14) --- */}
-            <div className="absolute" style={{ top: '65mm', left: '60mm' }}>
-              {signatures.leftRole}
+          ) : (
+
+            /* --- LAYOUT 2: DOT MATRIX NCR (POSISI ABSOLUT / PER KATEGORI) --- */
+            <div id="printable-area-ncr" className="print-container bg-white mx-auto relative overflow-hidden shadow-lg border border-gray-300" style={{ minHeight: '297mm', width: '210mm' }}>
+              
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-purple-100 font-black text-6xl opacity-30 uppercase tracking-widest print:opacity-0 pointer-events-none -rotate-45 whitespace-nowrap">
+                PREVIEW NCR DOT MATRIX
+              </div>
+
+              {selectedNcrGroup && (() => {
+                 // Ambil total hanya untuk grup yang dipilih
+                 const ncrTotal = subtotals[selectedNcrGroup.groupId] || 0;
+                 const isDirect = Array.isArray(selectedNcrGroup.activeItems) && selectedNcrGroup.activeItems.length === 1 && selectedNcrGroup.activeItems[0].id === 'direct';
+                 
+                 // Ambil daftar item untuk dicetak (yang ada nominalnya)
+                 let itemsToPrint = selectedNcrGroup.activeItems.filter(i => {
+                   const key = getActiveItemKey(selectedNcrGroup.catId, i.id, selectedNcrGroup.isSusulan, selectedNcrGroup.validDate, selectedNcrGroup.itemDate, i.itemNote);
+                   return (currentReport.formData[key] || 0) > 0;
+                 });
+
+                 let ncrItemsString = '';
+                 if (isDirect) {
+                   const note = selectedNcrGroup.activeItems[0].itemNote;
+                   ncrItemsString = note ? note.replace(/\n/g, ', ') : '';
+                 } else {
+                   ncrItemsString = itemsToPrint.map(i => {
+                     let text = i.name;
+                     if (i.itemNote) text += ` (${i.itemNote.replace(/\n/g, ' ')})`;
+                     return text;
+                   }).join(', ');
+                 }
+
+                 return (
+                   <>
+                      {/* Baris 8: Hari, Kosong, Tanggal */}
+                      <div className="absolute font-bold" style={{ top: '35mm', left: '60mm' }}>
+                        {getDayName(reportDate)}
+                      </div>
+                      <div className="absolute font-bold" style={{ top: '35mm', left: '100mm' }}>
+                        {reportDate}
+                      </div>
+
+                      {/* NAMA KATEGORI BESAR (Baris 11) */}
+                      <div className="absolute" style={{ top: '50mm', left: '70mm', right: '10mm', textAlign: 'center' }}>
+                        {selectedNcrGroup.name}
+                      </div>
+
+                      {/* RINCIAN ITEM / SUB-KATEGORI (Baris 12 & 13) */}
+                      <div className="absolute" style={{ top: '56mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
+                         {ncrItemsString}
+                      </div>
+
+                      {/* JABATAN PENYETOR (Baris 14) */}
+                      <div className="absolute" style={{ top: '65mm', left: '60mm' }}>
+                        {signatures.leftRole}
+                      </div>
+
+                      {/* NOMINAL ANGKA (Baris 16) */}
+                      <div className="absolute font-bold text-lg" style={{ top: '75mm', left: '50mm' }}>
+                        {formatRp(ncrTotal)}
+                      </div>
+
+                      {/* TERBILANG (Baris 17) */}
+                      <div className="absolute italic font-bold capitalize" style={{ top: '80mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
+                        # {terbilang(ncrTotal)} rupiah #
+                      </div>
+
+                      {/* TANGGAL TTD BAWAH KANAN (Baris 20) */}
+                      <div className="absolute" style={{ top: '100mm', left: '150mm' }}>
+                        {currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}
+                      </div>
+
+                      {/* NOMINAL TOTAL (BAWAH) (Baris 21) */}
+                      <div className="absolute font-bold" style={{ top: '105mm', left: '150mm' }}>
+                        {formatRp(ncrTotal)}
+                      </div>
+
+                      {/* NAMA & NIP PEJABAT (Baris 27 & 28) */}
+                      <div className="absolute w-full" style={{ top: '135mm', left: '0' }}>
+                         <div className="flex justify-between w-full" style={{ paddingLeft: '15mm', paddingRight: '15mm' }}>
+                            {/* KIRI (PENYETOR) */}
+                            <div className="text-center w-[80mm]">
+                              <div className="font-bold underline">{signatures.leftName}</div>
+                              <div>NIP. {signatures.leftNip}</div>
+                            </div>
+                            
+                            {/* KANAN (BENDAHARA) */}
+                            <div className="text-center w-[80mm]">
+                              <div className="font-bold underline">{signatures.rightName}</div>
+                              <div>NIP. {signatures.rightNip}</div>
+                            </div>
+                         </div>
+                      </div>
+                   </>
+                 );
+              })()}
             </div>
 
-            {/* --- NOMINAL ANGKA (Baris 16) --- */}
-            <div className="absolute font-bold text-lg" style={{ top: '75mm', left: '50mm' }}>
-              {formatRp(grandTotal)}
-            </div>
+          )}
 
-            {/* --- TERBILANG (Baris 17) --- */}
-            <div className="absolute italic font-bold capitalize" style={{ top: '80mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
-              # {terbilang(grandTotal)} rupiah #
-            </div>
-
-            {/* --- TANGGAL TTD BAWAH KANAN (Baris 20) --- */}
-            <div className="absolute" style={{ top: '100mm', left: '150mm' }}>
-              {currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}
-            </div>
-
-            {/* --- NOMINAL (BAWAH) (Baris 21) --- */}
-            <div className="absolute font-bold" style={{ top: '105mm', left: '150mm' }}>
-              {formatRp(grandTotal)}
-            </div>
-
-            {/* --- NAMA & NIP PEJABAT (Baris 27 & 28) --- */}
-            <div className="absolute w-full" style={{ top: '135mm', left: '0' }}>
-               <div className="flex justify-between w-full" style={{ paddingLeft: '15mm', paddingRight: '15mm' }}>
-                  {/* KIRI (PENYETOR) */}
-                  <div className="text-center w-[80mm]">
-                    <div className="font-bold underline">{signatures.leftName}</div>
-                    <div>NIP. {signatures.leftNip}</div>
-                  </div>
-                  
-                  {/* KANAN (BENDAHARA) */}
-                  <div className="text-center w-[80mm]">
-                    <div className="font-bold underline">{signatures.rightName}</div>
-                    <div>NIP. {signatures.rightNip}</div>
-                  </div>
-               </div>
-            </div>
-
-          </div>
         </div>
       )}
 
