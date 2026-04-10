@@ -325,13 +325,11 @@ export default function App() {
   };
 
   // --- KUNCI PENANDA UNTUK ITEM YANG MEMILIKI TANGGAL, SUSULAN, DAN URAIAN ---
-  // Fungsi ini sangat aman untuk data lama, string hash memastikan data tidak tabrakan
   const getActiveItemKey = (catId, itemId, isSus, validDate, itemDate, itemNote) => {
     let key = `${catId}_${itemId}`;
     if (isSus) key += `_susulan_${validDate}`;
     if (itemDate) key += `_date_${itemDate}`;
     if (itemNote) {
-       // Buat hash sederhana dari itemNote supaya key tidak kepanjangan
        let hash = 0;
        for (let i = 0; i < itemNote.length; i++) {
          hash = ((hash << 5) - hash) + itemNote.charCodeAt(i);
@@ -384,7 +382,7 @@ export default function App() {
     const cat = categories.find(c => c.id === selectedCatToAdd);
     if (cat && Array.isArray(cat.items) && cat.items.length === 0) setSelectedCatToAdd('');
     setSelectedItemToAdd('');
-    setLainItemNote(''); // Reset Keterangan setelah ditambahkan
+    setLainItemNote('');
 
     setTimeout(() => {
       const inputElement = document.getElementById(`input_${inputKey}`);
@@ -431,7 +429,6 @@ export default function App() {
       if (activeType === 'utama') {
          return activeI.some(a => a.catId === selectedCatToAdd && a.itemId === iId && !!a.isSusulan === isAddingSusulan && (a.validDate || '') === (susulanValidDate || ''));
       } else {
-         // Di SU/L, jika Uraian Dinamisnya berbeda, anggap item belum ada (Bisa Add Banyak)
          return activeI.some(a => a.catId === selectedCatToAdd && a.itemId === iId && (a.itemDate || '') === (lainItemDate || '') && (a.itemNote || '') === (lainItemNote.trim() || ''));
       }
     };
@@ -442,7 +439,7 @@ export default function App() {
     return cat.items.filter(item => !isAdded(item.id));
   }, [selectedCatToAdd, categories, currentReport.activeItems, isAddingSusulan, susulanValidDate, activeType, lainItemDate, lainItemNote]);
 
-  // --- LOGIK GROUPING (STSU LAIN-LAIN DI KELOMPOKKAN BERDASARKAN TANGGAL) ---
+  // --- LOGIK GROUPING (DIPERBARUI: STSU LAIN DIPISAH BERDASARKAN TANGGAL & URAIAN DINAMIS) ---
   const activeGroups = useMemo(() => {
     if (!Array.isArray(categories)) return [];
     const activeI = Array.isArray(currentReport.activeItems) ? currentReport.activeItems : [];
@@ -480,17 +477,24 @@ export default function App() {
           });
         });
       } else {
-        // Untuk STSU Lain-lain (SU/L), dikelompokkan berdasarkan tanggal transaksi
+        // Untuk STSU Lain-lain (SU/L), dikelompokkan berdasarkan tanggal transaksi DAN Uraian Dinamis (Rombongan)
         const configsForCat = [];
         itemsForCat.forEach(ai => {
-          const key = ai.itemDate ? `date_${ai.itemDate}` : 'nodate';
+          const dateKey = ai.itemDate ? `date_${ai.itemDate}` : 'nodate';
+          const noteStr = ai.itemNote ? ai.itemNote.trim() : '';
+          const key = `${dateKey}_note_${noteStr}`;
+
           if (!configsForCat.find(c => c.key === key)) {
-            configsForCat.push({ key, itemDate: ai.itemDate });
+            configsForCat.push({ key, itemDate: ai.itemDate, itemNote: noteStr });
           }
         });
 
         configsForCat.forEach(config => {
-          const matchedItems = itemsForCat.filter(ai => (ai.itemDate || '') === (config.itemDate || ''));
+          const matchedItems = itemsForCat.filter(ai => 
+            (ai.itemDate || '') === (config.itemDate || '') && 
+            (ai.itemNote ? ai.itemNote.trim() : '') === config.itemNote
+          );
+          
           const displayItems = matchedItems.map(ai => {
             if (ai.itemId === 'direct') return { ...ai, id: 'direct', name: cat.name };
             const found = cat.items?.find(i => i.id === ai.itemId);
@@ -503,6 +507,7 @@ export default function App() {
             name: cat.name,
             isSusulan: false,
             itemDate: config.itemDate,
+            itemNote: config.itemNote,
             activeItems: displayItems,
             catIndex: index
           });
@@ -510,7 +515,6 @@ export default function App() {
       }
     });
 
-    // PENGURUTAN GROUP (Prioritas: Kategori Asli -> lalu tanggal)
     groups.sort((a, b) => {
       if (activeType === 'utama') {
           if (!a.isSusulan && b.isSusulan) return -1;
@@ -521,6 +525,7 @@ export default function App() {
       } else {
           if (a.catIndex !== b.catIndex) return a.catIndex - b.catIndex;
           if (a.itemDate !== b.itemDate) return (a.itemDate || '').localeCompare(b.itemDate || '');
+          if (a.itemNote !== b.itemNote) return (a.itemNote || '').localeCompare(b.itemNote || '');
       }
       return a.catIndex - b.catIndex;
     });
@@ -534,7 +539,7 @@ export default function App() {
     activeGroups.forEach(group => {
       let sub = 0;
       group.activeItems.forEach(item => { 
-        const key = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, item.itemDate, item.itemNote);
+        const key = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate, group.itemNote);
         sub += cForm[key] || 0; 
       });
       subs[group.groupId] = sub; 
@@ -957,7 +962,6 @@ export default function App() {
                 <Plus size={18} /> Tambah Transaksi {activeType === 'utama' ? 'SU' : 'SU/L'}
               </h2>
               
-              {/* TOMBOL TOGGLE SUSULAN (HANYA MUNCUL DI UTAMA) */}
               {activeType === 'utama' && (
                 <label className="flex items-center gap-2 text-sm font-bold cursor-pointer text-yellow-700 bg-yellow-100/80 px-3 py-1.5 rounded-lg border border-yellow-300 hover:bg-yellow-200 transition-colors shadow-sm w-fit">
                   <input type="checkbox" checked={isAddingSusulan} onChange={e => setIsAddingSusulan(e.target.checked)} className="w-4 h-4 accent-yellow-600" />
@@ -966,7 +970,6 @@ export default function App() {
               )}
             </div>
 
-            {/* INPUT TANGGAL VALIDASI SUSULAN (HANYA UTAMA) */}
             {activeType === 'utama' && isAddingSusulan && (
               <div className="mb-4 p-3 bg-yellow-100/50 border border-yellow-200 rounded-lg flex items-center gap-3 animate-in fade-in zoom-in duration-200">
                 <AlertCircle size={18} className="text-yellow-600 shrink-0" />
@@ -977,7 +980,6 @@ export default function App() {
               </div>
             )}
 
-            {/* INPUT TANGGAL TRANSAKSI KHUSUS (HANYA LAIN-LAIN) */}
             {activeType === 'lain' && (
               <div className="mb-4 p-3 bg-purple-100/50 border border-purple-200 rounded-lg flex items-center gap-3 animate-in fade-in zoom-in duration-200">
                 <Calendar size={18} className="text-purple-600 shrink-0" />
@@ -1012,13 +1014,13 @@ export default function App() {
               {/* INPUT URAIAN DINAMIS / MULTILINE KHUSUS LAIN-LAIN */}
               {activeType === 'lain' && (
                 <div>
-                  <label className="block text-xs font-semibold mb-1 text-purple-700">Keterangan Tambahan / Uraian Dinamis (Bisa di-Enter)</label>
+                  <label className="block text-xs font-semibold mb-1 text-purple-700">Keterangan Tambahan / Uraian Dinamis (Cetak di Judul)</label>
                   <textarea
                     value={lainItemNote}
                     onChange={(e) => setLainItemNote(e.target.value)}
                     rows={2}
                     className="w-full border border-purple-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-purple-500 outline-none resize-none"
-                    placeholder="Contoh: Keluarga besar Saminem&#10;Pemakaian tanggal 26 April 2026"
+                    placeholder="Contoh: Rombongan keluarga Ernawati&#10;Pemakaian tanggal 26 April 2026"
                   ></textarea>
                 </div>
               )}
@@ -1063,7 +1065,7 @@ export default function App() {
                               <label className="text-gray-700 font-medium">
                                  {item.id === 'direct' ? 'Nominal Pemasukan' : item.name}
                               </label>
-                              {/* MENAMPILKAN URAIAN DINAMIS DI MODE INPUT */}
+                              {/* HANYA MUNCUL DI TAMPILAN INPUT AGAR KASIR TAHU */}
                               {item.itemNote && (
                                 <span className="text-xs text-purple-600 mt-1 whitespace-pre-wrap font-medium">{item.itemNote}</span>
                               )}
@@ -1151,16 +1153,29 @@ export default function App() {
                 if (subtotals[group.groupId] === 0) return null;
                 const isDirect = Array.isArray(group.activeItems) && group.activeItems.length === 1 && group.activeItems[0].id === 'direct';
                 
+                // --- PERUBAHAN JUDUL CERDAS (MENYATUKAN ROMBONGAN KE DALAM KALIMAT) ---
                 let groupTitle = group.name;
                 if (activeType === 'utama' && group.isSusulan) {
                   groupTitle = `${group.name} susulan (validasi ${formatTanggalTtd(group.validDate)})`;
-                } else if (activeType === 'lain' && group.itemDate) {
-                  groupTitle = `${group.name} tanggal ${formatTanggalTtd(group.itemDate)}`;
+                } else if (activeType === 'lain') {
+                  let parts = [group.name];
+                  
+                  // Jika ada Uraian Dinamis (Rombongan), bersihkan enter agar jadi satu kalimat
+                  if (group.itemNote) {
+                     parts.push(`dari ${group.itemNote.replace(/\n/g, ' ')}`);
+                  }
+                  
+                  // Jika ada Tanggal Transaksi
+                  if (group.itemDate) {
+                     parts.push(`tanggal ${formatTanggalTtd(group.itemDate)}`);
+                  }
+                  
+                  groupTitle = parts.join(' ');
                 }
 
                 return (
                   <div key={group.groupId} className="text-[11pt] pb-3">
-                    <div className="font-bold mb-1">
+                    <div className="font-bold mb-1 leading-relaxed">
                       {index + 1}. Diterima uang hasil pendapatan {groupTitle}, sebagai berikut :
                     </div>
                     
@@ -1172,14 +1187,8 @@ export default function App() {
 
                         return (
                           <div key={inputKey} className="flex w-full max-w-[450px] mb-0.5 pl-4 sm:pl-6">
-                            <div className="flex-1 pr-2">
-                               {/* NAMA ITEM UTAMA */}
-                               <div className="font-normal">{item.name}</div>
-                               
-                               {/* CETAK URAIAN DINAMIS DI BAWAHNYA DGN FORMAT BARIS BARU (Jika ada) */}
-                               {item.itemNote && (
-                                 <div className="whitespace-pre-wrap leading-tight mt-0.5 text-[11pt]">{item.itemNote}</div>
-                               )}
+                            <div className="flex-1 pr-2 font-normal">
+                               {item.name}
                             </div>
                             <span className="w-[40px] text-left">Rp.</span>
                             <span className="w-[100px] text-right">{formatRp(val)}</span>
