@@ -193,6 +193,10 @@ export default function App() {
 
   const [reportDate, setReportDate] = useState(getLocalYMD());
   const [activeType, setActiveType] = useState('utama'); 
+  
+  // --- STATE DOKUMEN INDEX (FITUR BARU) ---
+  const [activeLainIndex, setActiveLainIndex] = useState(1); // 1, 2, 3, 4, 5
+
   const [selectedCatToAdd, setSelectedCatToAdd] = useState('');
   const [selectedItemToAdd, setSelectedItemToAdd] = useState('');
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -256,23 +260,31 @@ export default function App() {
     setConfirmDialog({ isOpen: true, message, onConfirm: onConfirmAction });
   };
 
+  // --- FUNGSI MENDAPATKAN KUNCI TIPE AKTIF ---
+  // Jika utama, key = 'utama'. Jika lain-lain, key = 'lain' (index 1), 'lain_2', 'lain_3', dst.
+  // Ini menjaga kompatibilitas 100% dengan data lama Bapak.
+  const activeTypeKey = useMemo(() => {
+    if (activeType === 'utama') return 'utama';
+    return activeLainIndex === 1 ? 'lain' : `lain_${activeLainIndex}`;
+  }, [activeType, activeLainIndex]);
+
   const currentReport = useMemo(() => {
     const dayData = allReports[reportDate] || {};
-    const typeData = dayData[activeType] || {};
+    const typeData = dayData[activeTypeKey] || {};
     return {
       sequence: typeData.sequence || '',
       signatureDate: typeData.signatureDate || reportDate,
       activeItems: Array.isArray(typeData.activeItems) ? typeData.activeItems : [],
       formData: typeData.formData || {}
     };
-  }, [allReports, reportDate, activeType]);
+  }, [allReports, reportDate, activeTypeKey]);
 
   const updateCurrentReport = (updater) => {
     setAllReports(prev => {
       const dayData = prev[reportDate] || {};
-      const typeData = dayData[activeType] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
+      const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
       const updatedTypeData = typeof updater === 'function' ? updater(typeData) : { ...typeData, ...updater };
-      return { ...prev, [reportDate]: { ...dayData, [activeType]: updatedTypeData } };
+      return { ...prev, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
     });
   };
 
@@ -286,6 +298,7 @@ export default function App() {
     setSusulanValidDate('');
     setLainItemDate('');
     setLainItemNote('');
+    setActiveLainIndex(1); // Reset dokumen ke-1 tiap ganti hari
   };
 
   const handleTypeSwitch = (type) => {
@@ -295,6 +308,7 @@ export default function App() {
     setSusulanValidDate('');
     setLainItemDate('');
     setLainItemNote('');
+    setActiveLainIndex(1); // Reset ke dokumen 1 tiap ganti tab
   };
 
   const clearCurrentReport = () => {
@@ -599,9 +613,12 @@ export default function App() {
       const d = i + 1;
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const dayData = allReports[dateStr] || {};
+      
       const utamaItems = Array.isArray(dayData.utama?.activeItems) ? dayData.utama.activeItems : [];
-      const lainItems = Array.isArray(dayData.lain?.activeItems) ? dayData.lain.activeItems : [];
-      return { day: d, dateStr, hasUtama: utamaItems.length > 0, hasLain: lainItems.length > 0 };
+      // Mengecek semua dokumen 'lain', 'lain_2', 'lain_3', dst
+      const hasLain = Object.keys(dayData).some(k => k.startsWith('lain') && Array.isArray(dayData[k].activeItems) && dayData[k].activeItems.length > 0);
+      
+      return { day: d, dateStr, hasUtama: utamaItems.length > 0, hasLain };
     });
     return { blanks, days };
   };
@@ -616,7 +633,7 @@ export default function App() {
       setPdfLoading(true);
       const opt = {
         margin:       [10, 10, 10, 10], 
-        filename:     `Laporan_TMR_${activeType.toUpperCase()}_${reportDate}.pdf`,
+        filename:     `Laporan_TMR_${activeType.toUpperCase()}${activeType === 'lain' ? `_Dok${activeLainIndex}` : ''}_${reportDate}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2, useCORS: true },
         jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -932,8 +949,29 @@ export default function App() {
             </button>
           </div>
 
+          {/* DOKUMEN SELECTOR (KHUSUS STSU LAIN-LAIN) */}
+          {activeType === 'lain' && (
+            <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar pb-2">
+              {[1, 2, 3, 4, 5].map(num => (
+                <button
+                  key={num}
+                  onClick={() => {
+                    setActiveLainIndex(num);
+                    setSelectedCatToAdd(''); setSelectedItemToAdd('');
+                    setLainItemDate(''); setLainItemNote('');
+                  }}
+                  className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-colors border ${activeLainIndex === num ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-purple-600 border-purple-200 hover:bg-purple-50'}`}
+                >
+                  Dokumen Ke-{num}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 relative overflow-hidden">
-            <div className={`absolute top-0 right-0 text-white text-xs font-bold px-3 py-1 rounded-bl-lg ${activeType === 'utama' ? 'bg-green-500' : 'bg-purple-500'}`}>Dokumen {activeType === 'utama' ? 'STSU (SU)' : 'Lain-lain (SU/L)'}</div>
+            <div className={`absolute top-0 right-0 text-white text-xs font-bold px-3 py-1 rounded-bl-lg ${activeType === 'utama' ? 'bg-green-500' : 'bg-purple-500'}`}>
+              Dokumen {activeType === 'utama' ? 'STSU (SU)' : `Lain-lain (SU/L) - Ke ${activeLainIndex}`}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-3">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tgl Laporan (Di Atas)</label>
@@ -1011,7 +1049,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* INPUT URAIAN DINAMIS / MULTILINE KHUSUS LAIN-LAIN */}
               {activeType === 'lain' && (
                 <div>
                   <label className="block text-xs font-semibold mb-1 text-purple-700">Keterangan Tambahan / Uraian Dinamis (Cetak di Judul)</label>
@@ -1065,7 +1102,6 @@ export default function App() {
                               <label className="text-gray-700 font-medium">
                                  {item.id === 'direct' ? 'Nominal Pemasukan' : item.name}
                               </label>
-                              {/* HANYA MUNCUL DI TAMPILAN INPUT AGAR KASIR TAHU */}
                               {item.itemNote && (
                                 <span className="text-xs text-purple-600 mt-1 whitespace-pre-wrap font-medium">{item.itemNote}</span>
                               )}
@@ -1153,19 +1189,16 @@ export default function App() {
                 if (subtotals[group.groupId] === 0) return null;
                 const isDirect = Array.isArray(group.activeItems) && group.activeItems.length === 1 && group.activeItems[0].id === 'direct';
                 
-                // --- PERUBAHAN JUDUL CERDAS (MENYATUKAN ROMBONGAN KE DALAM KALIMAT) ---
                 let groupTitle = group.name;
                 if (activeType === 'utama' && group.isSusulan) {
                   groupTitle = `${group.name} susulan (validasi ${formatTanggalTtd(group.validDate)})`;
                 } else if (activeType === 'lain') {
                   let parts = [group.name];
                   
-                  // Jika ada Uraian Dinamis (Rombongan), bersihkan enter agar jadi satu kalimat
                   if (group.itemNote) {
                      parts.push(`dari ${group.itemNote.replace(/\n/g, ' ')}`);
                   }
                   
-                  // Jika ada Tanggal Transaksi
                   if (group.itemDate) {
                      parts.push(`tanggal ${formatTanggalTtd(group.itemDate)}`);
                   }
