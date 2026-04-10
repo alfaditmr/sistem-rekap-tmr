@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock } from 'lucide-react';
+import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, LogOut, Lock } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
@@ -91,11 +91,18 @@ const getLocalYMD = () => {
   return `${year}-${month}-${day}`;
 };
 
+// Fungsi helper mendapatkan nama hari
+const getDayName = (dateStr) => {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  return days[d.getDay()];
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null });
   const [resetDialog, setResetDialog] = useState({ isOpen: false, password: '', error: '', isVerifying: false });
-  const [pdfLoading, setPdfLoading] = useState(false);
 
   // --- STATE LOGIN & AUTHENTICATION ---
   const [user, setUser] = useState(null);
@@ -108,13 +115,6 @@ export default function App() {
   // --- STATE FIREBASE & SYNC ---
   const [dbReady, setDbReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState('offline'); 
-
-  useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-    script.async = true;
-    document.body.appendChild(script);
-  }, []);
 
   useEffect(() => {
     if (!auth) return;
@@ -149,11 +149,14 @@ export default function App() {
     return defaultValue;
   };
 
+  // Tambah field NIP untuk pejabat
   const [signatures, setSignatures] = useState(() => getInitialState('tmr_v17_signatures', {
-    leftRole: 'Kepala Seksi Pelayanan dan Informasi',
-    leftName: 'Afriana Pulungan S.Si. MAP',
+    leftRole: 'Seksi Pelayanan & Informasi',
+    leftName: 'Afriana Pulungan, S.Si., M.AP.',
+    leftNip: '197304212007012021',
     rightRole: 'Bendahara Penerimaan',
     rightName: 'Evi Irmawati',
+    rightNip: '198101082009042006',
     location: 'Jakarta'
   }));
 
@@ -194,7 +197,7 @@ export default function App() {
   const [reportDate, setReportDate] = useState(getLocalYMD());
   const [activeType, setActiveType] = useState('utama'); 
   
-  // --- STATE DOKUMEN INDEX (FITUR DINAMIS) ---
+  // --- STATE DOKUMEN INDEX ---
   const [activeLainIndex, setActiveLainIndex] = useState(1); 
 
   const [selectedCatToAdd, setSelectedCatToAdd] = useState('');
@@ -269,7 +272,7 @@ export default function App() {
   // --- MENGAMBIL DAFTAR INDEKS DOKUMEN YANG ADA HARI INI ---
   const lainDocIndices = useMemo(() => {
     const dayData = allReports[reportDate] || {};
-    const indices = [1]; // Dokumen 1 selalu ada secara visual
+    const indices = [1]; 
     Object.keys(dayData).forEach(k => {
       if (k.startsWith('lain_')) {
         const num = parseInt(k.split('_')[1], 10);
@@ -281,7 +284,6 @@ export default function App() {
     return indices.sort((a, b) => a - b);
   }, [allReports, reportDate]);
 
-  // --- FUNGSI MENAMBAH TAB DOKUMEN ---
   const handleAddLainDoc = () => {
     const nextIndex = Math.max(...lainDocIndices) + 1;
     const nextKey = `lain_${nextIndex}`;
@@ -300,7 +302,6 @@ export default function App() {
     setLainItemDate(''); setLainItemNote('');
   };
 
-  // --- FUNGSI MENGHAPUS TAB DOKUMEN ---
   const handleRemoveLainDoc = (indexToRemove) => {
     showConfirm(`Hapus Dokumen Ke-${indexToRemove}? Semua data di dalam dokumen ini akan ikut terhapus.`, () => {
       setAllReports(prev => {
@@ -310,7 +311,7 @@ export default function App() {
         return { ...prev, [reportDate]: dayData };
       });
       if (activeLainIndex === indexToRemove) {
-         setActiveLainIndex(1); // Kembali ke Dokumen 1 jika yang aktif dihapus
+         setActiveLainIndex(1); 
       }
     });
   };
@@ -345,7 +346,7 @@ export default function App() {
     setSusulanValidDate('');
     setLainItemDate('');
     setLainItemNote('');
-    setActiveLainIndex(1); // Reset dokumen ke-1 tiap ganti hari
+    setActiveLainIndex(1); 
   };
 
   const handleTypeSwitch = (type) => {
@@ -355,7 +356,7 @@ export default function App() {
     setSusulanValidDate('');
     setLainItemDate('');
     setLainItemNote('');
-    setActiveLainIndex(1); // Reset ke dokumen 1 tiap ganti tab
+    setActiveLainIndex(1); 
   };
 
   const clearCurrentReport = () => {
@@ -659,7 +660,6 @@ export default function App() {
       const dayData = allReports[dateStr] || {};
       
       const utamaItems = Array.isArray(dayData.utama?.activeItems) ? dayData.utama.activeItems : [];
-      // Mengecek semua dokumen 'lain', 'lain_2', 'lain_3', dst
       const hasLain = Object.keys(dayData).some(k => (k === 'lain' || k.startsWith('lain_')) && Array.isArray(dayData[k].activeItems) && dayData[k].activeItems.length > 0);
       
       return { day: d, dateStr, hasUtama: utamaItems.length > 0, hasLain };
@@ -669,37 +669,6 @@ export default function App() {
   const { blanks, days } = getDaysArray();
 
   const handlePrint = () => { window.print(); };
-
-  const handleDownloadPDF = () => {
-    const element = document.getElementById('printable-area');
-    if (!element) return;
-    if (window.html2pdf) {
-      setPdfLoading(true);
-      const opt = {
-        margin:       [10, 10, 10, 10], 
-        filename:     `Laporan_TMR_${activeType.toUpperCase()}${activeType === 'lain' ? `_Dok${activeLainIndex}` : ''}_${reportDate}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true },
-        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      };
-      window.html2pdf().set(opt).from(element).save().then(() => setPdfLoading(false)).catch(err => {
-        console.error("Gagal buat PDF", err);
-        setPdfLoading(false);
-      });
-    } else {
-      showConfirm("Modul pembuat PDF sedang dimuat oleh sistem. Mohon tunggu 3 detik lalu coba tekan lagi.", null);
-    }
-  };
-
-  const formatTanggalCetak = (dateStr) => {
-    if(!dateStr) return "";
-    return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).replace(',', ', tanggal');
-  };
-  const formatTanggalTtd = (dateStr) => {
-    if(!dateStr) return "";
-    return new Date(dateStr).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: '2-digit' });
-  };
-
 
   // ==========================================
   // RENDER LAYAR LOGIN JIKA BELUM MASUK
@@ -768,11 +737,25 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 font-sans pb-36 relative">
       <style>{`
+        /* CSS KHUSUS PRINTER DOT MATRIX NCR */
         @media print {
-          body { background-color: white; }
+          body { background-color: white; margin: 0; padding: 0; }
           .no-print { display: none !important; }
-          .print-container { width: 100%; max-width: 100%; margin: 0; padding: 0; font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: black; box-shadow: none; border: none; }
-          @page { margin: 15mm; }
+          
+          /* Gunakan font monospace bawaan sistem untuk dot matrix */
+          .print-container { 
+            width: 100%; 
+            margin: 0; 
+            padding: 0; 
+            font-family: 'Courier New', Courier, monospace !important; 
+            font-size: 11pt; 
+            color: black; 
+            box-shadow: none; 
+            border: none; 
+          }
+          
+          /* Reset margin browser agar koordinat tepat */
+          @page { margin: 0; size: auto; }
         }
       `}</style>
 
@@ -813,7 +796,7 @@ export default function App() {
 
             <form onSubmit={handleConfirmReset}>
               <div className="mb-6">
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Masukkan Password ADMIN</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Masukkan Password Kasir</label>
                 <input 
                   type="password" 
                   value={resetDialog.password}
@@ -919,12 +902,14 @@ export default function App() {
                 <h3 className="font-semibold text-gray-700 text-sm border-b pb-2">Pihak Kiri (Penyetor)</h3>
                 <div><label className="text-xs text-gray-500 uppercase">Jabatan</label><input type="text" value={signatures.leftRole || ''} onChange={(e) => setSignatures({...signatures, leftRole: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
                 <div><label className="text-xs text-gray-500 uppercase">Nama</label><input type="text" value={signatures.leftName || ''} onChange={(e) => setSignatures({...signatures, leftName: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none font-bold focus:border-blue-500" /></div>
+                <div><label className="text-xs text-gray-500 uppercase">NIP</label><input type="text" value={signatures.leftNip || ''} onChange={(e) => setSignatures({...signatures, leftNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
               </div>
               <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
                 <h3 className="font-semibold text-gray-700 text-sm border-b pb-2">Pihak Kanan (Bendahara)</h3>
                 <div><label className="text-xs text-gray-500 uppercase">Lokasi</label><input type="text" value={signatures.location || ''} onChange={(e) => setSignatures({...signatures, location: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
                 <div><label className="text-xs text-gray-500 uppercase">Jabatan</label><input type="text" value={signatures.rightRole || ''} onChange={(e) => setSignatures({...signatures, rightRole: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
                 <div><label className="text-xs text-gray-500 uppercase">Nama</label><input type="text" value={signatures.rightName || ''} onChange={(e) => setSignatures({...signatures, rightName: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none font-bold focus:border-blue-500" /></div>
+                <div><label className="text-xs text-gray-500 uppercase">NIP</label><input type="text" value={signatures.rightNip || ''} onChange={(e) => setSignatures({...signatures, rightNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
               </div>
             </div>
           </div>
@@ -1009,7 +994,6 @@ export default function App() {
                     Dokumen Ke-{num}
                   </button>
                   
-                  {/* TOMBOL HAPUS (Kecuali Dokumen 1) */}
                   {num > 1 && (
                     <button 
                        onClick={(e) => { e.stopPropagation(); handleRemoveLainDoc(num); }}
@@ -1022,7 +1006,6 @@ export default function App() {
                 </div>
               ))}
               
-              {/* TOMBOL TAMBAH DOKUMEN BARU */}
               <button 
                 onClick={handleAddLainDoc}
                 className="px-3 py-2 ml-1 rounded-lg font-bold text-sm whitespace-nowrap transition-colors border bg-purple-50 text-purple-600 border-purple-300 hover:bg-purple-100 flex items-center gap-1.5 shadow-sm"
@@ -1207,127 +1190,125 @@ export default function App() {
               </div>
               <div className="flex w-full sm:w-auto gap-2">
                 <button onClick={clearCurrentReport} className="px-4 py-3 text-red-500 hover:bg-red-50 font-bold rounded-xl transition-colors text-sm border border-transparent hover:border-red-200">Reset</button>
-                <button onClick={() => setActiveTab('print')} disabled={activeGroups.length === 0} className={`flex-1 sm:flex-none text-white px-6 py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors shadow-sm disabled:bg-gray-300 ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}><FileText size={20} /> Lihat PDF</button>
+                <button onClick={() => setActiveTab('print')} disabled={activeGroups.length === 0} className={`flex-1 sm:flex-none text-white px-6 py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors shadow-sm disabled:bg-gray-300 ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}><FileText size={20} /> Lihat Draft Cetak</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* === TAB: CETAK PDF === */}
+      {/* === TAB: CETAK DOT MATRIX NCR === */}
       {activeTab === 'print' && (
         <div className="max-w-4xl mx-auto px-2 sm:px-4 py-6">
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4 no-print">
              <div>
                <h2 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-                 <FileText size={20} className={activeType === 'utama' ? 'text-green-600' : 'text-purple-600'}/> 
-                 Preview & Download: {activeType === 'utama' ? 'STSU Pendapatan' : 'STSU Lain-lain'}
+                 <Printer size={20} className={activeType === 'utama' ? 'text-green-600' : 'text-purple-600'}/> 
+                 Mode Cetak NCR (Dot Matrix): {activeType === 'utama' ? 'STSU Pendapatan' : `STSU Lain-lain (Dok ${activeLainIndex})`}
                </h2>
+               <p className="text-xs text-gray-500 mt-1">Pastikan kertas rangkap 3 sudah masuk ke printer Epson.</p>
              </div>
              
              <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                <button onClick={() => setActiveTab('input')} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none">Kembali Edit</button>
-               <button onClick={handleDownloadPDF} disabled={pdfLoading} className={`px-4 py-2 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'} disabled:opacity-50`}>
-                 {pdfLoading ? <RefreshCw size={18} className="animate-spin" /> : <Download size={18} />}
-                 {pdfLoading ? 'Memproses...' : 'Unduh PDF'}
-               </button>
-               <button onClick={handlePrint} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md">
-                 <Printer size={18} /> Cetak Printer
+               <button onClick={handlePrint} className="px-6 py-2 bg-gray-900 hover:bg-black text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md">
+                 <Printer size={18} /> Cetak (Dot Matrix)
                </button>
              </div>
           </div>
 
-          <div id="printable-area" className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative">
+          {/* AREA CETAK DOT MATRIX (Presisi Posisi Absolut/Margin) */}
+          {/* Berdasarkan koordinat baris Excel */}
+          <div id="printable-area" className="print-container bg-white mx-auto relative overflow-hidden" style={{ minHeight: '297mm', width: '210mm' }}>
             
-            <div className="absolute top-10 right-10 text-gray-200 font-bold text-3xl opacity-50 uppercase tracking-widest print:opacity-0 pointer-events-none">
-              DRAFT {activeType === 'utama' ? 'SU' : 'SU/L'}
+            {/* Teks Draft hanya di layar */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-gray-100 font-black text-6xl opacity-30 uppercase tracking-widest print:opacity-0 pointer-events-none -rotate-45 whitespace-nowrap">
+              PREVIEW NCR
             </div>
 
-            <div className="font-bold underline mb-8 text-[11pt]">No. {computedStsuNo}</div>
-
-            <div className="mb-6 text-[11pt]">
-              Diterima uang hasil pendapatan {formatTanggalCetak(reportDate)} sebagai berikut;
+            {/* --- BAGIAN HEADER (Sesuai Baris 8 di Excel) --- */}
+            {/* Baris 8: Hari, Kosong, Tanggal */}
+            <div className="absolute font-bold" style={{ top: '35mm', left: '60mm' }}>
+              {getDayName(reportDate)}
+            </div>
+            <div className="absolute font-bold" style={{ top: '35mm', left: '100mm' }}>
+              {reportDate}
             </div>
 
-            <div className="space-y-2">
-              {activeGroups.map((group, index) => {
-                if (subtotals[group.groupId] === 0) return null;
-                const isDirect = Array.isArray(group.activeItems) && group.activeItems.length === 1 && group.activeItems[0].id === 'direct';
-                
-                let groupTitle = group.name;
-                if (activeType === 'utama' && group.isSusulan) {
-                  groupTitle = `${group.name} susulan (validasi ${formatTanggalTtd(group.validDate)})`;
-                } else if (activeType === 'lain') {
-                  let parts = [group.name];
-                  
-                  if (group.itemNote) {
-                     parts.push(`dari ${group.itemNote.replace(/\n/g, ' ')}`);
-                  }
-                  
-                  if (group.itemDate) {
-                     parts.push(`tanggal ${formatTanggalTtd(group.itemDate)}`);
-                  }
-                  
-                  groupTitle = parts.join(' ');
-                }
+            {/* --- NAMA KATEGORI BESAR (Baris 11) --- */}
+            <div className="absolute" style={{ top: '50mm', left: '70mm', right: '10mm', textAlign: 'center' }}>
+              {activeGroups.map(g => g.name).join(', ')}
+            </div>
 
-                return (
-                  <div key={group.groupId} className="text-[11pt] pb-3">
-                    <div className="font-bold mb-1 leading-relaxed">
-                      {index + 1}. Diterima uang hasil pendapatan {groupTitle}, sebagai berikut :
-                    </div>
-                    
-                    <div className="w-full">
-                      {!isDirect && group.activeItems.map(item => {
-                        const inputKey = getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate, item.itemNote);
-                        const val = currentReport.formData[inputKey] || 0;
-                        if (val === 0) return null;
+            {/* --- RINCIAN ITEM / SUB-KATEGORI (Baris 12 & 13) --- */}
+            <div className="absolute" style={{ top: '56mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
+               {activeGroups.map(group => {
+                  if (subtotals[group.groupId] === 0) return null;
+                  const isDirect = Array.isArray(group.activeItems) && group.activeItems.length === 1 && group.activeItems[0].id === 'direct';
+                  
+                  // Khusus STSU Lain, print Uraian/Note juga
+                  let itemsToPrint = group.activeItems.filter(i => {
+                    const key = getActiveItemKey(group.catId, i.id, group.isSusulan, group.validDate, group.itemDate, i.itemNote);
+                    return (currentReport.formData[key] || 0) > 0;
+                  });
 
-                        return (
-                          <div key={inputKey} className="flex w-full max-w-[450px] mb-0.5 pl-4 sm:pl-6">
-                            <div className="flex-1 pr-2 font-normal">
-                               {item.name}
-                            </div>
-                            <span className="w-[40px] text-left">Rp.</span>
-                            <span className="w-[100px] text-right">{formatRp(val)}</span>
-                          </div>
-                        );
-                      })}
-                      
-                      <div className={`flex w-full font-bold ${isDirect ? '' : 'mt-1 pt-1'}`}>
-                        <span className="flex-1 text-right pr-6">{isDirect ? 'Nominal' : 'Sub Total'}</span>
-                        <span className="w-[40px] text-left">Rp.</span>
-                        <span className="w-[120px] text-right">{formatRp(subtotals[group.groupId])}</span>
-                      </div>
-                    </div>
+                  if (isDirect) {
+                    // Jika mode nominal langsung, tampilkan uraian dinamisnya jika ada
+                    const note = group.activeItems[0].itemNote;
+                    return note ? note.replace(/\n/g, ', ') : '';
+                  }
+
+                  return itemsToPrint.map(i => {
+                    let text = i.name;
+                    if (i.itemNote) text += ` (${i.itemNote.replace(/\n/g, ' ')})`;
+                    return text;
+                  }).join(', ');
+
+               }).filter(Boolean).join(' | ')}
+            </div>
+
+            {/* --- JABATAN PENYETOR (Baris 14) --- */}
+            <div className="absolute" style={{ top: '65mm', left: '60mm' }}>
+              {signatures.leftRole}
+            </div>
+
+            {/* --- NOMINAL ANGKA (Baris 16) --- */}
+            <div className="absolute font-bold text-lg" style={{ top: '75mm', left: '50mm' }}>
+              {formatRp(grandTotal)}
+            </div>
+
+            {/* --- TERBILANG (Baris 17) --- */}
+            <div className="absolute italic font-bold capitalize" style={{ top: '80mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
+              # {terbilang(grandTotal)} rupiah #
+            </div>
+
+            {/* --- TANGGAL TTD BAWAH KANAN (Baris 20) --- */}
+            <div className="absolute" style={{ top: '100mm', left: '150mm' }}>
+              {currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}
+            </div>
+
+            {/* --- NOMINAL (BAWAH) (Baris 21) --- */}
+            <div className="absolute font-bold" style={{ top: '105mm', left: '150mm' }}>
+              {formatRp(grandTotal)}
+            </div>
+
+            {/* --- NAMA & NIP PEJABAT (Baris 27 & 28) --- */}
+            <div className="absolute w-full" style={{ top: '135mm', left: '0' }}>
+               <div className="flex justify-between w-full" style={{ paddingLeft: '15mm', paddingRight: '15mm' }}>
+                  {/* KIRI (PENYETOR) */}
+                  <div className="text-center w-[80mm]">
+                    <div className="font-bold underline">{signatures.leftName}</div>
+                    <div>NIP. {signatures.leftNip}</div>
                   </div>
-                );
-              })}
+                  
+                  {/* KANAN (BENDAHARA) */}
+                  <div className="text-center w-[80mm]">
+                    <div className="font-bold underline">{signatures.rightName}</div>
+                    <div>NIP. {signatures.rightNip}</div>
+                  </div>
+               </div>
             </div>
 
-            <div className="flex w-full mt-6 border-t border-b-2 border-black py-2 mb-6 font-bold text-[11pt]">
-               <span className="flex-1 text-right pr-6">Jumlah Total</span>
-               <span className="w-[40px] text-left">Rp.</span>
-               <span className="w-[120px] text-right">{formatRp(grandTotal)}</span>
-            </div>
-
-            <div className="mt-8 text-[11pt]">
-              <p className="mb-4"><strong>Terbilang : </strong> <i className="capitalize">{terbilang(grandTotal)} rupiah</i></p>
-              <p className="text-justify leading-relaxed">
-                Disetor uang kebendahara penerimaan hasil retribusi layanan masuk tempat rekreasi dan pemakaian fasilitas TMR Pada hari {formatTanggalCetak(reportDate)} dengan STSU No. {computedStsuNo} dengan uang sebesar Rp. {formatRp(grandTotal)}
-              </p>
-            </div>
-
-            <div className="flex justify-between mt-16 text-center text-[11pt]">
-              <div className="w-[45%] flex flex-col justify-between">
-                <div><br/>{signatures.leftRole}</div>
-                <div className="mt-28 font-bold underline">({signatures.leftName})</div>
-              </div>
-              <div className="w-[45%] flex flex-col justify-between">
-                <div>{signatures.location}, {formatTanggalTtd(currentReport.signatureDate)}<br/>{signatures.rightRole}</div>
-                <div className="mt-24 font-bold underline">({signatures.rightName})</div>
-              </div>
-            </div>
           </div>
         </div>
       )}
