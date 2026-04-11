@@ -161,17 +161,18 @@ export default function App() {
     return defaultValue;
   };
 
-  const [signatures, setSignatures] = useState(() => getInitialState('tmr_v17_signatures', {
+  // Menggunakan v19 agar default baru masuk (Kepala Seksi Pelayanan dan Informasi)
+  const [signatures, setSignatures] = useState(() => getInitialState('tmr_v19_signatures', {
     leftRole: 'Kepala Seksi Pelayanan dan Informasi',
-    leftName: 'Afriana Pulungan S.Si. MAP',
-    leftNip: '',
+    leftName: 'Afriana Pulungan, S.Si., M.AP.',
+    leftNip: '197304212007012021',
     rightRole: 'Bendahara Penerimaan',
     rightName: 'Evi Irmawati',
-    rightNip: '',
+    rightNip: '198101082009042006',
     location: 'Jakarta'
   }));
 
-  const [categories, setCategories] = useState(() => getInitialState('tmr_v17_categories', [
+  const [categories, setCategories] = useState(() => getInitialState('tmr_v19_categories', [
     { id: 'cat_1', name: 'pemakaian fasilitas TMR', type: 'utama', items: [{ id: 'item_1a', name: 'Promo Penjualan Produk' }, { id: 'item_1b', name: 'Penempatan banner promosi' }, { id: 'item_1c', name: 'Panggung' }] },
     { id: 'cat_2', name: 'Retribusi Pedagang', type: 'utama', items: [{ id: 'item_2a', name: 'Retribusi pedagang Hari Biasa' }, { id: 'item_2b', name: 'Retribusi pedagang Hari Besar' }] },
     { id: 'cat_3', name: 'Pendapatan Retribusi Juru Foto', type: 'utama', items: [] },
@@ -203,7 +204,7 @@ export default function App() {
     }
   };
 
-  const [allReports, setAllReports] = useState(() => getInitialState('tmr_v17_allReports', { [getLocalYMD()]: defaultReportData }));
+  const [allReports, setAllReports] = useState(() => getInitialState('tmr_v19_allReports', { [getLocalYMD()]: defaultReportData }));
 
   const [reportDate, setReportDate] = useState(getLocalYMD());
   const [activeType, setActiveType] = useState('utama'); 
@@ -223,9 +224,9 @@ export default function App() {
   const [lainItemDate, setLainItemDate] = useState('');
   const [lainItemNote, setLainItemNote] = useState('');
 
-  useEffect(() => { localStorage.setItem('tmr_v17_signatures', JSON.stringify(signatures)); }, [signatures]);
-  useEffect(() => { localStorage.setItem('tmr_v17_categories', JSON.stringify(categories)); }, [categories]);
-  useEffect(() => { localStorage.setItem('tmr_v17_allReports', JSON.stringify(allReports)); }, [allReports]);
+  useEffect(() => { localStorage.setItem('tmr_v19_signatures', JSON.stringify(signatures)); }, [signatures]);
+  useEffect(() => { localStorage.setItem('tmr_v19_categories', JSON.stringify(categories)); }, [categories]);
+  useEffect(() => { localStorage.setItem('tmr_v19_allReports', JSON.stringify(allReports)); }, [allReports]);
 
   const getDocRef = () => {
     return doc(db, 'tmr_data', 'rekapitulasi_laporan');
@@ -1401,7 +1402,7 @@ export default function App() {
 
               <div className="flex justify-between mt-16 text-center text-[11pt]">
                 <div className="w-[45%] flex flex-col justify-between">
-                  <div><br/>{signatures.leftRole}</div>
+                  <div>Mengetahui,<br/>{signatures.leftRole}</div>
                   <div className="mt-28 font-bold underline">({signatures.leftName})</div>
                 </div>
                 <div className="w-[45%] flex flex-col justify-between">
@@ -1414,9 +1415,9 @@ export default function App() {
           ) : (
 
             /* ========================================================
-               MODE 2: DOT MATRIX NCR (POSISI ABSOLUT SESUAI EXCEL) 
+               MODE 2: DOT MATRIX NCR (POSISI ABSOLUT SESUAI EXCEL SETENGAH F4) 
                ======================================================== */
-            <div id="printable-area-ncr" className="print-container bg-white mx-auto relative overflow-hidden shadow-lg border border-gray-300" style={{ minHeight: '297mm', width: '210mm' }}>
+            <div id="printable-area-ncr" className="print-container bg-white mx-auto relative overflow-hidden shadow-lg border border-gray-300" style={{ minHeight: '165mm', width: '210mm' }}>
               
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-purple-100 font-black text-6xl opacity-30 uppercase tracking-widest print:opacity-0 pointer-events-none -rotate-45 whitespace-nowrap">
                 PREVIEW NCR DOT MATRIX
@@ -1448,62 +1449,62 @@ export default function App() {
 
                  return (
                    <>
-                      {/* Baris 8: Hari dan Tanggal */}
-                      <div className="absolute font-bold" style={{ top: '35mm', left: '60mm' }}>
+                      {/* Baris 8 (Excel): Hari dan Tanggal */}
+                      <div className="absolute font-bold" style={{ top: '37mm', left: '75mm' }}>
                         {getDayName(reportDate)}
                       </div>
-                      <div className="absolute font-bold" style={{ top: '35mm', left: '100mm' }}>
+                      <div className="absolute font-bold" style={{ top: '37mm', left: '110mm' }}>
                         {reportDate}
                       </div>
 
-                      {/* Baris 11: NAMA KATEGORI BESAR */}
-                      <div className="absolute" style={{ top: '50mm', left: '70mm', right: '10mm', textAlign: 'center' }}>
+                      {/* Baris 11 (Excel): NAMA KATEGORI BESAR */}
+                      <div className="absolute font-bold text-center" style={{ top: '53mm', left: '75mm', width: '80mm' }}>
                         {selectedNcrGroup.name}
                       </div>
 
-                      {/* Baris 12 & 13: RINCIAN ITEM / SUB-KATEGORI */}
-                      <div className="absolute" style={{ top: '56mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
+                      {/* Baris 12 & 13 (Excel): RINCIAN ITEM / SUB-KATEGORI */}
+                      <div className="absolute" style={{ top: '58mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
                          {ncrItemsString}
                       </div>
 
-                      {/* Baris 14: JABATAN PENYETOR */}
-                      <div className="absolute" style={{ top: '65mm', left: '60mm' }}>
-                        {signatures.leftRole}
+                      {/* Baris 14 (Excel): JABATAN PENYETOR */}
+                      <div className="absolute" style={{ top: '69mm', left: '75mm' }}>
+                        DARI : Seksi Pelayanan dan Informasi
                       </div>
 
-                      {/* Baris 16: NOMINAL ANGKA */}
-                      <div className="absolute font-bold text-lg" style={{ top: '75mm', left: '50mm' }}>
+                      {/* Baris 16 (Excel): NOMINAL ANGKA */}
+                      <div className="absolute font-bold text-lg" style={{ top: '79mm', left: '75mm' }}>
                         {formatRp(ncrTotal)}
                       </div>
 
-                      {/* Baris 17: TERBILANG */}
-                      <div className="absolute italic font-bold capitalize" style={{ top: '80mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
+                      {/* Baris 17 (Excel): TERBILANG */}
+                      <div className="absolute italic font-bold capitalize" style={{ top: '84mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
                         # {terbilang(ncrTotal)} rupiah #
                       </div>
 
-                      {/* Baris 20: TANGGAL TTD BAWAH KANAN */}
-                      <div className="absolute" style={{ top: '100mm', left: '150mm' }}>
+                      {/* Baris 20 (Excel): TANGGAL TTD BAWAH KANAN */}
+                      <div className="absolute" style={{ top: '100mm', left: '130mm' }}>
                         {currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}
                       </div>
 
-                      {/* Baris 21: NOMINAL TOTAL (BAWAH) */}
-                      <div className="absolute font-bold" style={{ top: '105mm', left: '150mm' }}>
+                      {/* Baris 21 (Excel): NOMINAL TOTAL (BAWAH) */}
+                      <div className="absolute font-bold text-lg" style={{ top: '105mm', left: '130mm' }}>
                         {formatRp(ncrTotal)}
                       </div>
 
-                      {/* Baris 27 & 28: NAMA & NIP PEJABAT */}
-                      <div className="absolute w-full" style={{ top: '135mm', left: '0' }}>
+                      {/* Baris 27 & 28 (Excel): NAMA & NIP PEJABAT */}
+                      <div className="absolute w-full" style={{ top: '137mm', left: '0' }}>
                          <div className="flex justify-between w-full" style={{ paddingLeft: '15mm', paddingRight: '15mm' }}>
                             {/* KIRI (PENYETOR) */}
                             <div className="text-center w-[80mm]">
                               <div className="font-bold underline">{signatures.leftName}</div>
-                              {signatures.leftNip ? <div>NIP. {signatures.leftNip}</div> : <div>NIP. ..............................</div>}
+                              {signatures.leftNip ? <div>NIP {signatures.leftNip}</div> : <div>NIP ..............................</div>}
                             </div>
                             
                             {/* KANAN (BENDAHARA) */}
                             <div className="text-center w-[80mm]">
                               <div className="font-bold underline">{signatures.rightName}</div>
-                              {signatures.rightNip ? <div>NIP. {signatures.rightNip}</div> : <div>NIP. ..............................</div>}
+                              {signatures.rightNip ? <div>NIP {signatures.rightNip}</div> : <div>NIP ..............................</div>}
                             </div>
                          </div>
                       </div>
