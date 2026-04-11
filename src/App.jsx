@@ -161,7 +161,6 @@ export default function App() {
     return defaultValue;
   };
 
-  // Menggunakan v19 agar default baru masuk (Kepala Seksi Pelayanan dan Informasi)
   const [signatures, setSignatures] = useState(() => getInitialState('tmr_v19_signatures', {
     leftRole: 'Kepala Seksi Pelayanan dan Informasi',
     leftName: 'Afriana Pulungan, S.Si., M.AP.',
@@ -275,16 +274,14 @@ export default function App() {
     setConfirmDialog({ isOpen: true, message, onConfirm: onConfirmAction });
   };
 
-  // --- FUNGSI MENDAPATKAN KUNCI TIPE AKTIF ---
   const activeTypeKey = useMemo(() => {
     if (activeType === 'utama') return 'utama';
     return activeLainIndex === 1 ? 'lain' : `lain_${activeLainIndex}`;
   }, [activeType, activeLainIndex]);
 
-  // --- MENGAMBIL DAFTAR INDEKS DOKUMEN YANG ADA HARI INI ---
   const lainDocIndices = useMemo(() => {
     const dayData = allReports[reportDate] || {};
-    const indices = [1]; // Dokumen 1 selalu ada secara visual
+    const indices = [1]; 
     Object.keys(dayData).forEach(k => {
       if (k.startsWith('lain_')) {
         const num = parseInt(k.split('_')[1], 10);
@@ -296,7 +293,6 @@ export default function App() {
     return indices.sort((a, b) => a - b);
   }, [allReports, reportDate]);
 
-  // --- FUNGSI MENAMBAH TAB DOKUMEN ---
   const handleAddLainDoc = () => {
     const nextIndex = Math.max(...lainDocIndices) + 1;
     const nextKey = `lain_${nextIndex}`;
@@ -315,7 +311,6 @@ export default function App() {
     setLainItemDate(''); setLainItemNote('');
   };
 
-  // --- FUNGSI MENGHAPUS TAB DOKUMEN ---
   const handleRemoveLainDoc = (indexToRemove) => {
     showConfirm(`Hapus Dokumen Ke-${indexToRemove}? Semua data di dalam dokumen ini akan ikut terhapus.`, () => {
       setAllReports(prev => {
@@ -325,7 +320,7 @@ export default function App() {
         return { ...prev, [reportDate]: dayData };
       });
       if (activeLainIndex === indexToRemove) {
-         setActiveLainIndex(1); // Kembali ke Dokumen 1 jika yang aktif dihapus
+         setActiveLainIndex(1);
       }
     });
   };
@@ -360,8 +355,8 @@ export default function App() {
     setSusulanValidDate('');
     setLainItemDate('');
     setLainItemNote('');
-    setActiveLainIndex(1); // Reset dokumen ke-1 tiap ganti hari
-    setPrintMode('pdf'); // Reset Mode Print
+    setActiveLainIndex(1);
+    setPrintMode('pdf');
   };
 
   const handleTypeSwitch = (type) => {
@@ -371,8 +366,8 @@ export default function App() {
     setSusulanValidDate('');
     setLainItemDate('');
     setLainItemNote('');
-    setActiveLainIndex(1); // Reset ke dokumen 1 tiap ganti tab
-    setPrintMode('pdf'); // Reset Mode Print
+    setActiveLainIndex(1);
+    setPrintMode('pdf');
   };
 
   const clearCurrentReport = () => {
@@ -676,7 +671,6 @@ export default function App() {
       const dayData = allReports[dateStr] || {};
       
       const utamaItems = Array.isArray(dayData.utama?.activeItems) ? dayData.utama.activeItems : [];
-      // Mengecek semua dokumen 'lain', 'lain_2', 'lain_3', dst
       const hasLain = Object.keys(dayData).some(k => (k === 'lain' || k.startsWith('lain_')) && Array.isArray(dayData[k].activeItems) && dayData[k].activeItems.length > 0);
       
       return { day: d, dateStr, hasUtama: utamaItems.length > 0, hasLain };
@@ -791,18 +785,20 @@ export default function App() {
           .no-print { display: none !important; }
           
           ${printMode === 'ncr' ? `
-            /* Mode Dot Matrix (NCR): Ukuran absolute, margin browser dihilangkan */
+            /* Mode Dot Matrix (NCR): Ukuran Kertas Setengah F4 (215mm x 165mm) */
             .print-container { 
-              width: 100%; 
+              width: 215mm; 
+              height: 165mm; 
               margin: 0; 
               padding: 0; 
               font-family: 'Courier New', Courier, monospace !important; 
               font-size: 11pt; 
               color: black; 
-              box-shadow: none; 
-              border: none; 
+              /* Hapus border dan box-shadow saat print */
+              box-shadow: none !important; 
+              border: none !important; 
             }
-            @page { margin: 0; size: auto; }
+            @page { size: 215mm 165mm; margin: 0; }
           ` : `
             /* Mode PDF Gabungan: Layout standar surat resmi (Asli Bapak Fatah) */
             .print-container { 
@@ -813,8 +809,9 @@ export default function App() {
               font-family: 'Times New Roman', Times, serif; 
               font-size: 11pt; 
               color: black; 
-              box-shadow: none; 
-              border: none; 
+              /* Hapus border dan box-shadow saat print */
+              box-shadow: none !important; 
+              border: none !important; 
             }
             @page { margin: 15mm; }
           `}
@@ -1327,7 +1324,7 @@ export default function App() {
             /* ========================================================
                MODE 1: PDF GABUNGAN (TIDAK DIGANGGU GUGAT - SESUAI ASLINYA) 
                ======================================================== */
-            <div id="printable-area" className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative">
+            <div id="printable-area" className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative print:border-none print:shadow-none print:p-0">
               <div className="absolute top-10 right-10 text-gray-200 font-bold text-3xl opacity-50 uppercase tracking-widest print:opacity-0 pointer-events-none">
                 DRAFT {activeType === 'utama' ? 'SU' : 'SU/L'}
               </div>
@@ -1417,7 +1414,7 @@ export default function App() {
             /* ========================================================
                MODE 2: DOT MATRIX NCR (POSISI ABSOLUT SESUAI EXCEL SETENGAH F4) 
                ======================================================== */
-            <div id="printable-area-ncr" className="print-container bg-white mx-auto relative overflow-hidden shadow-lg border border-gray-300" style={{ minHeight: '165mm', width: '210mm' }}>
+            <div id="printable-area-ncr" className="print-container bg-white mx-auto relative overflow-hidden shadow-lg border border-gray-300 print:border-none print:shadow-none" style={{ minHeight: '165mm', width: '210mm' }}>
               
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-purple-100 font-black text-6xl opacity-30 uppercase tracking-widest print:opacity-0 pointer-events-none -rotate-45 whitespace-nowrap">
                 PREVIEW NCR DOT MATRIX
