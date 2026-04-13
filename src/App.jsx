@@ -161,6 +161,7 @@ export default function App() {
     return defaultValue;
   };
 
+  // Menggunakan v19 agar default baru masuk (Kepala Seksi Pelayanan dan Informasi)
   const [signatures, setSignatures] = useState(() => getInitialState('tmr_v19_signatures', {
     leftRole: 'Kepala Seksi Pelayanan dan Informasi',
     leftName: 'Afriana Pulungan, S.Si., M.AP.',
@@ -665,18 +666,34 @@ export default function App() {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay();
     const blanks = Array.from({length: firstDayIndex}, (_, i) => i);
+    
     const days = Array.from({length: daysInMonth}, (_, i) => {
       const d = i + 1;
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const dayData = allReports[dateStr] || {};
       
+      // Ambil data UTAMA (SU)
       const utamaItems = Array.isArray(dayData.utama?.activeItems) ? dayData.utama.activeItems : [];
-      const hasLain = Object.keys(dayData).some(k => (k === 'lain' || k.startsWith('lain_')) && Array.isArray(dayData[k].activeItems) && dayData[k].activeItems.length > 0);
+      const hasUtama = utamaItems.length > 0;
+      const utamaSequence = dayData.utama?.sequence || '';
       
-      return { day: d, dateStr, hasUtama: utamaItems.length > 0, hasLain };
+      // Ambil data LAIN-LAIN (SU/L), bisa banyak
+      const lainDocs = [];
+      Object.keys(dayData).forEach(k => {
+        if ((k === 'lain' || k.startsWith('lain_')) && Array.isArray(dayData[k].activeItems) && dayData[k].activeItems.length > 0) {
+          lainDocs.push({
+            key: k,
+            sequence: dayData[k].sequence || ''
+          });
+        }
+      });
+      
+      return { day: d, dateStr, hasUtama, utamaSequence, lainDocs, hasLain: lainDocs.length > 0 };
     });
+    
     return { blanks, days };
   };
+  
   const { blanks, days } = getDaysArray();
 
   const handlePrint = () => { window.print(); };
@@ -927,7 +944,7 @@ export default function App() {
                 {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map(day => (<div key={day} className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">{day}</div>))}
               </div>
               <div className="grid grid-cols-7 gap-1 sm:gap-2">
-                {blanks.map(b => <div key={`blank-${b}`} className="h-16 sm:h-24 bg-gray-50/50 rounded-lg sm:rounded-xl"></div>)}
+                {blanks.map(b => <div key={`blank-${b}`} className="h-20 sm:h-28 bg-gray-50/50 rounded-lg sm:rounded-xl"></div>)}
                 {days.map(d => {
                   const isToday = d.dateStr === getLocalYMD();
                   const isActive = d.dateStr === reportDate;
@@ -935,12 +952,29 @@ export default function App() {
                     <button 
                       key={d.day} 
                       onClick={() => { handleDateChange(d.dateStr); setActiveTab('input'); }}
-                      className={`relative h-16 sm:h-24 rounded-lg sm:rounded-xl flex flex-col justify-start items-center pt-1.5 sm:pt-3 border transition-all ${(d.hasUtama || d.hasLain) ? 'bg-blue-50/30 hover:bg-blue-50 border-blue-200 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'} ${isActive ? 'ring-2 ring-blue-500 transform scale-105 z-10 bg-blue-50' : ''}`}
+                      className={`relative h-20 sm:h-28 rounded-lg sm:rounded-xl flex flex-col justify-start items-center pt-1.5 sm:pt-3 border transition-all overflow-hidden ${(d.hasUtama || d.hasLain) ? 'bg-blue-50/30 hover:bg-blue-50 border-blue-200 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'} ${isActive ? 'ring-2 ring-blue-500 transform scale-105 z-10 bg-blue-50' : ''}`}
                     >
                       <span className={`text-sm sm:text-lg font-bold ${isToday ? 'text-blue-600 bg-blue-100 px-2 rounded-full' : 'text-gray-700'}`}>{d.day}</span>
-                      <div className="mt-1 sm:mt-2 flex flex-col sm:flex-row gap-0.5 sm:gap-1 w-full px-1 items-center justify-center">
-                        {d.hasUtama && <span className="bg-green-500 text-white text-[8px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm w-full sm:w-auto truncate">SU</span>}
-                        {d.hasLain && <span className="bg-purple-500 text-white text-[8px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm w-full sm:w-auto truncate">SU/L</span>}
+                      
+                      {/* Container untuk badge indikator */}
+                      <div className="mt-1 sm:mt-2 w-full px-1 flex flex-col gap-0.5 sm:gap-1 items-center overflow-y-auto no-scrollbar max-h-[44px] sm:max-h-[64px]">
+                        
+                        {/* Badge SU */}
+                        {d.hasUtama && (
+                          <span className="bg-green-500 text-white text-[9px] sm:text-[10px] font-bold px-1 sm:px-1.5 py-0.5 rounded shadow-sm w-full flex justify-between items-center shrink-0">
+                            <span>SU</span>
+                            {d.utamaSequence && d.utamaSequence !== '...' && <span className="bg-green-700 px-1 rounded truncate max-w-[30px] sm:max-w-none text-[8px] sm:text-[9px]">{d.utamaSequence}</span>}
+                          </span>
+                        )}
+                        
+                        {/* Badge SU/L (Bisa Lebih dari Satu) */}
+                        {d.lainDocs.map((lainDoc, index) => (
+                          <span key={index} className="bg-purple-500 text-white text-[9px] sm:text-[10px] font-bold px-1 sm:px-1.5 py-0.5 rounded shadow-sm w-full flex justify-between items-center shrink-0">
+                            <span>SU/L</span>
+                            {lainDoc.sequence && lainDoc.sequence !== '...' && <span className="bg-purple-700 px-1 rounded truncate max-w-[30px] sm:max-w-none text-[8px] sm:text-[9px]">{lainDoc.sequence}</span>}
+                          </span>
+                        ))}
+
                       </div>
                     </button>
                   );
