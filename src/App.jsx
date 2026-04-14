@@ -1136,7 +1136,8 @@ export default function App() {
             </div>
           </div>
 
-          <div className={`${activeType === 'utama' ? 'bg-green-50 border-green-200' : 'bg-purple-50 border-purple-200'} rounded-xl shadow-sm border p-4 mb-6 transition-colors`}>
+          {/* Diberi ID form-tambah-transaksi sebagai target scroll otomatis */}
+          <div id="form-tambah-transaksi" className={`${activeType === 'utama' ? 'bg-green-50 border-green-200' : 'bg-purple-50 border-purple-200'} rounded-xl shadow-sm border p-4 mb-6 transition-colors`}>
             
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
               <h2 className={`text-sm font-bold flex items-center gap-2 uppercase tracking-wide ${activeType === 'utama' ? 'text-green-800' : 'text-purple-800'}`}>
@@ -1271,7 +1272,44 @@ export default function App() {
                 </div>
               ))
             )}
+
+            {/* --- TOMBOL KEMBALI KE ATAS DI BAWAH LIST KARTU NOMINAL --- */}
+            {activeGroups.length > 0 && (
+              <div className="flex justify-center mt-6 mb-8 pb-4">
+                <button
+                  onClick={() => {
+                    const el = document.getElementById('form-tambah-transaksi');
+                    if (el) {
+                      const y = el.getBoundingClientRect().top + window.scrollY - 80;
+                      window.scrollTo({ top: y, behavior: 'smooth' });
+                    } else {
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                  }}
+                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold py-3 px-6 rounded-xl flex items-center gap-2 shadow-sm transition-all"
+                >
+                  <ArrowUp size={20} /> Ke Atas (Tambah Data Lain)
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* --- FLOATING BUTTON KEMBALI KE ATAS (FAB) MENGAMBANG DI KANAN BAWAH --- */}
+          <button
+            onClick={() => {
+              const el = document.getElementById('form-tambah-transaksi');
+              if (el) {
+                const y = el.getBoundingClientRect().top + window.scrollY - 80;
+                window.scrollTo({ top: y, behavior: 'smooth' });
+              } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }
+            }}
+            className="fixed bottom-28 right-4 sm:right-6 bg-blue-600 text-white p-3 sm:p-4 rounded-full shadow-xl hover:bg-blue-700 transition-all z-40 group no-print border-2 border-white flex items-center justify-center"
+            title="Kembali Ke Atas (Tambah Kategori)"
+          >
+            <ArrowUp size={24} className="group-hover:-translate-y-1 transition-transform" />
+          </button>
 
           {/* Baris Bawah Mengambang */}
           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] p-4 z-40 no-print">
