@@ -155,8 +155,6 @@ export default function App() {
 
   // --- STATE AI GENERATION ---
   const [isGeneratingUraian, setIsGeneratingUraian] = useState(false);
-  const [reportSummary, setReportSummary] = useState('');
-  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -405,7 +403,6 @@ export default function App() {
     setSusulanValidDate('');
     setLainItemDate('');
     setLainItemNote('');
-    setReportSummary('');
     setActiveLainIndex(1);
     setPrintMode('pdf');
   };
@@ -732,22 +729,6 @@ export default function App() {
     });
     return { subtotals: subs, grandTotal: gt };
   }, [currentReport.formData, activeGroups]);
-
-  // --- FUNGSI HANDLER AI UNTUK RINGKASAN EKSEKUTIF ---
-  const handleGenerateSummary = async () => {
-    setIsGeneratingSummary(true);
-    try {
-      const rincian = activeGroups.map(g => `- ${g.name}: Rp ${formatRp(subtotals[g.groupId])}`).join('\n');
-      const prompt = `Buat ringkasan eksekutif singkat (maksimal 2 paragraf) berdasarkan data pendapatan STSU berikut untuk dilaporkan kepada Kepala Seksi/Pimpinan. \n\nTanggal Laporan: ${formatTanggalCetak(reportDate)}\nTotal Pendapatan: Rp ${formatRp(grandTotal)}\nRincian Kategori:\n${rincian}\n\nBerikan gaya bahasa profesional, analitis, dan jangan menggunakan kalimat pembuka/penutup sapaan (seperti "Halo" atau "Berikut laporannya"), langsung ke isi ringkasan yang informatif.`;
-      
-      const result = await callGeminiAPI(prompt, "Anda adalah analis keuangan senior di Taman Margasatwa Ragunan.");
-      setReportSummary(result.trim());
-    } catch (e) {
-      showConfirm("Gagal membuat ringkasan AI. Silakan coba lagi.", null);
-    } finally {
-      setIsGeneratingSummary(false);
-    }
-  };
 
   const addCategory = () => setCategories([...(categories||[]), { id: `cat_${Date.now()}`, name: 'Kategori Baru', type: 'utama', items: [] }]);
   const updateCategory = (catId, key, value) => setCategories((categories||[]).map(c => c.id === catId ? { ...c, [key]: value } : c));
@@ -1517,30 +1498,6 @@ export default function App() {
       {activeTab === 'print' && (
         <div className="max-w-4xl mx-auto px-2 sm:px-4 py-6">
 
-          {activeGroups.length > 0 && (
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 sm:p-5 rounded-xl border border-blue-100 mb-6 shadow-sm no-print">
-              <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-3 gap-3">
-                <h3 className="font-bold text-blue-900 flex items-center gap-2"><Sparkles size={20} className="text-blue-600"/> Analisis Laporan AI</h3>
-                <button
-                  onClick={handleGenerateSummary}
-                  disabled={isGeneratingSummary || activeGroups.length === 0}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
-                >
-                  {isGeneratingSummary ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  {isGeneratingSummary ? 'Menganalisis...' : '✨ Buat Ringkasan Pimpinan'}
-                </button>
-              </div>
-              
-              {reportSummary ? (
-                <div className="text-sm text-gray-800 bg-white p-4 rounded-lg border border-blue-200 whitespace-pre-wrap leading-relaxed shadow-inner font-medium">
-                  {reportSummary}
-                </div>
-              ) : (
-                <p className="text-sm text-blue-700/80 bg-white/60 p-3 rounded-lg">Klik tombol di atas untuk membuat rangkuman naratif otomatis dari rincian pendapatan hari ini. Berguna untuk laporan ke atasan melalui pesan singkat.</p>
-              )}
-            </div>
-          )}
-          
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4 no-print">
              <div>
                <h2 className="font-bold text-gray-800 text-lg flex items-center gap-2">
