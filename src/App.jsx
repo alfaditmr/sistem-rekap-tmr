@@ -653,24 +653,45 @@ export default function App() {
   const nextMonth = () => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1));
   const prevMonth = () => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1));
   
+  // --- PERBAIKAN DASHBOARD ---
+  const calcTotalAmount = (typeData) => {
+    if (!typeData || !typeData.formData) return 0;
+    return Object.values(typeData.formData).reduce((a, b) => a + (Number(b) || 0), 0);
+  };
+
   const getDaysArray = () => {
     const year = calendarMonth.getFullYear();
     const month = calendarMonth.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay();
     const blanks = Array.from({length: firstDayIndex}, (_, i) => i);
+    
     const days = Array.from({length: daysInMonth}, (_, i) => {
       const d = i + 1;
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const dayData = allReports[dateStr] || {};
-      const utamaItems = Array.isArray(dayData.utama?.activeItems) ? dayData.utama.activeItems : [];
       
-      // MULTI-STSU LAIN: Check if any of the 'lain' keys have items
-      const lainItems = Object.keys(dayData).filter(k => k === 'lain' || k.startsWith('lain_')).reduce((acc, k) => {
-        return acc.concat(Array.isArray(dayData[k]?.activeItems) ? dayData[k].activeItems : []);
-      }, []);
+      // Ambil STSU Utama beserta Total & Sequence-nya
+      const utamaData = dayData.utama || {};
+      const utamaItems = Array.isArray(utamaData.activeItems) ? utamaData.activeItems : [];
+      const utamaSeq = utamaData.sequence || '';
+      const utamaTotal = calcTotalAmount(utamaData);
+      
+      // Ambil Seluruh Multi STSU Lain-lain beserta Total & Sequence-nya
+      const lainKeys = Object.keys(dayData).filter(k => k === 'lain' || k.startsWith('lain_'));
+      const lainInfos = lainKeys.map(k => {
+        const data = dayData[k] || {};
+        const items = Array.isArray(data.activeItems) ? data.activeItems : [];
+        const seq = data.sequence || '';
+        const total = calcTotalAmount(data);
+        return { key: k, hasItems: items.length > 0, seq, total };
+      }).filter(info => info.hasItems);
 
-      return { day: d, dateStr, hasUtama: utamaItems.length > 0, hasLain: lainItems.length > 0 };
+      return { 
+        day: d, dateStr, 
+        hasUtama: utamaItems.length > 0, utamaSeq, utamaTotal, 
+        lainInfos 
+      };
     });
     return { blanks, days };
   };
@@ -898,8 +919,9 @@ export default function App() {
               <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 text-center">
                 {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map(day => (<div key={day} className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">{day}</div>))}
               </div>
+              
               <div className="grid grid-cols-7 gap-1 sm:gap-2">
-                {blanks.map(b => <div key={`blank-${b}`} className="h-16 sm:h-24 bg-gray-50/50 rounded-lg sm:rounded-xl"></div>)}
+                {blanks.map(b => <div key={`blank-${b}`} className="min-h-[5rem] sm:min-h-[7rem] bg-gray-50/50 rounded-lg sm:rounded-xl"></div>)}
                 {days.map(d => {
                   const isToday = d.dateStr === getLocalYMD();
                   const isActive = d.dateStr === reportDate;
@@ -907,12 +929,23 @@ export default function App() {
                     <button 
                       key={d.day} 
                       onClick={() => { handleDateChange(d.dateStr); setActiveTab('input'); }}
-                      className={`relative h-16 sm:h-24 rounded-lg sm:rounded-xl flex flex-col justify-start items-center pt-1.5 sm:pt-3 border transition-all ${(d.hasUtama || d.hasLain) ? 'bg-blue-50/30 hover:bg-blue-50 border-blue-200 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'} ${isActive ? 'ring-2 ring-blue-500 transform scale-105 z-10 bg-blue-50' : ''}`}
+                      className={`relative min-h-[5rem] sm:min-h-[7rem] h-auto rounded-lg sm:rounded-xl flex flex-col justify-start items-center p-1 sm:p-2 border transition-all ${(d.hasUtama || d.lainInfos.length > 0) ? 'bg-blue-50/30 hover:bg-blue-50 border-blue-200 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'} ${isActive ? 'ring-2 ring-blue-500 transform scale-105 z-10 bg-blue-50' : ''}`}
                     >
-                      <span className={`text-sm sm:text-lg font-bold ${isToday ? 'text-blue-600 bg-blue-100 px-2 rounded-full' : 'text-gray-700'}`}>{d.day}</span>
-                      <div className="mt-1 sm:mt-2 flex flex-col sm:flex-row gap-0.5 sm:gap-1 w-full px-1 items-center justify-center">
-                        {d.hasUtama && <span className="bg-green-500 text-white text-[8px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm w-full sm:w-auto truncate">SU</span>}
-                        {d.hasLain && <span className="bg-purple-500 text-white text-[8px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm w-full sm:w-auto truncate">SU/L</span>}
+                      <span className={`text-sm sm:text-lg font-bold mb-1 ${isToday ? 'text-blue-600 bg-blue-100 px-2 rounded-full' : 'text-gray-700'}`}>{d.day}</span>
+                      
+                      <div className="w-full flex flex-col gap-1 overflow-hidden">
+                        {d.hasUtama && (
+                          <div className="bg-green-500 text-white text-[9px] sm:text-[11px] font-bold p-1 sm:p-1.5 rounded shadow-sm w-full text-left leading-tight">
+                            <div className="opacity-90 font-medium text-[8px] sm:text-[9px] truncate">SU: {d.utamaSeq || '-'}</div>
+                            <div className="truncate">Rp {formatRp(d.utamaTotal)}</div>
+                          </div>
+                        )}
+                        {d.lainInfos.map((lain) => (
+                          <div key={lain.key} className="bg-purple-500 text-white text-[9px] sm:text-[11px] font-bold p-1 sm:p-1.5 rounded shadow-sm w-full text-left leading-tight">
+                            <div className="opacity-90 font-medium text-[8px] sm:text-[9px] truncate">SU/L: {lain.seq || '-'}</div>
+                            <div className="truncate">Rp {formatRp(lain.total)}</div>
+                          </div>
+                        ))}
                       </div>
                     </button>
                   );
@@ -1032,7 +1065,7 @@ export default function App() {
             </button>
           </div>
 
-          {/* MULTI TAB STSU LAIN-LAIN */}
+          {/* MULTI TAB STSU LAIN-LAIN DENGAN NOMINAL */}
           {activeType.startsWith('lain') && (
             <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar pb-2 animate-in fade-in slide-in-from-top-2">
               {getLainKeys(allReports[reportDate] || {}).length === 0 ? (
@@ -1040,11 +1073,19 @@ export default function App() {
                    Dokumen Ke-1
                  </button>
               ) : (
-                getLainKeys(allReports[reportDate] || {}).map((key, idx) => (
-                  <button key={key} onClick={() => handleTypeSwitch(key)} className={`px-4 py-2 rounded-lg font-bold whitespace-nowrap border transition-colors ${activeType === key ? 'bg-purple-100 text-purple-700 border-purple-300 shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
-                    Dokumen Ke-{idx + 1}
-                  </button>
-                ))
+                getLainKeys(allReports[reportDate] || {}).map((key, idx) => {
+                  const totalTab = calcTotalAmount(allReports[reportDate]?.[key]);
+                  return (
+                    <button key={key} onClick={() => handleTypeSwitch(key)} className={`px-4 py-2 rounded-lg font-bold whitespace-nowrap border transition-colors flex items-center gap-2 ${activeType === key ? 'bg-purple-100 text-purple-700 border-purple-300 shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
+                      Dokumen Ke-{idx + 1}
+                      {totalTab > 0 && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeType === key ? 'bg-purple-200 text-purple-800' : 'bg-gray-100 text-gray-500'}`}>
+                          Rp {formatRp(totalTab)}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
               )}
               <button onClick={() => {
                   const keys = getLainKeys(allReports[reportDate] || {});
