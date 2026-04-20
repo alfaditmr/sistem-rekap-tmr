@@ -207,7 +207,7 @@ export default function App() {
   }));
 
   const [categories, setCategories] = useState(() => getInitialState('tmr_v19_categories', [
-    { id: 'cat_1', name: 'pemakaian fasilitas TMR', type: 'utama', items: [{ id: 'item_1a', name: 'Promo Penjualan Produk' }, { id: 'item_1b', name: 'Penempatan banner promosi' }, { id: 'item_1c', name: 'Panggung' }] },
+    { id: 'cat_1', name: 'pemakaian fasilitas', type: 'utama', items: [{ id: 'item_1a', name: 'Promo Penjualan Produk' }, { id: 'item_1b', name: 'Penempatan banner promosi' }, { id: 'item_1c', name: 'Panggung' }] },
     { id: 'cat_2', name: 'Retribusi Pedagang', type: 'utama', items: [{ id: 'item_2a', name: 'Retribusi pedagang Hari Biasa' }, { id: 'item_2b', name: 'Retribusi pedagang Hari Besar' }] },
     { id: 'cat_3', name: 'Pendapatan Retribusi Juru Foto', type: 'utama', items: [] },
     { id: 'cat_4', name: 'Penyediaan satwa jinak untuk berfoto', type: 'utama', items: [] },
@@ -537,7 +537,7 @@ export default function App() {
     setIsGeneratingUraian(true);
     try {
       const prompt = `Rapikan catatan singkat berikut menjadi satu frasa atau kalimat resmi yang baku, sopan, dan formal untuk keperluan dokumen Surat Tanda Setoran Uang (STSU) bagian keterangan. Jangan tambahkan kata pengantar atau penutup, langsung berikan hasilnya. Catatan asli: "${lainItemNote}"`;
-      const result = await callGeminiAPI(prompt, "Anda adalah asisten admin keuangan Taman Margasatwa Ragunan.");
+      const result = await callGeminiAPI(prompt, "Anda adalah asisten admin keuangan Sistem Rekap STSU.");
       setLainItemNote(result.trim());
     } catch (e) {
       showConfirm("Gagal menghubungi AI. Silakan coba lagi nanti.", null);
@@ -814,7 +814,7 @@ export default function App() {
       setPdfLoading(true);
       const opt = {
         margin:       [10, 10, 10, 10], 
-        filename:     `Laporan_TMR_${activeType.toUpperCase()}${activeType === 'lain' ? `_Dok${activeLainIndex}` : ''}_${reportDate}.pdf`,
+        filename:     `Laporan_STSU_${activeType.toUpperCase()}${activeType === 'lain' ? `_Dok${activeLainIndex}` : ''}_${reportDate}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2, useCORS: true },
         jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -854,7 +854,7 @@ export default function App() {
               <Lock size={32} className="text-green-600" />
             </div>
           </div>
-          <h1 className="text-2xl font-black text-center text-gray-800 mb-2">Sistem Laporan TMR</h1>
+          <h1 className="text-2xl font-black text-center text-gray-800 mb-2">Sistem Rekap STSU</h1>
           <p className="text-center text-gray-500 text-sm mb-8">Silakan login untuk mengakses brankas data STSU.</p>
           
           {loginError && (
@@ -872,7 +872,7 @@ export default function App() {
                 onChange={(e) => setEmail(e.target.value)} 
                 required
                 className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 focus:bg-white transition-all font-medium"
-                placeholder="kasir@tmr.com"
+                placeholder="kasir@stsu.com"
               />
             </div>
             <div>
@@ -891,7 +891,7 @@ export default function App() {
             </button>
           </form>
           <div className="mt-8 text-center text-xs text-gray-400">
-            Akses Terbatas &bull; TMR Jakarta
+            Akses Terbatas &bull; Sistem Rekap STSU
           </div>
         </div>
       </div>
@@ -970,7 +970,7 @@ export default function App() {
                     setIsGeneratingUraian(true);
                     try {
                       const prompt = `Rapikan catatan singkat berikut menjadi satu frasa atau kalimat resmi yang baku, sopan, dan formal untuk keperluan dokumen Surat Tanda Setoran Uang (STSU) bagian keterangan. Jangan tambahkan kata pengantar atau penutup, langsung berikan hasilnya. Catatan asli: "${editNoteModal.newNote}"`;
-                      const result = await callGeminiAPI(prompt, "Anda adalah asisten admin keuangan Taman Margasatwa Ragunan.");
+                      const result = await callGeminiAPI(prompt, "Anda adalah asisten admin keuangan Sistem Rekap STSU.");
                       setEditNoteModal(prev => ({...prev, newNote: result.trim()}));
                     } catch (e) {
                       // ignore error or silent
@@ -1048,7 +1048,7 @@ export default function App() {
       <nav className="bg-green-700 text-white shadow-md sticky top-0 z-50 shrink-0 no-print">
         <div className="max-w-5xl mx-auto px-4 flex justify-between items-center h-16">
           <div className="font-bold text-lg flex items-center gap-2 mr-4 shrink-0">
-            <Calculator size={24} /> <span className="hidden sm:inline">Sistem TMR</span>
+            <Calculator size={24} /> <span className="hidden sm:inline">Sistem Rekap STSU</span>
             
             <div className="ml-0 sm:ml-4 flex items-center gap-1.5 text-[10px] sm:text-xs font-medium px-2.5 py-1 bg-green-800 rounded-lg shadow-inner">
               {syncStatus === 'syncing' ? <RefreshCw className="animate-spin text-white" size={14}/> :
@@ -1622,7 +1622,7 @@ export default function App() {
               <div className="mt-8 text-[11pt]">
                 <p className="mb-4"><strong>Terbilang : </strong> <i className="capitalize">{terbilang(grandTotal)} rupiah</i></p>
                 <p className="text-justify leading-relaxed">
-                  Disetor uang kebendahara penerimaan hasil retribusi layanan masuk tempat rekreasi dan pemakaian fasilitas TMR Pada hari {formatTanggalCetak(reportDate)} dengan STSU No. {computedStsuNo} dengan uang sebesar Rp. {formatRp(grandTotal)}
+                  Disetor uang kebendahara penerimaan hasil retribusi layanan masuk tempat rekreasi dan pemakaian fasilitas Pada hari {formatTanggalCetak(reportDate)} dengan STSU No. {computedStsuNo} dengan uang sebesar Rp. {formatRp(grandTotal)}
                 </p>
               </div>
 
@@ -1700,10 +1700,12 @@ export default function App() {
                         {currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}
                       </div>
 
+                      {/* Baris 21: NOMINAL TOTAL (BAWAH) */}
                       <div className="absolute font-bold text-lg" style={{ top: '105mm', left: '130mm' }}>
                         {formatRp(ncrTotal)}
                       </div>
 
+                      {/* Baris 27 & 28: NAMA & NIP PEJABAT */}
                       <div className="absolute w-full" style={{ top: '137mm', left: '0' }}>
                          <div className="flex justify-between w-full" style={{ paddingLeft: '15mm', paddingRight: '15mm' }}>
                             <div className="text-center w-[80mm]">
