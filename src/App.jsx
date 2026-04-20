@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock } from 'lucide-react';
+import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Save } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
@@ -91,9 +91,21 @@ const getLocalYMD = () => {
   return `${year}-${month}-${day}`;
 };
 
+// HELPER UNTUK MENDAPATKAN SEMUA KUNCI "lain" (MULTIPLE STSU LAIN DALAM 1 HARI)
+const getLainKeys = (dayData) => {
+  let keys = Object.keys(dayData || {}).filter(k => k === 'lain' || k.startsWith('lain_'));
+  keys.sort((a, b) => {
+    const getNum = (k) => k === 'lain' ? 0 : parseInt(k.split('_')[1] || 1);
+    return getNum(a) - getNum(b);
+  });
+  return keys;
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null });
+  const [resetDialog, setResetDialog] = useState({ isOpen: false, password: '', error: '', isVerifying: false });
+  const [saveToast, setSaveToast] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
 
   // --- STATE LOGIN & AUTHENTICATION ---
@@ -154,7 +166,7 @@ export default function App() {
     return defaultValue;
   };
 
-  const [signatures, setSignatures] = useState(() => getInitialState('tmr_v20_signatures', {
+  const [signatures, setSignatures] = useState(() => getInitialState('tmr_v21_signatures', {
     leftRole: 'Kepala Seksi Pelayanan dan Informasi',
     leftName: 'Afriana Pulungan, S.Si., M.AP.',
     rightRole: 'Bendahara Penerimaan',
@@ -162,8 +174,7 @@ export default function App() {
     location: 'Jakarta'
   }));
 
-  // Kategori Default (sudah disesuaikan dengan skema ID item angka agar match otomatis dengan API)
-  const [categories, setCategories] = useState(() => getInitialState('tmr_v20_categories', [
+  const [categories, setCategories] = useState(() => getInitialState('tmr_v21_categories', [
     { id: 'cat_1', name: 'pemakaian fasilitas TMR', type: 'utama', items: [{ id: 'item_1a', name: 'Promo Penjualan Produk' }, { id: 'item_1b', name: 'Penempatan banner promosi' }] },
     { id: 'cat_2', name: 'Retribusi Pedagang', type: 'utama', items: [{ id: 'item_2a', name: 'Retribusi pedagang Hari Biasa' }, { id: 'item_2b', name: 'Retribusi pedagang Hari Besar' }] },
     { id: 'cat_3', name: 'Pendapatan Retribusi Juru Foto', type: 'utama', items: [] },
@@ -187,7 +198,7 @@ export default function App() {
     }
   };
 
-  const [allReports, setAllReports] = useState(() => getInitialState('tmr_v20_allReports', { [getLocalYMD()]: defaultReportData }));
+  const [allReports, setAllReports] = useState(() => getInitialState('tmr_v21_allReports', { [getLocalYMD()]: defaultReportData }));
 
   const [reportDate, setReportDate] = useState(getLocalYMD());
   const [activeType, setActiveType] = useState('utama'); 
@@ -199,9 +210,9 @@ export default function App() {
   const [isAddingSusulan, setIsAddingSusulan] = useState(false);
   const [susulanValidDate, setSusulanValidDate] = useState('');
 
-  useEffect(() => { localStorage.setItem('tmr_v20_signatures', JSON.stringify(signatures)); }, [signatures]);
-  useEffect(() => { localStorage.setItem('tmr_v20_categories', JSON.stringify(categories)); }, [categories]);
-  useEffect(() => { localStorage.setItem('tmr_v20_allReports', JSON.stringify(allReports)); }, [allReports]);
+  useEffect(() => { localStorage.setItem('tmr_v21_signatures', JSON.stringify(signatures)); }, [signatures]);
+  useEffect(() => { localStorage.setItem('tmr_v21_categories', JSON.stringify(categories)); }, [categories]);
+  useEffect(() => { localStorage.setItem('tmr_v21_allReports', JSON.stringify(allReports)); }, [allReports]);
 
   const getDocRef = () => {
     return doc(db, 'tmr_data', 'rekapitulasi_laporan');
@@ -278,6 +289,12 @@ export default function App() {
     setSelectedCatToAdd(''); setSelectedItemToAdd('');
     setIsAddingSusulan(false);
     setSusulanValidDate('');
+    
+    // Auto Select if Lain-lain is active
+    if (activeType.startsWith('lain')) {
+      const keys = getLainKeys(allReports[newDateStr] || {});
+      setActiveType(keys.length > 0 ? keys[0] : 'lain_1');
+    }
   };
 
   const handleTypeSwitch = (type) => {
@@ -288,13 +305,40 @@ export default function App() {
   };
 
   const clearCurrentReport = () => {
-    showConfirm(`Kosongkan form STSU ${activeType === 'utama' ? 'Pendapatan' : 'Lain-lain'} untuk tanggal ini?`, () => {
+    setResetDialog({ isOpen: true, password: '', error: '', isVerifying: false });
+  };
+
+  const handleConfirmReset = async (e) => {
+    e.preventDefault();
+    setResetDialog(prev => ({ ...prev, isVerifying: true, error: '' }));
+    try {
+      await signInWithEmailAndPassword(auth, user.email, resetDialog.password);
       updateCurrentReport({ sequence: '', signatureDate: reportDate, activeItems: [], formData: {} });
-    });
+      setResetDialog({ isOpen: false, password: '', error: '', isVerifying: false });
+    } catch (error) {
+      setResetDialog(prev => ({ ...prev, isVerifying: false, error: 'Password salah! Penghapusan dibatalkan.' }));
+    }
+  };
+
+  // FUNGSI PAKSA SIMPAN (MANUAL SAVE)
+  const handleForceSave = async () => {
+    if (!user || !dbReady) return;
+    setSyncStatus('syncing');
+    try {
+      await setDoc(getDocRef(), {
+        signatures, categories, allReports, lastUpdated: new Date().toISOString()
+      });
+      setSyncStatus('synced');
+      setSaveToast(true);
+      setTimeout(() => setSaveToast(false), 3000);
+    } catch(e) {
+      setSyncStatus('offline');
+    }
   };
 
   const filteredCategories = useMemo(() => {
-    return Array.isArray(categories) ? categories.filter(c => c.type === activeType) : [];
+    const baseType = activeType.startsWith('lain') ? 'lain' : 'utama';
+    return Array.isArray(categories) ? categories.filter(c => c.type === baseType) : [];
   }, [categories, activeType]);
 
   const handleCatChange = (catId) => {
@@ -373,7 +417,7 @@ export default function App() {
   };
 
   // ==========================================
-  // 🔴 LOGIKA PENARIKAN DATA 3A OTOMATIS (MAPPING KESELURUHAN DATA) 🔴
+  // 🔴 LOGIKA PENARIKAN DATA 3A OTOMATIS 🔴
   // ==========================================
   const handleTarikData3A = async () => {
     if (!ipRobot) {
@@ -400,8 +444,6 @@ export default function App() {
       let currentCats = [...categories];
       let catsChanged = false;
 
-      // KAMUS NAMA TIKET OTOMATIS JIKA NAMA TIDAK ADA DI DATABASE 
-      // (Bapak bisa custom ini nanti, ini nama-nama standar dari data TMR)
       const ticketDictionary = {
         "1": "Dewasa", "2": "Anak", "3": "Rombongan Dewasa", "4": "Rombongan Anak",
         "5": "Kuda Tunggang", "6": "Onta Tunggang", "7": "Kereta Keliling",
@@ -410,7 +452,6 @@ export default function App() {
         "21": "Kendaraan Gol 1 (Mobil)", "22": "Kendaraan Gol 3 (Bus)", "23": "Kendaraan Gol 4 (Truk Besar)"
       };
 
-      // FUNGSI HELPER: Mencari atau Membuat Kategori
       const ensureCategory = (catId, catName) => {
         let cat = currentCats.find(c => c.id === catId);
         if (!cat) {
@@ -430,47 +471,36 @@ export default function App() {
 
       const injectData = [];
 
-      // FUNGSI HELPER: Looping seluruh indeks ("1" sampai "21" dsb) di dalam Channel (Gate/TVM/Online)
       const processChannelData = (cat, sourceData) => {
         Object.keys(sourceData).forEach(idx => {
           const itemData = sourceData[idx];
           const nominal = Number(itemData.nominal) || 0;
-          
-          // Lewati jika nominal kosong (opsional: matikan baris ini jika tetap ingin meng-injeksi nominal 0)
           if (nominal === 0) return;
 
           const targetItemId = `item_${idx}`;
-          // Ambil nama dari API jika ada, jika tidak pakai kamus lokal, jika tidak juga pakai default "Tiket Kode X"
           const itemName = itemData.nama || itemData.name || ticketDictionary[idx] || `Tiket/Fasilitas ID ${idx}`;
 
-          // Cek apakah item ini sudah terdaftar di daftar sub-kategori aplikasi
           let existingItem = cat.items.find(i => i.id === targetItemId);
           if (!existingItem) {
-            // Jika belum ada, tambahkan OTOMATIS!
             cat.items.push({ id: targetItemId, name: itemName });
             catsChanged = true;
           } else if (existingItem.name !== itemName && (existingItem.name.includes("ID") || !existingItem.name)) {
-            // Update nama jika sebelumnya pakai nama placeholder
             existingItem.name = itemName;
             catsChanged = true;
           }
 
-          // Siapkan data injeksi ke form
           injectData.push({ catId: cat.id, itemId: targetItemId, val: nominal });
         });
       };
 
-      // 1. Looping & Siapkan Semua Injeksinya
       processChannelData(catGate, gateData);
       processChannelData(catOnline, onlineData);
       processChannelData(catTvm, tvmData);
 
-      // 2. Simpan Pembaruan Database Kategori/Item jika ada data baru yg terdeteksi
       if (catsChanged) {
         setCategories(currentCats);
       }
 
-      // 3. Masukkan Data ke dalam Form Laporan (Injeksi Langsung)
       updateCurrentReport(prev => {
         let newActiveItems = [...(prev.activeItems || [])];
         let newFormData = { ...(prev.formData || {}) };
@@ -478,13 +508,11 @@ export default function App() {
         injectData.forEach(inj => {
           const inputKey = getInputKey(inj.catId, inj.itemId, false, '');
 
-          // Munculkan baris di layar form jika belum dimunculkan
           const exists = newActiveItems.find(i => i.catId === inj.catId && i.itemId === inj.itemId && !i.isSusulan);
           if (!exists) {
             newActiveItems.push({ catId: inj.catId, itemId: inj.itemId, isSusulan: false, validDate: '' });
           }
 
-          // Injeksi Nilainya
           newFormData[inputKey] = inj.val;
         });
 
@@ -504,7 +532,7 @@ export default function App() {
   const computedStsuNo = useMemo(() => {
     if (!reportDate) return '';
     const [y, m, d] = reportDate.split('-');
-    const typeCode = activeType === 'lain' ? 'SU/L' : 'SU';
+    const typeCode = activeType.startsWith('lain') ? 'SU/L' : 'SU';
     const seq = currentReport.sequence || '...';
     return `${seq}/${d}/${m}/${typeCode}/${y}`;
   }, [reportDate, activeType, currentReport.sequence]);
@@ -636,7 +664,12 @@ export default function App() {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const dayData = allReports[dateStr] || {};
       const utamaItems = Array.isArray(dayData.utama?.activeItems) ? dayData.utama.activeItems : [];
-      const lainItems = Array.isArray(dayData.lain?.activeItems) ? dayData.lain.activeItems : [];
+      
+      // MULTI-STSU LAIN: Check if any of the 'lain' keys have items
+      const lainItems = Object.keys(dayData).filter(k => k === 'lain' || k.startsWith('lain_')).reduce((acc, k) => {
+        return acc.concat(Array.isArray(dayData[k]?.activeItems) ? dayData[k].activeItems : []);
+      }, []);
+
       return { day: d, dateStr, hasUtama: utamaItems.length > 0, hasLain: lainItems.length > 0 };
     });
     return { blanks, days };
@@ -652,7 +685,7 @@ export default function App() {
       setPdfLoading(true);
       const opt = {
         margin:       [10, 10, 10, 10], 
-        filename:     `Laporan_TMR_${activeType.toUpperCase()}_${reportDate}.pdf`,
+        filename:     `Laporan_TMR_${!activeType.startsWith('lain') ? 'PENDAPATAN' : 'LAIN'}_${reportDate}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2, useCORS: true },
         jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -674,7 +707,6 @@ export default function App() {
     if(!dateStr) return "";
     return new Date(dateStr).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: '2-digit' });
   };
-
 
   // ==========================================
   // RENDER LAYAR LOGIN JIKA BELUM MASUK
@@ -736,7 +768,6 @@ export default function App() {
     );
   }
 
-
   // ==========================================
   // RENDER APLIKASI UTAMA
   // ==========================================
@@ -751,6 +782,14 @@ export default function App() {
         }
       `}</style>
 
+      {/* --- SAVE TOAST NOTIFICATION --- */}
+      {saveToast && (
+        <div className="fixed top-20 right-4 sm:right-10 z-[9999] bg-green-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-5 duration-300">
+          <CheckCircle size={20} />
+          <div className="font-bold text-sm">Data berhasil disimpan ke Cloud!</div>
+        </div>
+      )}
+
       {/* --- CUSTOM CONFIRM MODAL --- */}
       {confirmDialog.isOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
@@ -764,6 +803,48 @@ export default function App() {
               <button onClick={() => setConfirmDialog({isOpen: false, message: '', onConfirm: null})} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors">Batal</button>
               <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({isOpen: false, message: '', onConfirm: null}); }} className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors shadow-md">Lanjutkan</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- RESET PASSWORD MODAL --- */}
+      {resetDialog.isOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-3 text-red-600 mb-4">
+              <AlertCircle size={28} />
+              <h3 className="font-bold text-xl">Konfirmasi Reset</h3>
+            </div>
+            <p className="text-gray-600 mb-4 text-sm font-medium">
+              Apakah Anda yakin ingin <strong className="text-red-600">MENGHAPUS SEMUA DATA</strong> di form STSU {!activeType.startsWith('lain') ? 'Pendapatan' : 'Lain-lain'} untuk tanggal ini?
+            </p>
+            
+            {resetDialog.error && (
+              <div className="bg-red-50 text-red-600 p-2 rounded text-xs mb-4 border border-red-100 font-semibold">
+                {resetDialog.error}
+              </div>
+            )}
+
+            <form onSubmit={handleConfirmReset}>
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Masukkan Password ADMIN</label>
+                <input 
+                  type="password" 
+                  value={resetDialog.password}
+                  onChange={(e) => setResetDialog(prev => ({...prev, password: e.target.value}))}
+                  placeholder="••••••••"
+                  className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-red-500 bg-gray-50 font-bold"
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button type="button" onClick={() => setResetDialog({isOpen: false, password: '', error: '', isVerifying: false})} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors text-sm">Batal</button>
+                <button type="submit" disabled={resetDialog.isVerifying} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors shadow-md text-sm disabled:opacity-50">
+                  {resetDialog.isVerifying ? 'Memeriksa...' : 'Ya, Hapus Data'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -939,16 +1020,48 @@ export default function App() {
         <div className="max-w-4xl mx-auto px-4 py-6 no-print">
           
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-2 flex flex-col sm:flex-row mb-6 gap-2">
-            <button onClick={() => handleTypeSwitch('utama')} className={`flex-1 py-3 px-4 rounded-xl font-bold flex flex-col items-center justify-center transition-all ${activeType === 'utama' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600'}`}>
+            <button onClick={() => handleTypeSwitch('utama')} className={`flex-1 py-3 px-4 rounded-xl font-bold flex flex-col items-center justify-center transition-all ${!activeType.startsWith('lain') ? 'bg-green-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600'}`}>
               <span className="text-sm uppercase tracking-wide">Input Form</span><span className="text-lg">STSU Pendapatan</span>
             </button>
-            <button onClick={() => handleTypeSwitch('lain')} className={`flex-1 py-3 px-4 rounded-xl font-bold flex flex-col items-center justify-center transition-all ${activeType === 'lain' ? 'bg-purple-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-purple-50 hover:text-purple-600'}`}>
+            <button onClick={() => {
+                const dayData = allReports[reportDate] || {};
+                const keys = getLainKeys(dayData);
+                handleTypeSwitch(keys.length > 0 ? keys[0] : 'lain_1');
+            }} className={`flex-1 py-3 px-4 rounded-xl font-bold flex flex-col items-center justify-center transition-all ${activeType.startsWith('lain') ? 'bg-purple-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-purple-50 hover:text-purple-600'}`}>
               <span className="text-sm uppercase tracking-wide">Input Form</span><span className="text-lg">STSU Lain-lain</span>
             </button>
           </div>
 
+          {/* MULTI TAB STSU LAIN-LAIN */}
+          {activeType.startsWith('lain') && (
+            <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar pb-2 animate-in fade-in slide-in-from-top-2">
+              {getLainKeys(allReports[reportDate] || {}).length === 0 ? (
+                 <button onClick={() => handleTypeSwitch('lain_1')} className={`px-4 py-2 rounded-lg font-bold whitespace-nowrap border ${activeType === 'lain_1' ? 'bg-purple-100 text-purple-700 border-purple-300 shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
+                   Dokumen Ke-1
+                 </button>
+              ) : (
+                getLainKeys(allReports[reportDate] || {}).map((key, idx) => (
+                  <button key={key} onClick={() => handleTypeSwitch(key)} className={`px-4 py-2 rounded-lg font-bold whitespace-nowrap border transition-colors ${activeType === key ? 'bg-purple-100 text-purple-700 border-purple-300 shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
+                    Dokumen Ke-{idx + 1}
+                  </button>
+                ))
+              )}
+              <button onClick={() => {
+                  const keys = getLainKeys(allReports[reportDate] || {});
+                  let maxIdx = 0;
+                  keys.forEach(k => {
+                      const n = k === 'lain' ? 0 : parseInt(k.split('_')[1] || 1);
+                      if (n > maxIdx) maxIdx = n;
+                  });
+                  handleTypeSwitch(`lain_${maxIdx + 1}`);
+              }} className="px-4 py-2 rounded-lg font-bold whitespace-nowrap bg-purple-50 text-purple-600 hover:bg-purple-100 border border-purple-200 flex items-center gap-1 shadow-sm transition-colors">
+                <Plus size={16}/> Tambah STSU
+              </button>
+            </div>
+          )}
+
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 relative overflow-hidden">
-            <div className={`absolute top-0 right-0 text-white text-xs font-bold px-3 py-1 rounded-bl-lg ${activeType === 'utama' ? 'bg-green-500' : 'bg-purple-500'}`}>Dokumen {activeType === 'utama' ? 'STSU (SU)' : 'Lain-lain (SU/L)'}</div>
+            <div className={`absolute top-0 right-0 text-white text-xs font-bold px-3 py-1 rounded-bl-lg ${!activeType.startsWith('lain') ? 'bg-green-500' : 'bg-purple-500'}`}>Dokumen {!activeType.startsWith('lain') ? 'STSU (SU)' : 'Lain-lain (SU/L)'}</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-3">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tgl Laporan (Di Atas)</label>
@@ -970,15 +1083,15 @@ export default function App() {
             </div>
           </div>
 
-          <div className={`${activeType === 'utama' ? 'bg-green-50 border-green-200' : 'bg-purple-50 border-purple-200'} rounded-xl shadow-sm border p-4 mb-6 transition-colors`}>
+          <div id="form-tambah-transaksi" className={`${!activeType.startsWith('lain') ? 'bg-green-50 border-green-200' : 'bg-purple-50 border-purple-200'} rounded-xl shadow-sm border p-4 mb-6 transition-colors`}>
             
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-3">
-              <h2 className={`text-sm font-bold flex items-center gap-2 uppercase tracking-wide ${activeType === 'utama' ? 'text-green-800' : 'text-purple-800'}`}>
-                <Plus size={18} /> Tambah Transaksi {activeType === 'utama' ? 'SU' : 'SU/L'}
+              <h2 className={`text-sm font-bold flex items-center gap-2 uppercase tracking-wide ${!activeType.startsWith('lain') ? 'text-green-800' : 'text-purple-800'}`}>
+                <Plus size={18} /> Tambah Transaksi {!activeType.startsWith('lain') ? 'SU' : 'SU/L'}
               </h2>
               
               <div className="flex items-center gap-2 flex-wrap">
-                {activeType === 'utama' && (
+                {!activeType.startsWith('lain') && (
                   <>
                     {/* 🔴 TOMBOL TARIK DATA 3A OTOMATIS 🔴 */}
                     <button
@@ -1013,14 +1126,14 @@ export default function App() {
 
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
               <div className="sm:col-span-5">
-                <label className={`block text-xs font-semibold mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'}`}>Kategori</label>
+                <label className={`block text-xs font-semibold mb-1 ${!activeType.startsWith('lain') ? 'text-green-700' : 'text-purple-700'}`}>Kategori</label>
                 <select value={selectedCatToAdd} onChange={(e) => handleCatChange(e.target.value)} className="w-full border border-gray-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                   <option value="">-- Pilih Kategori --</option>
                   {filteredCategories.map(cat => <option key={cat.id} value={cat.id} className="capitalize">{cat.name}</option>)}
                 </select>
               </div>
               <div className="sm:col-span-5">
-                <label className={`block text-xs font-semibold mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'}`}>Sub-Kategori</label>
+                <label className={`block text-xs font-semibold mb-1 ${!activeType.startsWith('lain') ? 'text-green-700' : 'text-purple-700'}`}>Sub-Kategori</label>
                 <select value={selectedItemToAdd} onChange={(e) => setSelectedItemToAdd(e.target.value)} disabled={!selectedCatToAdd || availableItemsToAdd.length === 0 || (availableItemsToAdd.length === 1 && availableItemsToAdd[0].id === 'direct')} className="w-full border border-gray-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500">
                   {!selectedCatToAdd ? <option value="">Pilih Kategori Dulu</option> : 
                    availableItemsToAdd.length === 0 ? <option value="">Semua item ditambahkan</option> :
@@ -1030,7 +1143,7 @@ export default function App() {
                 </select>
               </div>
               <div className="sm:col-span-2 mt-2 sm:mt-0">
-                <button onClick={handleAddActiveItem} disabled={!selectedCatToAdd || !selectedItemToAdd} className={`w-full text-white p-2.5 rounded-lg font-bold flex justify-center items-center transition-colors disabled:bg-gray-300 ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}>Add</button>
+                <button onClick={handleAddActiveItem} disabled={!selectedCatToAdd || !selectedItemToAdd} className={`w-full text-white p-2.5 rounded-lg font-bold flex justify-center items-center transition-colors disabled:bg-gray-300 ${!activeType.startsWith('lain') ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}>Add</button>
               </div>
             </div>
           </div>
@@ -1044,9 +1157,9 @@ export default function App() {
             ) : (
               activeGroups.map((group, idx) => (
                 <div key={group.groupId} className={`bg-white rounded-xl shadow-sm border overflow-hidden ${group.isSusulan ? 'border-yellow-300' : 'border-gray-200'}`}>
-                  <div className={`px-4 py-3 border-b flex justify-between items-center ${group.isSusulan ? 'bg-yellow-50 border-yellow-200' : (activeType === 'utama' ? 'bg-green-50/50 border-green-100' : 'bg-purple-50/50 border-purple-100')}`}>
+                  <div className={`px-4 py-3 border-b flex justify-between items-center ${group.isSusulan ? 'bg-yellow-50 border-yellow-200' : (!activeType.startsWith('lain') ? 'bg-green-50/50 border-green-100' : 'bg-purple-50/50 border-purple-100')}`}>
                     <h3 className="font-bold text-gray-800 flex items-center gap-2 capitalize">
-                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${group.isSusulan ? 'bg-yellow-400 text-yellow-900' : (activeType === 'utama' ? 'bg-green-200 text-green-800' : 'bg-purple-200 text-purple-800')}`}>{idx + 1}</span> 
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${group.isSusulan ? 'bg-yellow-400 text-yellow-900' : (!activeType.startsWith('lain') ? 'bg-green-200 text-green-800' : 'bg-purple-200 text-purple-800')}`}>{idx + 1}</span> 
                       {group.name}
                       {group.isSusulan && (
                         <span className="text-[10px] bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ml-1 shadow-sm">
@@ -1087,19 +1200,38 @@ export default function App() {
             )}
           </div>
 
+          <button
+            onClick={() => {
+              const el = document.getElementById('form-tambah-transaksi');
+              if (el) {
+                const y = el.getBoundingClientRect().top + window.scrollY - 80;
+                window.scrollTo({ top: y, behavior: 'smooth' });
+              } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }
+            }}
+            className="fixed bottom-28 right-4 sm:right-6 bg-blue-600 text-white p-3 sm:p-4 rounded-full shadow-xl hover:bg-blue-700 transition-all z-40 group no-print border-2 border-white flex items-center justify-center"
+            title="Kembali Ke Atas (Tambah Kategori)"
+          >
+            <ArrowUp size={24} className="group-hover:-translate-y-1 transition-transform" />
+          </button>
+
           {/* Baris Bawah Mengambang */}
           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] p-4 z-40 no-print">
             <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
               <div className="flex-1 w-full flex items-center justify-between sm:justify-start gap-4">
                 <div>
-                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-0.5">Grand Total ({activeType === 'utama' ? 'SU' : 'SU/L'})</p>
-                  <p className={`text-2xl font-black leading-none mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'}`}>Rp {formatRp(grandTotal)}</p>
+                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-0.5">Grand Total ({!activeType.startsWith('lain') ? 'SU' : 'SU/L'})</p>
+                  <p className={`text-2xl font-black leading-none mb-1 ${!activeType.startsWith('lain') ? 'text-green-700' : 'text-purple-700'}`}>Rp {formatRp(grandTotal)}</p>
                   <p className="text-xs text-gray-500 italic hidden sm:block">"{terbilang(grandTotal)} rupiah"</p>
                 </div>
               </div>
               <div className="flex w-full sm:w-auto gap-2">
                 <button onClick={clearCurrentReport} className="px-4 py-3 text-red-500 hover:bg-red-50 font-bold rounded-xl transition-colors text-sm border border-transparent hover:border-red-200">Reset</button>
-                <button onClick={() => setActiveTab('print')} disabled={activeGroups.length === 0} className={`flex-1 sm:flex-none text-white px-6 py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors shadow-sm disabled:bg-gray-300 ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}><FileText size={20} /> Lihat PDF</button>
+                <button onClick={handleForceSave} className="px-4 py-3 text-blue-600 hover:bg-blue-50 font-bold rounded-xl transition-colors text-sm border border-blue-200 hover:border-blue-300 flex items-center gap-1.5 bg-white shadow-sm">
+                  <Save size={18} /> <span className="hidden sm:inline">Simpan</span>
+                </button>
+                <button onClick={() => setActiveTab('print')} disabled={activeGroups.length === 0} className={`flex-1 sm:flex-none text-white px-6 py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors shadow-sm disabled:bg-gray-300 ${!activeType.startsWith('lain') ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}><FileText size={20} /> Lihat PDF</button>
               </div>
             </div>
           </div>
@@ -1112,14 +1244,14 @@ export default function App() {
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4 no-print">
              <div>
                <h2 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-                 <FileText size={20} className={activeType === 'utama' ? 'text-green-600' : 'text-purple-600'}/> 
-                 Preview & Download: {activeType === 'utama' ? 'STSU Pendapatan' : 'STSU Lain-lain'}
+                 <FileText size={20} className={!activeType.startsWith('lain') ? 'text-green-600' : 'text-purple-600'}/> 
+                 Preview & Download: {!activeType.startsWith('lain') ? 'STSU Pendapatan' : 'STSU Lain-lain'}
                </h2>
              </div>
              
              <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                <button onClick={() => setActiveTab('input')} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none">Kembali Edit</button>
-               <button onClick={handleDownloadPDF} disabled={pdfLoading} className={`px-4 py-2 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'} disabled:opacity-50`}>
+               <button onClick={handleDownloadPDF} disabled={pdfLoading} className={`px-4 py-2 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md ${!activeType.startsWith('lain') ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'} disabled:opacity-50`}>
                  {pdfLoading ? <RefreshCw size={18} className="animate-spin" /> : <Download size={18} />}
                  {pdfLoading ? 'Memproses...' : 'Unduh PDF'}
                </button>
@@ -1132,7 +1264,7 @@ export default function App() {
           <div id="printable-area" className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative">
             
             <div className="absolute top-10 right-10 text-gray-200 font-bold text-3xl opacity-50 uppercase tracking-widest print:opacity-0 pointer-events-none">
-              DRAFT {activeType === 'utama' ? 'SU' : 'SU/L'}
+              DRAFT {!activeType.startsWith('lain') ? 'SU' : 'SU/L'}
             </div>
 
             <div className="font-bold underline mb-8 text-[11pt]">No. {computedStsuNo}</div>
