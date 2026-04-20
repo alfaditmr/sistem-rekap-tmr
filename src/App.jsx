@@ -783,9 +783,15 @@ export default function App() {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const dayData = allReports[dateStr] || {};
       
+      let dayTotal = 0;
+      
       const utamaItems = Array.isArray(dayData.utama?.activeItems) ? dayData.utama.activeItems : [];
       const hasUtama = utamaItems.length > 0;
       const utamaSequence = dayData.utama?.sequence || '';
+      
+      if (hasUtama && dayData.utama?.formData) {
+        dayTotal += Object.values(dayData.utama.formData).reduce((sum, val) => sum + (Number(val) || 0), 0);
+      }
       
       const lainDocs = [];
       Object.keys(dayData).forEach(k => {
@@ -794,10 +800,13 @@ export default function App() {
             key: k,
             sequence: dayData[k].sequence || ''
           });
+          if (dayData[k].formData) {
+            dayTotal += Object.values(dayData[k].formData).reduce((sum, val) => sum + (Number(val) || 0), 0);
+          }
         }
       });
       
-      return { day: d, dateStr, hasUtama, utamaSequence, lainDocs, hasLain: lainDocs.length > 0 };
+      return { day: d, dateStr, hasUtama, utamaSequence, lainDocs, hasLain: lainDocs.length > 0, dayTotal };
     });
     
     return { blanks, days };
@@ -1094,7 +1103,7 @@ export default function App() {
                 {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map(day => (<div key={day} className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">{day}</div>))}
               </div>
               <div className="grid grid-cols-7 gap-1 sm:gap-2">
-                {blanks.map(b => <div key={`blank-${b}`} className="h-20 sm:h-28 bg-gray-50/50 rounded-lg sm:rounded-xl"></div>)}
+                {blanks.map(b => <div key={`blank-${b}`} className="h-24 sm:h-32 bg-gray-50/50 rounded-lg sm:rounded-xl"></div>)}
                 {days.map(d => {
                   const isToday = d.dateStr === getLocalYMD();
                   const isActive = d.dateStr === reportDate;
@@ -1102,11 +1111,11 @@ export default function App() {
                     <button 
                       key={d.day} 
                       onClick={() => { handleDateChange(d.dateStr); setActiveTab('input'); }}
-                      className={`relative h-20 sm:h-28 rounded-lg sm:rounded-xl flex flex-col justify-start items-center pt-1.5 sm:pt-3 border transition-all overflow-hidden ${(d.hasUtama || d.hasLain) ? 'bg-blue-50/30 hover:bg-blue-50 border-blue-200 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'} ${isActive ? 'ring-2 ring-blue-500 transform scale-105 z-10 bg-blue-50' : ''}`}
+                      className={`relative h-24 sm:h-32 rounded-lg sm:rounded-xl flex flex-col justify-start items-center pt-1.5 sm:pt-2 border transition-all overflow-hidden ${(d.hasUtama || d.hasLain) ? 'bg-blue-50/30 hover:bg-blue-50 border-blue-200 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'} ${isActive ? 'ring-2 ring-blue-500 transform scale-105 z-10 bg-blue-50' : ''}`}
                     >
                       <span className={`text-sm sm:text-lg font-bold ${isToday ? 'text-blue-600 bg-blue-100 px-2 rounded-full' : 'text-gray-700'}`}>{d.day}</span>
                       
-                      <div className="mt-1 sm:mt-2 w-full px-1 flex flex-col gap-0.5 sm:gap-1 items-center overflow-y-auto no-scrollbar max-h-[44px] sm:max-h-[64px]">
+                      <div className="mt-1 w-full px-1 flex flex-col gap-0.5 sm:gap-1 items-center overflow-y-auto no-scrollbar pb-5 sm:pb-6">
                         {d.hasUtama && (
                           <span className="bg-green-500 text-white text-[9px] sm:text-[10px] font-bold px-1 sm:px-1.5 py-0.5 rounded shadow-sm w-full flex justify-between items-center shrink-0">
                             <span>SU</span>
@@ -1120,6 +1129,14 @@ export default function App() {
                           </span>
                         ))}
                       </div>
+
+                      {d.dayTotal > 0 && (
+                        <div className="absolute bottom-0 left-0 right-0 bg-green-100/90 border-t border-green-200 py-0.5 sm:py-1 px-1 flex justify-center backdrop-blur-sm" title={`Total: Rp ${formatRp(d.dayTotal)}`}>
+                          <span className="text-[8px] sm:text-[10px] font-black text-green-800 whitespace-nowrap overflow-hidden text-ellipsis w-full text-center">
+                            Rp {formatRp(d.dayTotal)}
+                          </span>
+                        </div>
+                      )}
                     </button>
                   );
                 })}
