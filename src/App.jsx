@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock } from 'lucide-react';
+import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
@@ -91,7 +91,6 @@ const getLocalYMD = () => {
   return `${year}-${month}-${day}`;
 };
 
-// Fungsi helper mendapatkan nama hari (Untuk Dot Matrix)
 const getDayName = (dateStr) => {
   if (!dateStr) return "";
   const d = new Date(dateStr);
@@ -99,14 +98,47 @@ const getDayName = (dateStr) => {
   return days[d.getDay()];
 };
 
+// ==========================================
+// 🔴 FUNGSI PEMANGGILAN API GEMINI (LLM) 🔴
+// ==========================================
+const callGeminiAPI = async (prompt, systemInstruction) => {
+  const apiKey = ""; // Disuplai otomatis oleh environment runtime
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+  const payload = {
+    contents: [{ parts: [{ text: prompt }] }],
+    systemInstruction: { parts: [{ text: systemInstruction }] }
+  };
+
+  for (let i = 0; i < 5; i++) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error(`API Error ${res.status}`);
+      const data = await res.json();
+      return data.candidates[0].content.parts[0].text;
+    } catch (err) {
+      if (i === 4) throw new Error("Gagal menghubungi AI setelah beberapa percobaan.");
+      await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+    }
+  }
+};
+
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null });
   const [resetDialog, setResetDialog] = useState({ isOpen: false, password: '', error: '', isVerifying: false });
   const [pdfLoading, setPdfLoading] = useState(false);
 
+  // --- STATE MODAL EDIT CATATAN (URAIAN) ---
+  const [editNoteModal, setEditNoteModal] = useState({ isOpen: false, group: null, item: null, newNote: '' });
+  const [saveToast, setSaveToast] = useState(false); // Untuk notifikasi sukses manual save
+
   // --- STATE PRINT MODE (PDF GABUNGAN / NCR PER KATEGORI) ---
-  const [printMode, setPrintMode] = useState('pdf'); // 'pdf' atau 'ncr'
+  const [printMode, setPrintMode] = useState('pdf');
   const [selectedNcrGroup, setSelectedNcrGroup] = useState(null);
 
   // --- STATE LOGIN & AUTHENTICATION ---
@@ -120,6 +152,9 @@ export default function App() {
   // --- STATE FIREBASE & SYNC ---
   const [dbReady, setDbReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState('offline'); 
+
+  // --- STATE AI GENERATION ---
+  const [isGeneratingUraian, setIsGeneratingUraian] = useState(false);
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -161,17 +196,17 @@ export default function App() {
     return defaultValue;
   };
 
-  const [signatures, setSignatures] = useState(() => getInitialState('tmr_v17_signatures', {
+  const [signatures, setSignatures] = useState(() => getInitialState('tmr_v19_signatures', {
     leftRole: 'Kepala Seksi Pelayanan dan Informasi',
-    leftName: 'Afriana Pulungan S.Si. MAP',
-    leftNip: '',
+    leftName: 'Afriana Pulungan, S.Si., M.AP.',
+    leftNip: '197304212007012021',
     rightRole: 'Bendahara Penerimaan',
     rightName: 'Evi Irmawati',
-    rightNip: '',
+    rightNip: '198101082009042006',
     location: 'Jakarta'
   }));
 
-  const [categories, setCategories] = useState(() => getInitialState('tmr_v17_categories', [
+  const [categories, setCategories] = useState(() => getInitialState('tmr_v19_categories', [
     { id: 'cat_1', name: 'pemakaian fasilitas TMR', type: 'utama', items: [{ id: 'item_1a', name: 'Promo Penjualan Produk' }, { id: 'item_1b', name: 'Penempatan banner promosi' }, { id: 'item_1c', name: 'Panggung' }] },
     { id: 'cat_2', name: 'Retribusi Pedagang', type: 'utama', items: [{ id: 'item_2a', name: 'Retribusi pedagang Hari Biasa' }, { id: 'item_2b', name: 'Retribusi pedagang Hari Besar' }] },
     { id: 'cat_3', name: 'Pendapatan Retribusi Juru Foto', type: 'utama', items: [] },
@@ -203,29 +238,25 @@ export default function App() {
     }
   };
 
-  const [allReports, setAllReports] = useState(() => getInitialState('tmr_v17_allReports', { [getLocalYMD()]: defaultReportData }));
+  const [allReports, setAllReports] = useState(() => getInitialState('tmr_v19_allReports', { [getLocalYMD()]: defaultReportData }));
 
   const [reportDate, setReportDate] = useState(getLocalYMD());
   const [activeType, setActiveType] = useState('utama'); 
-  
-  // --- STATE DOKUMEN INDEX (FITUR DINAMIS) ---
   const [activeLainIndex, setActiveLainIndex] = useState(1); 
 
   const [selectedCatToAdd, setSelectedCatToAdd] = useState('');
   const [selectedItemToAdd, setSelectedItemToAdd] = useState('');
   const [calendarMonth, setCalendarMonth] = useState(new Date());
 
-  // --- STATE FITUR SUSULAN (Hanya SU) ---
   const [isAddingSusulan, setIsAddingSusulan] = useState(false);
   const [susulanValidDate, setSusulanValidDate] = useState('');
   
-  // --- STATE DINAMIS (Hanya SU/L) ---
   const [lainItemDate, setLainItemDate] = useState('');
   const [lainItemNote, setLainItemNote] = useState('');
 
-  useEffect(() => { localStorage.setItem('tmr_v17_signatures', JSON.stringify(signatures)); }, [signatures]);
-  useEffect(() => { localStorage.setItem('tmr_v17_categories', JSON.stringify(categories)); }, [categories]);
-  useEffect(() => { localStorage.setItem('tmr_v17_allReports', JSON.stringify(allReports)); }, [allReports]);
+  useEffect(() => { localStorage.setItem('tmr_v19_signatures', JSON.stringify(signatures)); }, [signatures]);
+  useEffect(() => { localStorage.setItem('tmr_v19_categories', JSON.stringify(categories)); }, [categories]);
+  useEffect(() => { localStorage.setItem('tmr_v19_allReports', JSON.stringify(allReports)); }, [allReports]);
 
   const getDocRef = () => {
     return doc(db, 'tmr_data', 'rekapitulasi_laporan');
@@ -253,6 +284,7 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // AUTO SAVE EFEK (Dipercepat menjadi 1 detik)
   useEffect(() => {
     if (!user || !dbReady || !db) return;
     setSyncStatus('syncing');
@@ -266,24 +298,38 @@ export default function App() {
         setSyncStatus('offline');
       }
     };
-    const timer = setTimeout(saveData, 2000);
+    const timer = setTimeout(saveData, 1000);
     return () => clearTimeout(timer);
   }, [signatures, categories, allReports, user, dbReady]);
+
+  // FUNGSI PAKSA SIMPAN (MANUAL SAVE) UNTUK KEAMANAN DATA ADMIN
+  const handleForceSave = async () => {
+    if (!user || !dbReady) return;
+    setSyncStatus('syncing');
+    try {
+      await setDoc(getDocRef(), {
+        signatures, categories, allReports, lastUpdated: new Date().toISOString()
+      });
+      setSyncStatus('synced');
+      setSaveToast(true);
+      setTimeout(() => setSaveToast(false), 3000);
+    } catch(e) {
+      setSyncStatus('offline');
+    }
+  };
 
   const showConfirm = (message, onConfirmAction) => {
     setConfirmDialog({ isOpen: true, message, onConfirm: onConfirmAction });
   };
 
-  // --- FUNGSI MENDAPATKAN KUNCI TIPE AKTIF ---
   const activeTypeKey = useMemo(() => {
     if (activeType === 'utama') return 'utama';
     return activeLainIndex === 1 ? 'lain' : `lain_${activeLainIndex}`;
   }, [activeType, activeLainIndex]);
 
-  // --- MENGAMBIL DAFTAR INDEKS DOKUMEN YANG ADA HARI INI ---
   const lainDocIndices = useMemo(() => {
     const dayData = allReports[reportDate] || {};
-    const indices = [1]; // Dokumen 1 selalu ada secara visual
+    const indices = [1]; 
     Object.keys(dayData).forEach(k => {
       if (k.startsWith('lain_')) {
         const num = parseInt(k.split('_')[1], 10);
@@ -295,7 +341,6 @@ export default function App() {
     return indices.sort((a, b) => a - b);
   }, [allReports, reportDate]);
 
-  // --- FUNGSI MENAMBAH TAB DOKUMEN ---
   const handleAddLainDoc = () => {
     const nextIndex = Math.max(...lainDocIndices) + 1;
     const nextKey = `lain_${nextIndex}`;
@@ -314,7 +359,6 @@ export default function App() {
     setLainItemDate(''); setLainItemNote('');
   };
 
-  // --- FUNGSI MENGHAPUS TAB DOKUMEN ---
   const handleRemoveLainDoc = (indexToRemove) => {
     showConfirm(`Hapus Dokumen Ke-${indexToRemove}? Semua data di dalam dokumen ini akan ikut terhapus.`, () => {
       setAllReports(prev => {
@@ -324,7 +368,7 @@ export default function App() {
         return { ...prev, [reportDate]: dayData };
       });
       if (activeLainIndex === indexToRemove) {
-         setActiveLainIndex(1); // Kembali ke Dokumen 1 jika yang aktif dihapus
+         setActiveLainIndex(1);
       }
     });
   };
@@ -359,8 +403,8 @@ export default function App() {
     setSusulanValidDate('');
     setLainItemDate('');
     setLainItemNote('');
-    setActiveLainIndex(1); // Reset dokumen ke-1 tiap ganti hari
-    setPrintMode('pdf'); // Reset Mode Print
+    setActiveLainIndex(1);
+    setPrintMode('pdf');
   };
 
   const handleTypeSwitch = (type) => {
@@ -370,8 +414,8 @@ export default function App() {
     setSusulanValidDate('');
     setLainItemDate('');
     setLainItemNote('');
-    setActiveLainIndex(1); // Reset ke dokumen 1 tiap ganti tab
-    setPrintMode('pdf'); // Reset Mode Print
+    setActiveLainIndex(1);
+    setPrintMode('pdf');
   };
 
   const clearCurrentReport = () => {
@@ -485,6 +529,70 @@ export default function App() {
     updateCurrentReport(prev => ({
       ...prev, formData: { ...(prev.formData || {}), [inputKey]: Number(rawValue) || 0 }
     }));
+  };
+
+  // --- FUNGSI HANDLER AI UNTUK URAIAN DINAMIS ---
+  const handleGenerateUraian = async () => {
+    if (!lainItemNote) return;
+    setIsGeneratingUraian(true);
+    try {
+      const prompt = `Rapikan catatan singkat berikut menjadi satu frasa atau kalimat resmi yang baku, sopan, dan formal untuk keperluan dokumen Surat Tanda Setoran Uang (STSU) bagian keterangan. Jangan tambahkan kata pengantar atau penutup, langsung berikan hasilnya. Catatan asli: "${lainItemNote}"`;
+      const result = await callGeminiAPI(prompt, "Anda adalah asisten admin keuangan Taman Margasatwa Ragunan.");
+      setLainItemNote(result.trim());
+    } catch (e) {
+      showConfirm("Gagal menghubungi AI. Silakan coba lagi nanti.", null);
+    } finally {
+      setIsGeneratingUraian(false);
+    }
+  };
+
+  // --- FUNGSI BUKA MODAL EDIT URAIAN ---
+  const openEditNote = (group, item) => {
+    setEditNoteModal({
+      isOpen: true,
+      group,
+      item,
+      newNote: item.itemNote || ''
+    });
+  };
+
+  // --- FUNGSI SIMPAN PERUBAHAN EDIT URAIAN ---
+  const saveEditedNote = () => {
+    const { group, item, newNote } = editNoteModal;
+    const oldNote = item.itemNote || '';
+    const trimmedNew = newNote.trim();
+
+    if (trimmedNew && trimmedNew !== oldNote) {
+      const oldKey = getActiveItemKey(group.catId, item.itemId || item.id, group.isSusulan, group.validDate, group.itemDate, oldNote);
+      const newKey = getActiveItemKey(group.catId, item.itemId || item.id, group.isSusulan, group.validDate, group.itemDate, trimmedNew);
+
+      updateCurrentReport(prev => {
+        const currentItems = Array.isArray(prev.activeItems) ? prev.activeItems : [];
+        
+        // Ganti note di array items
+        const newActive = currentItems.map(i => {
+          if (i.catId === group.catId &&
+              i.itemId === (item.itemId || item.id) &&
+              !!i.isSusulan === !!group.isSusulan &&
+              (i.validDate || '') === (group.validDate || '') &&
+              (i.itemDate || '') === (group.itemDate || '') &&
+              (i.itemNote || '') === oldNote) {
+             return { ...i, itemNote: trimmedNew };
+          }
+          return i;
+        });
+
+        // Pindahkan value nominal dari kunci lama ke kunci baru
+        const newFormData = { ...(prev.formData || {}) };
+        if (newFormData[oldKey] !== undefined) {
+           newFormData[newKey] = newFormData[oldKey];
+           delete newFormData[oldKey];
+        }
+
+        return { ...prev, activeItems: newActive, formData: newFormData };
+      });
+    }
+    setEditNoteModal({ isOpen: false, group: null, item: null, newNote: '' });
   };
 
   const computedStsuNo = useMemo(() => {
@@ -669,19 +777,32 @@ export default function App() {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay();
     const blanks = Array.from({length: firstDayIndex}, (_, i) => i);
+    
     const days = Array.from({length: daysInMonth}, (_, i) => {
       const d = i + 1;
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const dayData = allReports[dateStr] || {};
       
       const utamaItems = Array.isArray(dayData.utama?.activeItems) ? dayData.utama.activeItems : [];
-      // Mengecek semua dokumen 'lain', 'lain_2', 'lain_3', dst
-      const hasLain = Object.keys(dayData).some(k => (k === 'lain' || k.startsWith('lain_')) && Array.isArray(dayData[k].activeItems) && dayData[k].activeItems.length > 0);
+      const hasUtama = utamaItems.length > 0;
+      const utamaSequence = dayData.utama?.sequence || '';
       
-      return { day: d, dateStr, hasUtama: utamaItems.length > 0, hasLain };
+      const lainDocs = [];
+      Object.keys(dayData).forEach(k => {
+        if ((k === 'lain' || k.startsWith('lain_')) && Array.isArray(dayData[k].activeItems) && dayData[k].activeItems.length > 0) {
+          lainDocs.push({
+            key: k,
+            sequence: dayData[k].sequence || ''
+          });
+        }
+      });
+      
+      return { day: d, dateStr, hasUtama, utamaSequence, lainDocs, hasLain: lainDocs.length > 0 };
     });
+    
     return { blanks, days };
   };
+  
   const { blanks, days } = getDaysArray();
 
   const handlePrint = () => { window.print(); };
@@ -790,35 +911,30 @@ export default function App() {
           .no-print { display: none !important; }
           
           ${printMode === 'ncr' ? `
-            /* Mode Dot Matrix (NCR): Ukuran absolute, margin browser dihilangkan */
             .print-container { 
-              width: 100%; 
-              margin: 0; 
-              padding: 0; 
+              width: 215mm; height: 165mm; margin: 0; padding: 0; 
               font-family: 'Courier New', Courier, monospace !important; 
-              font-size: 11pt; 
-              color: black; 
-              box-shadow: none; 
-              border: none; 
+              font-size: 11pt; color: black; box-shadow: none !important; border: none !important; 
             }
-            @page { margin: 0; size: auto; }
+            @page { size: 215mm 165mm; margin: 0; }
           ` : `
-            /* Mode PDF Gabungan: Layout standar surat resmi (Asli Bapak Fatah) */
             .print-container { 
-              width: 100%; 
-              max-width: 100%; 
-              margin: 0; 
-              padding: 0; 
+              width: 100%; max-width: 100%; margin: 0; padding: 0; 
               font-family: 'Times New Roman', Times, serif; 
-              font-size: 11pt; 
-              color: black; 
-              box-shadow: none; 
-              border: none; 
+              font-size: 11pt; color: black; box-shadow: none !important; border: none !important; 
             }
             @page { margin: 15mm; }
           `}
         }
       `}</style>
+
+      {/* --- SAVE TOAST NOTIFICATION --- */}
+      {saveToast && (
+        <div className="fixed top-20 right-4 sm:right-10 z-[9999] bg-green-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-5 duration-300">
+          <CheckCircle size={20} />
+          <div className="font-bold text-sm">Data berhasil disimpan ke Cloud!</div>
+        </div>
+      )}
 
       {/* --- CUSTOM CONFIRM MODAL --- */}
       {confirmDialog.isOpen && (
@@ -832,6 +948,55 @@ export default function App() {
             <div className="flex gap-3 justify-end">
               <button onClick={() => setConfirmDialog({isOpen: false, message: '', onConfirm: null})} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors">Batal</button>
               <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({isOpen: false, message: '', onConfirm: null}); }} className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors shadow-md">Lanjutkan</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- EDIT NOTE MODAL (BARU) --- */}
+      {editNoteModal.isOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-3 text-blue-600 mb-4">
+              <Edit size={28} />
+              <h3 className="font-bold text-xl">Edit Uraian Dinamis</h3>
+            </div>
+            <div className="mb-4">
+              <div className="flex justify-between items-end mb-1">
+                <label className="block text-xs font-semibold text-gray-600 uppercase">Keterangan / Uraian:</label>
+                <button 
+                  onClick={async () => {
+                    if (!editNoteModal.newNote) return;
+                    setIsGeneratingUraian(true);
+                    try {
+                      const prompt = `Rapikan catatan singkat berikut menjadi satu frasa atau kalimat resmi yang baku, sopan, dan formal untuk keperluan dokumen Surat Tanda Setoran Uang (STSU) bagian keterangan. Jangan tambahkan kata pengantar atau penutup, langsung berikan hasilnya. Catatan asli: "${editNoteModal.newNote}"`;
+                      const result = await callGeminiAPI(prompt, "Anda adalah asisten admin keuangan Taman Margasatwa Ragunan.");
+                      setEditNoteModal(prev => ({...prev, newNote: result.trim()}));
+                    } catch (e) {
+                      // ignore error or silent
+                    } finally {
+                      setIsGeneratingUraian(false);
+                    }
+                  }}
+                  disabled={!editNoteModal.newNote || isGeneratingUraian}
+                  className="text-[10px] bg-purple-100 hover:bg-purple-200 text-purple-700 font-bold px-2 py-1 rounded border border-purple-200 flex items-center gap-1 disabled:opacity-50 transition-colors"
+                >
+                  {isGeneratingUraian ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                  ✨ AI Rapikan
+                </button>
+              </div>
+              <textarea 
+                value={editNoteModal.newNote}
+                onChange={(e) => setEditNoteModal(prev => ({...prev, newNote: e.target.value}))}
+                rows={3}
+                className="w-full border border-gray-300 rounded-lg p-3 text-sm outline-none focus:border-blue-500 bg-gray-50 font-medium resize-none"
+                placeholder="Masukkan keterangan baru..."
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setEditNoteModal({isOpen: false, group: null, item: null, newNote: ''})} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors text-sm">Batal</button>
+              <button onClick={saveEditedNote} disabled={!editNoteModal.newNote.trim()} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors shadow-md text-sm disabled:opacity-50">Simpan Perubahan</button>
             </div>
           </div>
         </div>
@@ -929,7 +1094,7 @@ export default function App() {
                 {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map(day => (<div key={day} className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">{day}</div>))}
               </div>
               <div className="grid grid-cols-7 gap-1 sm:gap-2">
-                {blanks.map(b => <div key={`blank-${b}`} className="h-16 sm:h-24 bg-gray-50/50 rounded-lg sm:rounded-xl"></div>)}
+                {blanks.map(b => <div key={`blank-${b}`} className="h-20 sm:h-28 bg-gray-50/50 rounded-lg sm:rounded-xl"></div>)}
                 {days.map(d => {
                   const isToday = d.dateStr === getLocalYMD();
                   const isActive = d.dateStr === reportDate;
@@ -937,12 +1102,23 @@ export default function App() {
                     <button 
                       key={d.day} 
                       onClick={() => { handleDateChange(d.dateStr); setActiveTab('input'); }}
-                      className={`relative h-16 sm:h-24 rounded-lg sm:rounded-xl flex flex-col justify-start items-center pt-1.5 sm:pt-3 border transition-all ${(d.hasUtama || d.hasLain) ? 'bg-blue-50/30 hover:bg-blue-50 border-blue-200 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'} ${isActive ? 'ring-2 ring-blue-500 transform scale-105 z-10 bg-blue-50' : ''}`}
+                      className={`relative h-20 sm:h-28 rounded-lg sm:rounded-xl flex flex-col justify-start items-center pt-1.5 sm:pt-3 border transition-all overflow-hidden ${(d.hasUtama || d.hasLain) ? 'bg-blue-50/30 hover:bg-blue-50 border-blue-200 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'} ${isActive ? 'ring-2 ring-blue-500 transform scale-105 z-10 bg-blue-50' : ''}`}
                     >
                       <span className={`text-sm sm:text-lg font-bold ${isToday ? 'text-blue-600 bg-blue-100 px-2 rounded-full' : 'text-gray-700'}`}>{d.day}</span>
-                      <div className="mt-1 sm:mt-2 flex flex-col sm:flex-row gap-0.5 sm:gap-1 w-full px-1 items-center justify-center">
-                        {d.hasUtama && <span className="bg-green-500 text-white text-[8px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm w-full sm:w-auto truncate">SU</span>}
-                        {d.hasLain && <span className="bg-purple-500 text-white text-[8px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm w-full sm:w-auto truncate">SU/L</span>}
+                      
+                      <div className="mt-1 sm:mt-2 w-full px-1 flex flex-col gap-0.5 sm:gap-1 items-center overflow-y-auto no-scrollbar max-h-[44px] sm:max-h-[64px]">
+                        {d.hasUtama && (
+                          <span className="bg-green-500 text-white text-[9px] sm:text-[10px] font-bold px-1 sm:px-1.5 py-0.5 rounded shadow-sm w-full flex justify-between items-center shrink-0">
+                            <span>SU</span>
+                            {d.utamaSequence && d.utamaSequence !== '...' && <span className="bg-green-700 px-1 rounded truncate max-w-[30px] sm:max-w-none text-[8px] sm:text-[9px]">{d.utamaSequence}</span>}
+                          </span>
+                        )}
+                        {d.lainDocs.map((lainDoc, index) => (
+                          <span key={index} className="bg-purple-500 text-white text-[9px] sm:text-[10px] font-bold px-1 sm:px-1.5 py-0.5 rounded shadow-sm w-full flex justify-between items-center shrink-0">
+                            <span>SU/L</span>
+                            {lainDoc.sequence && lainDoc.sequence !== '...' && <span className="bg-purple-700 px-1 rounded truncate max-w-[30px] sm:max-w-none text-[8px] sm:text-[9px]">{lainDoc.sequence}</span>}
+                          </span>
+                        ))}
                       </div>
                     </button>
                   );
@@ -1039,7 +1215,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* DOKUMEN SELECTOR (TAB DINAMIS KHUSUS STSU LAIN-LAIN) */}
           {activeType === 'lain' && (
             <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar pb-2 items-center">
               {lainDocIndices.map(num => (
@@ -1055,7 +1230,6 @@ export default function App() {
                     Dokumen Ke-{num}
                   </button>
                   
-                  {/* TOMBOL HAPUS (Kecuali Dokumen 1) */}
                   {num > 1 && (
                     <button 
                        onClick={(e) => { e.stopPropagation(); handleRemoveLainDoc(num); }}
@@ -1068,7 +1242,6 @@ export default function App() {
                 </div>
               ))}
               
-              {/* TOMBOL TAMBAH DOKUMEN BARU */}
               <button 
                 onClick={handleAddLainDoc}
                 className="px-3 py-2 ml-1 rounded-lg font-bold text-sm whitespace-nowrap transition-colors border bg-purple-50 text-purple-600 border-purple-300 hover:bg-purple-100 flex items-center gap-1.5 shadow-sm"
@@ -1104,7 +1277,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className={`${activeType === 'utama' ? 'bg-green-50 border-green-200' : 'bg-purple-50 border-purple-200'} rounded-xl shadow-sm border p-4 mb-6 transition-colors`}>
+          <div id="form-tambah-transaksi" className={`${activeType === 'utama' ? 'bg-green-50 border-green-200' : 'bg-purple-50 border-purple-200'} rounded-xl shadow-sm border p-4 mb-6 transition-colors`}>
             
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
               <h2 className={`text-sm font-bold flex items-center gap-2 uppercase tracking-wide ${activeType === 'utama' ? 'text-green-800' : 'text-purple-800'}`}>
@@ -1162,13 +1335,24 @@ export default function App() {
 
               {activeType === 'lain' && (
                 <div>
-                  <label className="block text-xs font-semibold mb-1 text-purple-700">Keterangan Tambahan / Uraian Dinamis (Cetak di Judul)</label>
+                  <div className="flex justify-between items-end mb-1">
+                    <label className="block text-xs font-semibold text-purple-700">Keterangan Tambahan / Uraian Dinamis (Cetak di Judul)</label>
+                    <button 
+                      onClick={handleGenerateUraian}
+                      disabled={!lainItemNote || isGeneratingUraian}
+                      className="text-[10px] bg-purple-100 hover:bg-purple-200 text-purple-700 font-bold px-2 py-1 rounded border border-purple-200 flex items-center gap-1 disabled:opacity-50 transition-colors"
+                      title="Gunakan AI untuk merapikan bahasa"
+                    >
+                      {isGeneratingUraian ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                      ✨ Rapikan Bahasa
+                    </button>
+                  </div>
                   <textarea
                     value={lainItemNote}
                     onChange={(e) => setLainItemNote(e.target.value)}
                     rows={2}
                     className="w-full border border-purple-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-purple-500 outline-none resize-none"
-                    placeholder="Contoh: Rombongan keluarga Ernawati&#10;Pemakaian tanggal 26 April 2026"
+                    placeholder="Contoh: Rombongan anak tk bintang pakai bus 20 org"
                   ></textarea>
                 </div>
               )}
@@ -1209,16 +1393,24 @@ export default function App() {
                         <div key={inputKey} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-50 pb-3 last:border-0 last:pb-0">
                           <div className="flex items-start gap-2 sm:w-1/2">
                             <button onClick={() => handleRemoveActiveItem(item)} className="text-red-400 hover:text-red-600 p-2 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm mt-0.5 shrink-0"><Trash size={18} /></button>
-                            <div className="flex flex-col">
+                            <div className="flex flex-col w-full">
                               <label className="text-gray-700 font-medium">
                                  {item.id === 'direct' ? 'Nominal Pemasukan' : item.name}
                               </label>
+                              
+                              {/* 🔴 TOMBOL EDIT URAIAN MUNCUL DI SINI JIKA ADA NOTE 🔴 */}
                               {item.itemNote && (
-                                <span className="text-xs text-purple-600 mt-1 whitespace-pre-wrap font-medium">{item.itemNote}</span>
+                                <div className="flex items-center gap-2 mt-1 group/note w-full">
+                                  <span className="text-xs text-purple-600 whitespace-pre-wrap font-medium flex-1">{item.itemNote}</span>
+                                  <button onClick={() => openEditNote(group, item)} className="text-gray-400 hover:text-blue-600 opacity-50 group-hover/note:opacity-100 transition-opacity bg-gray-50 p-1 rounded-md shrink-0" title="Edit Uraian">
+                                    <Edit size={14} />
+                                  </button>
+                                </div>
                               )}
+
                             </div>
                           </div>
-                          <div className="relative w-full sm:w-1/2 md:w-2/5 shrink-0">
+                          <div className="relative w-full sm:w-1/2 md:w-2/5 shrink-0 mt-2 sm:mt-0">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">Rp</span>
                             <input 
                               id={`input_${inputKey}`}
@@ -1239,9 +1431,44 @@ export default function App() {
                 </div>
               ))
             )}
+
+            {activeGroups.length > 0 && (
+              <div className="flex justify-center mt-6 mb-8 pb-4">
+                <button
+                  onClick={() => {
+                    const el = document.getElementById('form-tambah-transaksi');
+                    if (el) {
+                      const y = el.getBoundingClientRect().top + window.scrollY - 80;
+                      window.scrollTo({ top: y, behavior: 'smooth' });
+                    } else {
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                  }}
+                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold py-3 px-6 rounded-xl flex items-center gap-2 shadow-sm transition-all"
+                >
+                  <ArrowUp size={20} /> Ke Atas (Tambah Data Lain)
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Baris Bawah Mengambang */}
+          <button
+            onClick={() => {
+              const el = document.getElementById('form-tambah-transaksi');
+              if (el) {
+                const y = el.getBoundingClientRect().top + window.scrollY - 80;
+                window.scrollTo({ top: y, behavior: 'smooth' });
+              } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }
+            }}
+            className="fixed bottom-28 right-4 sm:right-6 bg-blue-600 text-white p-3 sm:p-4 rounded-full shadow-xl hover:bg-blue-700 transition-all z-40 group no-print border-2 border-white flex items-center justify-center"
+            title="Kembali Ke Atas (Tambah Kategori)"
+          >
+            <ArrowUp size={24} className="group-hover:-translate-y-1 transition-transform" />
+          </button>
+
+          {/* Baris Bawah Mengambang (Diperbarui dengan Tombol Simpan Data) */}
           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] p-4 z-40 no-print">
             <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
               <div className="flex-1 w-full flex items-center justify-between sm:justify-start gap-4">
@@ -1251,8 +1478,15 @@ export default function App() {
                   <p className="text-xs text-gray-500 italic hidden sm:block">"{terbilang(grandTotal)} rupiah"</p>
                 </div>
               </div>
+              
               <div className="flex w-full sm:w-auto gap-2">
-                <button onClick={clearCurrentReport} className="px-4 py-3 text-red-500 hover:bg-red-50 font-bold rounded-xl transition-colors text-sm border border-transparent hover:border-red-200">Reset</button>
+                <button onClick={clearCurrentReport} className="px-4 py-3 text-red-500 hover:bg-red-50 font-bold rounded-xl transition-colors text-sm border border-transparent hover:border-red-200" title="Kosongkan Form">Reset</button>
+                
+                {/* 🔴 TOMBOL MANUAL SAVE 🔴 */}
+                <button onClick={handleForceSave} className="px-4 py-3 text-blue-600 hover:bg-blue-50 font-bold rounded-xl transition-colors text-sm border border-blue-200 hover:border-blue-300 flex items-center gap-1.5 bg-white shadow-sm">
+                  <Save size={18} /> <span className="hidden sm:inline">Simpan</span>
+                </button>
+
                 <button onClick={() => { setActiveTab('print'); setPrintMode('pdf'); }} disabled={activeGroups.length === 0} className={`flex-1 sm:flex-none text-white px-6 py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors shadow-sm disabled:bg-gray-300 ${activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}><FileText size={20} /> Lihat Draft Cetak</button>
               </div>
             </div>
@@ -1263,8 +1497,7 @@ export default function App() {
       {/* === TAB: CETAK (MODE PDF & MODE NCR DOT MATRIX) === */}
       {activeTab === 'print' && (
         <div className="max-w-4xl mx-auto px-2 sm:px-4 py-6">
-          
-          {/* TOP BAR CETAK BERUBAH BERDASARKAN MODE */}
+
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4 no-print">
              <div>
                <h2 className="font-bold text-gray-800 text-lg flex items-center gap-2">
@@ -1300,7 +1533,6 @@ export default function App() {
              </div>
           </div>
 
-          {/* PILIHAN KATEGORI UNTUK NCR (HANYA MUNCUL DI MODE PDF GABUNGAN) */}
           {printMode === 'pdf' && activeGroups.length > 0 && (
             <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 mb-6 no-print">
                <h3 className="font-bold text-purple-900 mb-2 flex items-center gap-2 text-sm"><Printer size={16}/> Cetak NCR Kertas Rangkap 3 (Per Kategori)</h3>
@@ -1319,14 +1551,9 @@ export default function App() {
             </div>
           )}
 
-
-          {/* AREA RENDER DOKUMEN BERDASARKAN MODE */}
           {printMode === 'pdf' ? (
             
-            /* ========================================================
-               MODE 1: PDF GABUNGAN (TIDAK DIGANGGU GUGAT - SESUAI ASLINYA) 
-               ======================================================== */
-            <div id="printable-area" className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative">
+            <div id="printable-area" className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative print:border-none print:shadow-none print:p-0">
               <div className="absolute top-10 right-10 text-gray-200 font-bold text-3xl opacity-50 uppercase tracking-widest print:opacity-0 pointer-events-none">
                 DRAFT {activeType === 'utama' ? 'SU' : 'SU/L'}
               </div>
@@ -1401,7 +1628,7 @@ export default function App() {
 
               <div className="flex justify-between mt-16 text-center text-[11pt]">
                 <div className="w-[45%] flex flex-col justify-between">
-                  <div><br/>{signatures.leftRole}</div>
+                  <div>Mengetahui,<br/>{signatures.leftRole}</div>
                   <div className="mt-28 font-bold underline">({signatures.leftName})</div>
                 </div>
                 <div className="w-[45%] flex flex-col justify-between">
@@ -1413,27 +1640,21 @@ export default function App() {
 
           ) : (
 
-            /* ========================================================
-               MODE 2: DOT MATRIX NCR (POSISI ABSOLUT SESUAI EXCEL) 
-               ======================================================== */
-            <div id="printable-area-ncr" className="print-container bg-white mx-auto relative overflow-hidden shadow-lg border border-gray-300" style={{ minHeight: '297mm', width: '210mm' }}>
+            <div id="printable-area-ncr" className="print-container bg-white mx-auto relative overflow-hidden shadow-lg border border-gray-300 print:border-none print:shadow-none" style={{ minHeight: '165mm', width: '210mm' }}>
               
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-purple-100 font-black text-6xl opacity-30 uppercase tracking-widest print:opacity-0 pointer-events-none -rotate-45 whitespace-nowrap">
                 PREVIEW NCR DOT MATRIX
               </div>
 
               {selectedNcrGroup && (() => {
-                 // Hitung total hanya untuk kategori terpilih
                  const ncrTotal = subtotals[selectedNcrGroup.groupId] || 0;
                  const isDirect = Array.isArray(selectedNcrGroup.activeItems) && selectedNcrGroup.activeItems.length === 1 && selectedNcrGroup.activeItems[0].id === 'direct';
                  
-                 // Ambil sub-item yang ada nominalnya saja
                  let itemsToPrint = selectedNcrGroup.activeItems.filter(i => {
                    const key = getActiveItemKey(selectedNcrGroup.catId, i.id, selectedNcrGroup.isSusulan, selectedNcrGroup.validDate, selectedNcrGroup.itemDate, i.itemNote);
                    return (currentReport.formData[key] || 0) > 0;
                  });
 
-                 // Susun string rincian sub-item
                  let ncrItemsString = '';
                  if (isDirect) {
                    const note = selectedNcrGroup.activeItems[0].itemNote;
@@ -1448,62 +1669,51 @@ export default function App() {
 
                  return (
                    <>
-                      {/* Baris 8: Hari dan Tanggal */}
-                      <div className="absolute font-bold" style={{ top: '35mm', left: '60mm' }}>
+                      <div className="absolute font-bold" style={{ top: '37mm', left: '75mm' }}>
                         {getDayName(reportDate)}
                       </div>
-                      <div className="absolute font-bold" style={{ top: '35mm', left: '100mm' }}>
+                      <div className="absolute font-bold" style={{ top: '37mm', left: '110mm' }}>
                         {reportDate}
                       </div>
 
-                      {/* Baris 11: NAMA KATEGORI BESAR */}
-                      <div className="absolute" style={{ top: '50mm', left: '70mm', right: '10mm', textAlign: 'center' }}>
+                      <div className="absolute font-bold text-center" style={{ top: '53mm', left: '75mm', width: '80mm' }}>
                         {selectedNcrGroup.name}
                       </div>
 
-                      {/* Baris 12 & 13: RINCIAN ITEM / SUB-KATEGORI */}
-                      <div className="absolute" style={{ top: '56mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
+                      <div className="absolute" style={{ top: '58mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
                          {ncrItemsString}
                       </div>
 
-                      {/* Baris 14: JABATAN PENYETOR */}
-                      <div className="absolute" style={{ top: '65mm', left: '60mm' }}>
-                        {signatures.leftRole}
+                      <div className="absolute" style={{ top: '69mm', left: '75mm' }}>
+                        DARI : Seksi Pelayanan dan Informasi
                       </div>
 
-                      {/* Baris 16: NOMINAL ANGKA */}
-                      <div className="absolute font-bold text-lg" style={{ top: '75mm', left: '50mm' }}>
+                      <div className="absolute font-bold text-lg" style={{ top: '79mm', left: '75mm' }}>
                         {formatRp(ncrTotal)}
                       </div>
 
-                      {/* Baris 17: TERBILANG */}
-                      <div className="absolute italic font-bold capitalize" style={{ top: '80mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
+                      <div className="absolute italic font-bold capitalize" style={{ top: '84mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>
                         # {terbilang(ncrTotal)} rupiah #
                       </div>
 
-                      {/* Baris 20: TANGGAL TTD BAWAH KANAN */}
-                      <div className="absolute" style={{ top: '100mm', left: '150mm' }}>
+                      <div className="absolute" style={{ top: '100mm', left: '130mm' }}>
                         {currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}
                       </div>
 
-                      {/* Baris 21: NOMINAL TOTAL (BAWAH) */}
-                      <div className="absolute font-bold" style={{ top: '105mm', left: '150mm' }}>
+                      <div className="absolute font-bold text-lg" style={{ top: '105mm', left: '130mm' }}>
                         {formatRp(ncrTotal)}
                       </div>
 
-                      {/* Baris 27 & 28: NAMA & NIP PEJABAT */}
-                      <div className="absolute w-full" style={{ top: '135mm', left: '0' }}>
+                      <div className="absolute w-full" style={{ top: '137mm', left: '0' }}>
                          <div className="flex justify-between w-full" style={{ paddingLeft: '15mm', paddingRight: '15mm' }}>
-                            {/* KIRI (PENYETOR) */}
                             <div className="text-center w-[80mm]">
                               <div className="font-bold underline">{signatures.leftName}</div>
-                              {signatures.leftNip ? <div>NIP. {signatures.leftNip}</div> : <div>NIP. ..............................</div>}
+                              {signatures.leftNip ? <div>NIP {signatures.leftNip}</div> : <div>NIP ..............................</div>}
                             </div>
                             
-                            {/* KANAN (BENDAHARA) */}
                             <div className="text-center w-[80mm]">
                               <div className="font-bold underline">{signatures.rightName}</div>
-                              {signatures.rightNip ? <div>NIP. {signatures.rightNip}</div> : <div>NIP. ..............................</div>}
+                              {signatures.rightNip ? <div>NIP {signatures.rightNip}</div> : <div>NIP ..............................</div>}
                             </div>
                          </div>
                       </div>
