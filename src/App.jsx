@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save } from 'lucide-react';
+import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save, Database, ArrowRight } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
 
 // ==========================================
@@ -18,10 +18,12 @@ const myFirebaseConfig = {
   appId: "1:811185738366:web:2db209f6eab966bccd7e2f"
 };
 
+let isCanvasEnv = false;
 let finalConfig = myFirebaseConfig;
 try {
   // eslint-disable-next-line no-undef
   if (typeof __firebase_config !== 'undefined') {
+    isCanvasEnv = true;
     // eslint-disable-next-line no-undef
     finalConfig = JSON.parse(__firebase_config);
   }
@@ -143,7 +145,17 @@ export default function App() {
 
   // --- STATE MODAL EDIT CATATAN (URAIAN) ---
   const [editNoteModal, setEditNoteModal] = useState({ isOpen: false, group: null, item: null, newNote: '' });
-  const [saveToast, setSaveToast] = useState(false); // Untuk notifikasi sukses manual save
+  const [saveToast, setSaveToast] = useState({ show: false, message: '' }); 
+
+  // --- STATE RUANG TRANSIT (TARIK DATA 3A) ---
+  const [transitModal, setTransitModal] = useState({ 
+    isOpen: false, 
+    step: 1, 
+    ipAddress: '', 
+    isLoading: false, 
+    data: [], 
+    error: '' 
+  });
 
   // --- STATE PRINT MODE (PDF GABUNGAN / NCR PER KATEGORI) ---
   const [printMode, setPrintMode] = useState('pdf');
@@ -190,6 +202,19 @@ export default function App() {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (err) {
       setLoginError('Akses Ditolak! Email atau Password salah.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleDemoLogin = async (e) => {
+    e.preventDefault();
+    setLoginError('');
+    setIsLoggingIn(true);
+    try {
+      await signInAnonymously(auth);
+    } catch (err) {
+      setLoginError('Gagal masuk mode demo: ' + err.message);
     } finally {
       setIsLoggingIn(false);
     }
@@ -306,7 +331,7 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // AUTO SAVE EFEK (Dipercepat menjadi 1 detik)
+  // AUTO SAVE EFEK
   useEffect(() => {
     if (!user || !dbReady || !db) return;
     setSyncStatus('syncing');
@@ -325,7 +350,7 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signatures, categories, allReports, user, dbReady]);
 
-  // FUNGSI PAKSA SIMPAN (MANUAL SAVE) UNTUK KEAMANAN DATA ADMIN
+  // FUNGSI PAKSA SIMPAN (MANUAL SAVE)
   const handleForceSave = async () => {
     if (!user || !dbReady) return;
     setSyncStatus('syncing');
@@ -334,11 +359,15 @@ export default function App() {
         signatures, categories, allReports, lastUpdated: new Date().toISOString()
       });
       setSyncStatus('synced');
-      setSaveToast(true);
-      setTimeout(() => setSaveToast(false), 3000);
+      showToast('Data berhasil disimpan ke Cloud!');
     } catch(e) {
       setSyncStatus('offline');
     }
+  };
+
+  const showToast = (message) => {
+    setSaveToast({ show: true, message });
+    setTimeout(() => setSaveToast({ show: false, message: '' }), 3000);
   };
 
   const showConfirm = (message, onConfirmAction) => {
@@ -622,6 +651,115 @@ export default function App() {
     }
     setEditNoteModal({ isOpen: false, group: null, item: null, newNote: '' });
   };
+
+  // ==========================================
+  // 🔴 FUNGSI: RUANG TRANSIT (TARIK DATA 3A) 🔴
+  // ==========================================
+  const handleFetch3A = async (e) => {
+    e.preventDefault();
+    setTransitModal(prev => ({ ...prev, isLoading: true, error: '' }));
+    
+    try {
+      let fetchedData = [];
+      const ip = transitModal.ipAddress.trim().toLowerCase();
+
+      // SIMULASI JIKA USER MENGETIK "demo" (Karena Canvas tidak bisa akses Localhost intranet Bapak)
+      if (ip === 'demo') {
+        await new Promise(r => setTimeout(r, 1200)); // Fake delay
+        fetchedData = [
+          { id: 't1', name3A: 'Tiket Masuk Dewasa (Web)', amount: 15500000 },
+          { id: 't2', name3A: 'Tiket Masuk Anak (Web)', amount: 4500000 },
+          { id: 't3', name3A: 'Taman Satwa Anak (Web)', amount: 2000000 }
+        ];
+      } else {
+        // Coba Fetch Asli ke Server 3A (Akan error CORS jika IP tidak public/diizinkan)
+        const url = ip.startsWith('http') ? ip : `http://${ip}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Response tidak OK');
+        fetchedData = await res.json();
+      }
+
+      // AUTO-MAPPING LOGIC
+      const mappedData = fetchedData.map(item => {
+        let guessCat = '';
+        let guessItem = '';
+        const lowerName = (item.name3A || '').toLowerCase();
+        
+        // Logika tebak cerdas (Berdasarkan kata kunci)
+        if (lowerName.includes('dewasa')) {
+          guessCat = 'cat_6'; guessItem = 'item_6a'; // Default ke Ticket Online Dewasa
+        } else if (lowerName.includes('anak') && !lowerName.includes('satwa')) {
+          guessCat = 'cat_6'; guessItem = 'item_6b'; // Default ke Ticket Online Anak
+        } else if (lowerName.includes('satwa anak')) {
+          guessCat = 'cat_6'; guessItem = 'item_6c'; // Default ke Ticket Online TSA
+        }
+
+        return { ...item, mappedCat: guessCat, mappedItem: guessItem };
+      });
+
+      setTransitModal(prev => ({ ...prev, step: 2, data: mappedData, isLoading: false }));
+
+    } catch (err) {
+      setTransitModal(prev => ({ 
+        ...prev, 
+        isLoading: false, 
+        error: 'Gagal terhubung ke Server 3A. Pastikan IP Rekon benar dan jaringan terhubung. (Ketik "demo" pada kolom IP untuk mencoba fitur dengan data simulasi).' 
+      }));
+    }
+  };
+
+  const updateTransitMapping = (id, field, value) => {
+    setTransitModal(prev => ({
+      ...prev,
+      data: prev.data.map(d => {
+        if (d.id === id) {
+          const newData = { ...d, [field]: value };
+          if (field === 'mappedCat') newData.mappedItem = ''; // Reset item jika kategori berubah
+          return newData;
+        }
+        return d;
+      })
+    }));
+  };
+
+  const confirmTransitInjection = () => {
+    // Inject data ke form STSU
+    updateCurrentReport(prev => {
+      const newItems = [...(prev.activeItems || [])];
+      const newFormData = { ...(prev.formData || {}) };
+
+      transitModal.data.forEach(t => {
+        if (t.mappedCat && t.mappedItem) {
+          // Asumsi import selalu ke mode saat ini (isSusulan / normal)
+          const key = getActiveItemKey(t.mappedCat, t.mappedItem, isAddingSusulan, susulanValidDate, lainItemDate, lainItemNote);
+          
+          // Cek jika item belum ada di list activeItems
+          const exists = newItems.find(i => getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote) === key);
+          
+          if (!exists) {
+            newItems.push({
+              catId: t.mappedCat,
+              itemId: t.mappedItem,
+              isSusulan: isAddingSusulan,
+              validDate: susulanValidDate,
+              itemDate: lainItemDate,
+              itemNote: lainItemNote // Atau bisa pakai nama asli 3A: t.name3A
+            });
+          }
+
+          // Tambahkan nominal
+          newFormData[key] = (newFormData[key] || 0) + Number(t.amount);
+        }
+      });
+
+      return { ...prev, activeItems: newItems, formData: newFormData };
+    });
+
+    // Tutup modal dan beri notif
+    setTransitModal({ isOpen: false, step: 1, ipAddress: '', isLoading: false, data: [], error: '' });
+    showToast('Berhasil! Data dari 3A telah disuntikkan ke STSU.');
+  };
+
 
   const computedStsuNo = useMemo(() => {
     if (!reportDate) return '';
@@ -935,6 +1073,20 @@ export default function App() {
             <button type="submit" disabled={isLoggingIn} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-md mt-2 disabled:bg-gray-400">
               {isLoggingIn ? 'Memeriksa Kredensial...' : 'Masuk ke Aplikasi'}
             </button>
+            
+            {isCanvasEnv && (
+              <>
+                <div className="relative flex items-center py-2">
+                  <div className="flex-grow border-t border-gray-200"></div>
+                  <span className="flex-shrink-0 mx-4 text-gray-400 text-xs font-medium">ATAU</span>
+                  <div className="flex-grow border-t border-gray-200"></div>
+                </div>
+
+                <button type="button" onClick={handleDemoLogin} disabled={isLoggingIn} className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold py-3.5 rounded-xl transition-all shadow-sm border border-blue-200 disabled:opacity-50">
+                  Masuk Tanpa Sandi (Mode Demo)
+                </button>
+              </>
+            )}
           </form>
           <div className="mt-8 text-center text-xs text-gray-400">
             Akses Terbatas &bull; Sistem Rekap STSU
@@ -975,12 +1127,162 @@ export default function App() {
       `}</style>
 
       {/* --- SAVE TOAST NOTIFICATION --- */}
-      {saveToast && (
+      {saveToast.show && (
         <div className="fixed top-20 right-4 sm:right-10 z-[9999] bg-green-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-5 duration-300">
           <CheckCircle size={20} />
-          <div className="font-bold text-sm">Data berhasil disimpan ke Cloud!</div>
+          <div className="font-bold text-sm">{saveToast.message}</div>
         </div>
       )}
+
+      {/* --- RUANG TRANSIT (MODAL TARIK DATA 3A) --- */}
+      {transitModal.isOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
+          <div className={`bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 ${transitModal.step === 1 ? 'max-w-md' : 'max-w-4xl max-h-[90vh]'}`}>
+            
+            {/* Header Modal */}
+            <div className="bg-gradient-to-r from-blue-700 to-blue-900 p-5 text-white flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <Database size={24} />
+                <div>
+                  <h3 className="font-bold text-lg leading-tight">Integrasi Server 3A</h3>
+                  <p className="text-xs text-blue-200">{transitModal.step === 1 ? 'Masukkan IP Address Mesin Rekon' : 'Ruang Transit & Mapping Data'}</p>
+                </div>
+              </div>
+              <button onClick={() => setTransitModal({ isOpen: false, step: 1, ipAddress: '', isLoading: false, data: [], error: '' })} className="text-white hover:bg-white/20 p-2 rounded-lg transition-colors">
+                ✕
+              </button>
+            </div>
+
+            {/* Konten Modal */}
+            <div className="p-6 bg-gray-50 flex-1 overflow-y-auto">
+              {transitModal.step === 1 ? (
+                // STEP 1: INPUT IP ADDRESS
+                <form onSubmit={handleFetch3A} className="space-y-4">
+                  {transitModal.error && (
+                    <div className="bg-red-50 text-red-600 p-3 rounded-lg border border-red-200 text-sm flex gap-2 font-medium">
+                      <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                      <p>{transitModal.error}</p>
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">IP Rekon / URL API 3A</label>
+                    <input 
+                      type="text" 
+                      value={transitModal.ipAddress}
+                      onChange={(e) => setTransitModal(prev => ({...prev, ipAddress: e.target.value}))}
+                      placeholder="Contoh: 192.168.1.100 atau ketik 'demo'"
+                      className="w-full border border-gray-300 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white font-bold"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <button type="submit" disabled={transitModal.isLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-md disabled:opacity-50 flex justify-center items-center gap-2">
+                    {transitModal.isLoading ? <RefreshCw size={18} className="animate-spin" /> : <Database size={18} />}
+                    {transitModal.isLoading ? 'Menarik Data...' : 'Tarik Data 3A Sekarang'}
+                  </button>
+                </form>
+
+              ) : (
+                // STEP 2: RUANG TRANSIT (MAPPING)
+                <div className="space-y-4">
+                  <div className="bg-blue-50 border border-blue-200 text-blue-800 p-3 rounded-xl text-sm font-medium flex gap-2 items-start">
+                    <Sparkles size={18} className="shrink-0 mt-0.5" />
+                    <p>Sistem telah mencoba mencocokkan data secara otomatis. Silakan periksa kembali dan atur kategori STSU di sebelah kanan jika ada yang keliru sebelum di-inject ke Form.</p>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-xl bg-white overflow-hidden shadow-sm">
+                    {/* Header Tabel */}
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 bg-gray-100 p-3 border-b border-gray-200 font-bold text-xs text-gray-600 uppercase tracking-wide hidden md:grid">
+                      <div className="col-span-5">Data Asli dari 3A</div>
+                      <div className="col-span-7 pl-4 border-l border-gray-300">Arahkan Ke Kategori STSU Kita</div>
+                    </div>
+                    
+                    {/* List Data */}
+                    <div className="divide-y divide-gray-100">
+                      {transitModal.data.map((item) => (
+                        <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 items-center hover:bg-blue-50/30 transition-colors">
+                          {/* KIRI: DATA 3A */}
+                          <div className="col-span-5 flex flex-col">
+                            <span className="font-bold text-gray-800 text-sm">{item.name3A}</span>
+                            <span className="text-blue-600 font-black text-lg">Rp {formatRp(item.amount)}</span>
+                          </div>
+
+                          {/* KANAN: MAPPING KE STSU */}
+                          <div className="col-span-7 flex flex-col sm:flex-row gap-2 relative">
+                            <div className="absolute left-[-16px] top-1/2 -translate-y-1/2 text-gray-300 hidden md:block">
+                              <ArrowRight size={20} />
+                            </div>
+                            <div className="flex-1">
+                              <select 
+                                value={item.mappedCat || ''} 
+                                onChange={(e) => updateTransitMapping(item.id, 'mappedCat', e.target.value)}
+                                className={`w-full border rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-medium ${item.mappedCat ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'}`}
+                              >
+                                <option value="">-- Pilih Kategori --</option>
+                                {categories.filter(c => c.type === activeType).map(cat => (
+                                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex-1">
+                              <select 
+                                value={item.mappedItem || ''} 
+                                onChange={(e) => updateTransitMapping(item.id, 'mappedItem', e.target.value)}
+                                disabled={!item.mappedCat}
+                                className={`w-full border rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-medium ${!item.mappedCat ? 'bg-gray-100 text-gray-400' : item.mappedItem ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'}`}
+                              >
+                                {!item.mappedCat ? <option value="">Pilih Kategori Dulu</option> : <option value="">-- Pilih Sub Kategori --</option>}
+                                
+                                {item.mappedCat && categories.find(c => c.id === item.mappedCat)?.items?.length === 0 && (
+                                  <option value="direct">Langsung isi nominal</option>
+                                )}
+
+                                {item.mappedCat && categories.find(c => c.id === item.mappedCat)?.items?.map(sub => (
+                                  <option key={sub.id} value={sub.id}>{sub.name}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Tombol Hapus Baris (Jika tidak mau di-import) */}
+                            <button 
+                              onClick={() => setTransitModal(prev => ({...prev, data: prev.data.filter(d => d.id !== item.id)}))}
+                              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg shrink-0 transition-colors"
+                              title="Jangan Import Data Ini"
+                            >
+                              <Trash size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      {transitModal.data.length === 0 && (
+                        <div className="p-6 text-center text-gray-500 font-medium">Semua data telah dihapus/dibatalkan dari daftar import.</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Modal */}
+            {transitModal.step === 2 && (
+              <div className="bg-white border-t border-gray-200 p-4 flex justify-between items-center shrink-0">
+                <button onClick={() => setTransitModal(prev => ({...prev, step: 1}))} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors">
+                  Batal / Kembali
+                </button>
+                <button 
+                  onClick={confirmTransitInjection}
+                  disabled={transitModal.data.length === 0 || transitModal.data.some(d => d.mappedCat && !d.mappedItem)}
+                  className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  <Save size={18} /> Konfirmasi & Masukkan ke Form
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
 
       {/* --- CUSTOM CONFIRM MODAL --- */}
       {confirmDialog.isOpen && (
@@ -1274,6 +1576,20 @@ export default function App() {
             </button>
           </div>
 
+          {/* 🔴 TOMBOL TARIK DATA DARI 3A 🔴 */}
+          <div className="mb-6">
+             <button 
+                onClick={() => setTransitModal({ ...transitModal, isOpen: true, step: 1, error: '' })}
+                className="w-full bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900 text-white font-bold py-4 px-6 rounded-2xl shadow-lg border border-blue-500 flex justify-center items-center gap-3 transition-transform hover:scale-[1.01]"
+             >
+                <Database size={24} className="text-blue-200" />
+                <div className="text-left">
+                  <span className="block text-lg">Tarik Data dari Server 3A</span>
+                  <span className="block text-xs font-normal text-blue-200">Hubungkan IP Rekon untuk auto-input nominal E-Ticketing</span>
+                </div>
+             </button>
+          </div>
+
           {activeType === 'lain' && (
             <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar pb-2 items-center">
               {lainDocIndices.map(num => (
@@ -1311,7 +1627,7 @@ export default function App() {
             </div>
           )}
 
-          {/* 🔴 HEADER DOKUMEN DENGAN TAMBAHAN TOTAL NOMINAL INPUT 🔴 */}
+          {/* 🔴 HEADER DOKUMEN 🔴 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 relative overflow-hidden">
             <div className={`absolute top-0 right-0 text-white text-xs font-bold px-3 py-1 rounded-bl-lg ${activeType === 'utama' ? 'bg-green-500' : 'bg-purple-500'}`}>
               Dokumen {activeType === 'utama' ? 'STSU (SU)' : `Lain-lain (SU/L) - Ke ${activeLainIndex}`}
@@ -1336,7 +1652,6 @@ export default function App() {
                 </div>
               </div>
               
-              {/* 🔴 TOTAL DOKUMEN AKTIF MUNCUL DI HEADER 🔴 */}
               <div className={`p-3 rounded-xl border flex flex-col justify-center shadow-inner items-end ${activeType === 'utama' ? 'bg-green-50 border-green-200' : 'bg-purple-50 border-purple-200'}`}>
                 <span className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${activeType === 'utama' ? 'text-green-600' : 'text-purple-600'}`}>
                   Total {activeType === 'utama' ? 'Pendapatan' : 'Lain-lain'}
@@ -1352,7 +1667,7 @@ export default function App() {
             
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
               <h2 className={`text-sm font-bold flex items-center gap-2 uppercase tracking-wide ${activeType === 'utama' ? 'text-green-800' : 'text-purple-800'}`}>
-                <Plus size={18} /> Tambah Transaksi {activeType === 'utama' ? 'SU' : 'SU/L'}
+                <Plus size={18} /> Tambah Transaksi Manual
               </h2>
               
               {activeType === 'utama' && (
