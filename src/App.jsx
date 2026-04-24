@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save, Database, ArrowRight } from 'lucide-react';
+import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save, Database, ArrowRight, CloudDownload } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
@@ -38,7 +38,7 @@ try {
   console.error("Firebase init error", e);
 }
 
-// --- FUNGSI FORMATTING (KOREKSI TERBILANG) ---
+// --- FUNGSI FORMATTING ---
 function terbilang(angka) {
   angka = Math.floor(Math.abs(angka));
   if (angka === 0) return "nol";
@@ -101,12 +101,11 @@ export default function App() {
   const [editNoteModal, setEditNoteModal] = useState({ isOpen: false, group: null, item: null, newNote: '' });
   const [saveToast, setSaveToast] = useState({ show: false, message: '' }); 
 
-  // --- STATE RUANG TRANSIT (TARIK DATA 3A) (DIPERBARUI) ---
+  // --- STATE RUANG TRANSIT (DIPERBARUI) ---
   const [transitModal, setTransitModal] = useState({ 
-    isOpen: false, step: 1, 
-    ipAddress: 'localhost', // Default localhost
-    targetDate: getLocalYMD(), // Tambah Date Picker
-    isLoading: false, data: [], error: '' 
+    isOpen: false, step: 'confirm_date', // confirm_date, confirm_overwrite, loading, error, mapping
+    targetDate: getLocalYMD(), 
+    isLoading: false, data: [], error: '', isOverwriting: false
   });
 
   const [printMode, setPrintMode] = useState('pdf');
@@ -194,6 +193,8 @@ export default function App() {
   ]));
 
   const [allReports, setAllReports] = useState(() => getInitialState('tmr_v19_allReports', {}));
+  // --- KONFIGURASI IP SERVER BOT ---
+  const [apiIpAddress, setApiIpAddress] = useState(() => getInitialState('tmr_v19_api_ip', 'localhost'));
 
   const [reportDate, setReportDate] = useState(getLocalYMD());
   const [activeType, setActiveType] = useState('utama'); 
@@ -211,6 +212,7 @@ export default function App() {
   useEffect(() => { if (typeof window !== 'undefined') window.localStorage.setItem('tmr_v19_signatures', JSON.stringify(signatures)); }, [signatures]);
   useEffect(() => { if (typeof window !== 'undefined') window.localStorage.setItem('tmr_v19_categories', JSON.stringify(categories)); }, [categories]);
   useEffect(() => { if (typeof window !== 'undefined') window.localStorage.setItem('tmr_v19_allReports', JSON.stringify(allReports)); }, [allReports]);
+  useEffect(() => { if (typeof window !== 'undefined') window.localStorage.setItem('tmr_v19_api_ip', JSON.stringify(apiIpAddress)); }, [apiIpAddress]);
 
   const getDocRef = () => { return doc(db, 'tmr_data', user ? user.uid : 'demo_rekapitulasi_laporan'); };
 
@@ -392,16 +394,27 @@ export default function App() {
   // ==========================================
   // 🔴 FUNGSI: MENGAMBIL DATA DARI BOT PYTHON
   // ==========================================
-  const handleFetch3A = async (e) => {
-    e.preventDefault();
-    setTransitModal(prev => ({ ...prev, isLoading: true, error: '' }));
+  const handleOpenTransit = () => {
+    setTransitModal({
+      isOpen: true,
+      step: 'confirm_date',
+      targetDate: reportDate,
+      isLoading: false, data: [], error: '', isOverwriting: false
+    });
+  };
+
+  const closeTransitModal = () => {
+    setTransitModal({ isOpen: false, step: 'confirm_date', targetDate: getLocalYMD(), isLoading: false, data: [], error: '', isOverwriting: false });
+  };
+
+  const executeFetch3A = async (isOverwrite) => {
+    setTransitModal(prev => ({ ...prev, step: 'loading', isOverwriting: isOverwrite, error: '' }));
     
     try {
       let fetchedData = [];
-      const ip = transitModal.ipAddress.trim().toLowerCase();
+      const ip = apiIpAddress.trim().toLowerCase();
       const targetDate = transitModal.targetDate;
 
-      // Daftar nama STSU untuk mempercantik tampilan di Ruang Transit
       const stsuNames = {
         "1": "Karcis Dewasa", "2": "Karcis Anak", "3": "Romb. Dewasa 25%", "4": "Romb. Anak 25%",
         "5": "Kuda Tunggang", "6": "Unta Tunggang", "7": "Gajah Tunggang", "8": "Taman Satwa Anak",
@@ -447,25 +460,24 @@ export default function App() {
         }
       }
 
-      // AUTO-MAPPING LOGIC (Menebak Kategori berdasarkan nama tiket)
+      // AUTO-MAPPING LOGIC
       const mappedData = fetchedData.map(item => {
         let guessCat = '';
         let guessItem = '';
         const lowerName = (item.name3A || '').toLowerCase();
         
         if (lowerName.includes('online') || lowerName.includes('merchant_page')) {
-            guessCat = 'cat_6'; // Ticket Online
+            guessCat = 'cat_6'; 
             if (lowerName.includes('dewasa') && !lowerName.includes('schmutzer')) guessItem = 'item_6a';
             else if (lowerName.includes('anak') && !lowerName.includes('satwa') && !lowerName.includes('schmutzer')) guessItem = 'item_6b';
             else if (lowerName.includes('taman satwa anak') || lowerName.includes('tsa')) guessItem = 'item_6c';
         } else {
-            guessCat = 'cat_5'; // E-Ticketing (TVM/Gate)
+            guessCat = 'cat_5'; 
             if (lowerName.includes('dewasa') && !lowerName.includes('schmutzer')) guessItem = 'item_5a';
             else if (lowerName.includes('anak') && !lowerName.includes('satwa') && !lowerName.includes('schmutzer')) guessItem = 'item_5b';
             else if (lowerName.includes('taman satwa anak') || lowerName.includes('tsa')) guessItem = 'item_5c';
         }
 
-        // Pastikan kategori dan item tersebut benar-benar ada di database Categories
         const catExists = categories.find(c => c.id === guessCat);
         if(!catExists) { guessCat = ''; guessItem = ''; }
         else if (catExists.items.length > 0 && !catExists.items.find(i => i.id === guessItem)) { guessItem = ''; }
@@ -473,11 +485,11 @@ export default function App() {
         return { ...item, mappedCat: guessCat, mappedItem: guessItem };
       });
 
-      setTransitModal(prev => ({ ...prev, step: 2, data: mappedData, isLoading: false }));
+      setTransitModal(prev => ({ ...prev, step: 'mapping', data: mappedData }));
 
     } catch (err) {
       setTransitModal(prev => ({ 
-        ...prev, isLoading: false, 
+        ...prev, step: 'error', 
         error: `Gagal terhubung ke Bot API Python. Error: ${err.message}. Pastikan file Python sedang berjalan!` 
       }));
     }
@@ -489,8 +501,8 @@ export default function App() {
 
   const confirmTransitInjection = () => {
     updateCurrentReport(prev => {
-      const newItems = [...(prev.activeItems || [])];
-      const newFormData = { ...(prev.formData || {}) };
+      let newItems = transitModal.isOverwriting ? [] : [...(prev.activeItems || [])];
+      let newFormData = transitModal.isOverwriting ? {} : { ...(prev.formData || {}) };
 
       transitModal.data.forEach(t => {
         if (t.mappedCat && t.mappedItem) {
@@ -502,7 +514,7 @@ export default function App() {
       });
       return { ...prev, activeItems: newItems, formData: newFormData };
     });
-    setTransitModal({ isOpen: false, step: 1, ipAddress: 'localhost', targetDate: getLocalYMD(), isLoading: false, data: [], error: '' });
+    closeTransitModal();
     showToast('Berhasil! Data dari Bot 3A telah disuntikkan ke STSU.');
   };
 
@@ -610,6 +622,7 @@ export default function App() {
 
   const formatTanggalCetak = (dateStr) => { if(!dateStr) return ""; return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).replace(',', ', tanggal'); };
   const formatTanggalTtd = (dateStr) => { if(!dateStr) return ""; return new Date(dateStr).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: '2-digit' }); };
+  const formatTanggalPopUp = (dateStr) => { if(!dateStr) return ""; return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }); };
 
   if (!authReady) return <div className="min-h-screen flex items-center justify-center bg-gray-100 text-gray-500 font-bold">Memuat Sistem Keamanan...</div>;
   if (!user) {
@@ -660,117 +673,149 @@ export default function App() {
 
       {transitModal.isOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
-          <div className={`bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 ${transitModal.step === 1 ? 'max-w-md' : 'max-w-4xl max-h-[90vh]'}`}>
-            <div className="bg-gradient-to-r from-blue-700 to-blue-900 p-5 text-white flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-3">
-                <Database size={24} />
-                <div>
-                  <h3 className="font-bold text-lg leading-tight">Integrasi Server 3A</h3>
-                  <p className="text-xs text-blue-200">{transitModal.step === 1 ? 'Hubungkan ke Bot Python Anda' : 'Ruang Transit & Mapping Data'}</p>
+          <div className={`bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 ${transitModal.step === 'mapping' ? 'max-w-4xl max-h-[90vh]' : 'max-w-md'}`}>
+            
+            {/* TAHAP 1: KONFIRMASI TANGGAL */}
+            {transitModal.step === 'confirm_date' && (
+              <div className="p-8 text-center relative">
+                <button onClick={closeTransitModal} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><Trash size={20} className="opacity-0" /> {/* Spacer */} <span className="absolute top-0 right-0 p-1">✕</span></button>
+                <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-5 shadow-inner">
+                  <Database size={36} className="text-blue-500" />
                 </div>
-              </div>
-              <button onClick={() => setTransitModal({ isOpen: false, step: 1, ipAddress: 'localhost', targetDate: getLocalYMD(), isLoading: false, data: [], error: '' })} className="text-white hover:bg-white/20 p-2 rounded-lg transition-colors">✕</button>
-            </div>
-
-            <div className="p-6 bg-gray-50 flex-1 overflow-y-auto">
-              {transitModal.step === 1 ? (
-                <form onSubmit={handleFetch3A} className="space-y-4">
-                  {transitModal.error && (
-                    <div className="bg-red-50 text-red-600 p-3 rounded-lg border border-red-200 text-sm flex gap-2 font-medium">
-                      <AlertCircle size={18} className="shrink-0 mt-0.5" /> <p>{transitModal.error}</p>
-                    </div>
-                  )}
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Pilih Tanggal Tarikan</label>
-                    <input 
-                      type="date" 
-                      value={transitModal.targetDate}
-                      onChange={(e) => setTransitModal(prev => ({...prev, targetDate: e.target.value}))}
-                      className="w-full border border-gray-300 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white font-bold"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">IP Rekon (Biarkan localhost jika di PC yang sama)</label>
-                    <input 
-                      type="text" 
-                      value={transitModal.ipAddress}
-                      onChange={(e) => setTransitModal(prev => ({...prev, ipAddress: e.target.value}))}
-                      placeholder="Contoh: localhost atau 192.168.1.5"
-                      className="w-full border border-gray-300 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white font-bold"
-                      required
-                    />
-                  </div>
-                  <button type="submit" disabled={transitModal.isLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-md disabled:opacity-50 flex justify-center items-center gap-2 mt-4">
-                    {transitModal.isLoading ? <RefreshCw size={18} className="animate-spin" /> : <Database size={18} />}
-                    {transitModal.isLoading ? 'Menunggu Bot Mengambil Data...' : 'Perintahkan Bot Tarik Data'}
+                <h3 className="text-xl font-black text-gray-800 mb-3">Tarik Data 3A</h3>
+                <p className="text-gray-600 mb-8 font-medium">Apakah Anda akan mengambil data dari sistem 3A untuk hari <strong className="text-blue-700">{formatTanggalPopUp(transitModal.targetDate)}</strong>?</p>
+                
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <button onClick={closeTransitModal} className="px-5 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors order-2 sm:order-1">Batal</button>
+                  <button onClick={() => {
+                    if (currentReport.activeItems && currentReport.activeItems.length > 0) {
+                      setTransitModal(prev => ({...prev, step: 'confirm_overwrite'}));
+                    } else {
+                      executeFetch3A(false);
+                    }
+                  }} className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition-colors order-1 sm:order-2 flex items-center justify-center gap-2">
+                    Ya, Tarik Data
                   </button>
-                </form>
-              ) : (
-                <div className="space-y-4">
-                  <div className="bg-blue-50 border border-blue-200 text-blue-800 p-3 rounded-xl text-sm font-medium flex gap-2 items-start">
-                    <Sparkles size={18} className="shrink-0 mt-0.5" />
-                    <p>Bot berhasil mengekstrak data! Sistem telah mencoba mencocokkan data secara otomatis. Periksa dan ubah kategori jika ada yang salah.</p>
-                  </div>
-                  <div className="border border-gray-200 rounded-xl bg-white overflow-hidden shadow-sm">
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 bg-gray-100 p-3 border-b border-gray-200 font-bold text-xs text-gray-600 uppercase tracking-wide hidden md:grid">
-                      <div className="col-span-5">Data Ekstraksi Bot 3A</div>
-                      <div className="col-span-7 pl-4 border-l border-gray-300">Arahkan Ke Kategori Form STSU</div>
+                </div>
+              </div>
+            )}
+
+            {/* TAHAP 2: KONFIRMASI OVERWRITE (Jika Data Sudah Ada) */}
+            {transitModal.step === 'confirm_overwrite' && (
+              <div className="p-8 text-center relative">
+                <div className="w-20 h-20 bg-yellow-50 rounded-full flex items-center justify-center mx-auto mb-5 shadow-inner">
+                  <AlertCircle size={36} className="text-yellow-600" />
+                </div>
+                <h3 className="text-xl font-black text-gray-800 mb-3">Data Sudah Terisi</h3>
+                <p className="text-gray-600 mb-8 text-sm">Sudah ada data STSU yang tersimpan pada tanggal ini. Apakah data sebelumnya akan <strong>ditimpa</strong> dengan data baru dari 3A?</p>
+                
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <button onClick={closeTransitModal} className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors order-3 sm:order-1 text-sm">Batal</button>
+                  <button onClick={() => executeFetch3A(false)} className="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-md transition-colors order-2 text-sm">Gabungkan</button>
+                  <button onClick={() => executeFetch3A(true)} className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-md transition-colors order-1 sm:order-3 text-sm">Ya, Timpa Data</button>
+                </div>
+              </div>
+            )}
+
+            {/* TAHAP 3: LOADING API */}
+            {transitModal.step === 'loading' && (
+              <div className="p-10 text-center flex flex-col items-center">
+                <RefreshCw size={48} className="animate-spin text-blue-500 mb-6" />
+                <h3 className="text-xl font-black text-gray-800 mb-2">Menghubungi Server Bot...</h3>
+                <p className="text-sm text-gray-500 font-medium">Sedang mengekstrak data dari portal 3A. Silakan tunggu beberapa detik.</p>
+              </div>
+            )}
+
+            {/* TAHAP 4: ERROR */}
+            {transitModal.step === 'error' && (
+              <div className="p-8 text-center relative">
+                <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-5 shadow-inner">
+                  <AlertCircle size={36} className="text-red-500" />
+                </div>
+                <h3 className="text-xl font-black text-gray-800 mb-3">Gagal Menarik Data</h3>
+                <div className="bg-red-50 border border-red-100 p-4 rounded-xl text-red-700 text-sm mb-8 text-left max-h-32 overflow-y-auto">
+                  {transitModal.error}
+                </div>
+                <button onClick={closeTransitModal} className="px-6 py-3 w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl transition-colors shadow-sm">Tutup & Periksa Bot</button>
+              </div>
+            )}
+
+            {/* TAHAP 5: MAPPING (Ruang Transit) */}
+            {transitModal.step === 'mapping' && (
+              <>
+                <div className="bg-gradient-to-r from-blue-700 to-blue-900 p-5 text-white flex justify-between items-center shrink-0">
+                  <div className="flex items-center gap-3">
+                    <Database size={24} />
+                    <div>
+                      <h3 className="font-bold text-lg leading-tight">Ruang Transit 3A</h3>
+                      <p className="text-xs text-blue-200">Arahkan data STSU ke form laporan Anda</p>
                     </div>
-                    <div className="divide-y divide-gray-100">
-                      {transitModal.data.map((item) => (
-                        <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 items-center hover:bg-blue-50/30 transition-colors">
-                          <div className="col-span-5 flex flex-col">
-                            <span className="font-bold text-gray-800 text-sm">{item.name3A}</span>
-                            <span className="text-blue-600 font-black text-lg">Rp {formatRp(item.amount)}</span>
-                          </div>
-                          <div className="col-span-7 flex flex-col sm:flex-row gap-2 relative">
-                            <div className="absolute left-[-16px] top-1/2 -translate-y-1/2 text-gray-300 hidden md:block"><ArrowRight size={20} /></div>
-                            <div className="flex-1">
-                              <select 
-                                value={item.mappedCat || ''} 
-                                onChange={(e) => updateTransitMapping(item.id, 'mappedCat', e.target.value)}
-                                className={`w-full border rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-medium ${item.mappedCat ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'}`}
-                              >
-                                <option value="">-- Pilih Kategori --</option>
-                                {categories.filter(c => c.type === activeType).map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                              </select>
+                  </div>
+                  <button onClick={closeTransitModal} className="text-white hover:bg-white/20 p-2 rounded-lg transition-colors">✕</button>
+                </div>
+                <div className="p-6 bg-gray-50 flex-1 overflow-y-auto">
+                  <div className="space-y-4">
+                    <div className="bg-blue-50 border border-blue-200 text-blue-800 p-3 rounded-xl text-sm font-medium flex gap-2 items-start">
+                      <Sparkles size={18} className="shrink-0 mt-0.5" />
+                      <p>Bot berhasil mengekstrak data STSU! Silakan periksa kembali kecocokan kategorinya sebelum menekan konfirmasi import.</p>
+                    </div>
+                    <div className="border border-gray-200 rounded-xl bg-white overflow-hidden shadow-sm">
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 bg-gray-100 p-3 border-b border-gray-200 font-bold text-xs text-gray-600 uppercase tracking-wide hidden md:grid">
+                        <div className="col-span-5">Data STSU Bot 3A</div>
+                        <div className="col-span-7 pl-4 border-l border-gray-300">Arahkan Ke Kategori Form STSU</div>
+                      </div>
+                      <div className="divide-y divide-gray-100">
+                        {transitModal.data.map((item) => (
+                          <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 items-center hover:bg-blue-50/30 transition-colors">
+                            <div className="col-span-5 flex flex-col">
+                              <span className="font-bold text-gray-800 text-sm">{item.name3A}</span>
+                              <span className="text-blue-600 font-black text-lg">Rp {formatRp(item.amount)}</span>
                             </div>
-                            <div className="flex-1">
-                              <select 
-                                value={item.mappedItem || ''} 
-                                onChange={(e) => updateTransitMapping(item.id, 'mappedItem', e.target.value)}
-                                disabled={!item.mappedCat}
-                                className={`w-full border rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-medium ${!item.mappedCat ? 'bg-gray-100 text-gray-400' : item.mappedItem ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'}`}
-                              >
-                                {!item.mappedCat ? <option value="">Pilih Kategori Dulu</option> : <option value="">-- Pilih Sub Kategori --</option>}
-                                {item.mappedCat && categories.find(c => c.id === item.mappedCat)?.items?.length === 0 && <option value="direct">Langsung isi nominal</option>}
-                                {item.mappedCat && categories.find(c => c.id === item.mappedCat)?.items?.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
-                              </select>
+                            <div className="col-span-7 flex flex-col sm:flex-row gap-2 relative">
+                              <div className="absolute left-[-16px] top-1/2 -translate-y-1/2 text-gray-300 hidden md:block"><ArrowRight size={20} /></div>
+                              <div className="flex-1">
+                                <select 
+                                  value={item.mappedCat || ''} 
+                                  onChange={(e) => updateTransitMapping(item.id, 'mappedCat', e.target.value)}
+                                  className={`w-full border rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-medium ${item.mappedCat ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'}`}
+                                >
+                                  <option value="">-- Pilih Kategori --</option>
+                                  {categories.filter(c => c.type === activeType).map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                                </select>
+                              </div>
+                              <div className="flex-1">
+                                <select 
+                                  value={item.mappedItem || ''} 
+                                  onChange={(e) => updateTransitMapping(item.id, 'mappedItem', e.target.value)}
+                                  disabled={!item.mappedCat}
+                                  className={`w-full border rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-medium ${!item.mappedCat ? 'bg-gray-100 text-gray-400' : item.mappedItem ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'}`}
+                                >
+                                  {!item.mappedCat ? <option value="">Pilih Kategori Dulu</option> : <option value="">-- Pilih Sub Kategori --</option>}
+                                  {item.mappedCat && categories.find(c => c.id === item.mappedCat)?.items?.length === 0 && <option value="direct">Langsung isi nominal</option>}
+                                  {item.mappedCat && categories.find(c => c.id === item.mappedCat)?.items?.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
+                                </select>
+                              </div>
+                              <button 
+                                onClick={() => setTransitModal(prev => ({...prev, data: prev.data.filter(d => d.id !== item.id)}))}
+                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg shrink-0 transition-colors" title="Jangan Import Data Ini"
+                              ><Trash size={18} /></button>
                             </div>
-                            <button 
-                              onClick={() => setTransitModal(prev => ({...prev, data: prev.data.filter(d => d.id !== item.id)}))}
-                              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg shrink-0 transition-colors" title="Jangan Import Data Ini"
-                            ><Trash size={18} /></button>
                           </div>
-                        </div>
-                      ))}
-                      {transitModal.data.length === 0 && <div className="p-6 text-center text-gray-500 font-medium">Semua data telah dihapus/dibatalkan dari daftar import.</div>}
+                        ))}
+                        {transitModal.data.length === 0 && <div className="p-6 text-center text-gray-500 font-medium">Semua data telah dihapus/dibatalkan dari daftar import.</div>}
+                      </div>
                     </div>
                   </div>
                 </div>
-              )}
-            </div>
-
-            {transitModal.step === 2 && (
-              <div className="bg-white border-t border-gray-200 p-4 flex justify-between items-center shrink-0">
-                <button onClick={() => setTransitModal(prev => ({...prev, step: 1}))} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors">Batal / Kembali</button>
-                <button 
-                  onClick={confirmTransitInjection}
-                  disabled={transitModal.data.length === 0 || transitModal.data.some(d => d.mappedCat && !d.mappedItem)}
-                  className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                ><Save size={18} /> Konfirmasi & Masukkan ke Form</button>
-              </div>
+                <div className="bg-white border-t border-gray-200 p-4 flex justify-between items-center shrink-0">
+                  <button onClick={closeTransitModal} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors">Batal / Kembali</button>
+                  <button 
+                    onClick={confirmTransitInjection}
+                    disabled={transitModal.data.length === 0 || transitModal.data.some(d => d.mappedCat && !d.mappedItem)}
+                    className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  ><Save size={18} /> Konfirmasi & Masukkan ke Form</button>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -912,6 +957,21 @@ export default function App() {
 
       {activeTab === 'settings' && (
         <div className="max-w-4xl mx-auto px-4 py-6 no-print space-y-6">
+          
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Cloud size={20} className="text-blue-500"/> Koneksi Server Bot 3A</h2>
+            <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
+                <label className="text-xs font-bold text-gray-600 uppercase mb-1.5 block">IP Address / Hostname Komputer Server</label>
+                <div className="flex gap-3 items-center">
+                  <div className="flex-1">
+                    <input type="text" value={apiIpAddress} onChange={e => setApiIpAddress(e.target.value)} className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 bg-white font-mono font-bold text-blue-700" placeholder="Contoh: localhost atau 192.168.1.5" />
+                  </div>
+                  <Database className="text-gray-400 shrink-0 hidden sm:block" size={24} />
+                </div>
+                <p className="text-xs text-gray-500 mt-2 font-medium">Isi dengan <strong className="text-gray-700">localhost</strong> jika Bot Python berjalan di PC yang sama dengan Web App ini. Atau isi dengan <strong className="text-gray-700">demo</strong> untuk mode animasi pura-pura.</p>
+            </div>
+          </div>
+
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
             <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Edit size={20} className="text-blue-500"/> Pejabat Penandatangan</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -979,26 +1039,26 @@ export default function App() {
       {activeTab === 'input' && (
         <div className="max-w-4xl mx-auto px-4 py-6 no-print">
           
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-2 flex flex-col sm:flex-row mb-6 gap-2">
-            <button onClick={() => handleTypeSwitch('utama')} className={`flex-1 py-3 px-4 rounded-xl font-bold flex flex-col items-center justify-center transition-all ${activeType === 'utama' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600'}`}>
-              <span className="text-sm uppercase tracking-wide">Input Form</span><span className="text-lg">STSU Pendapatan</span>
-            </button>
-            <button onClick={() => handleTypeSwitch('lain')} className={`flex-1 py-3 px-4 rounded-xl font-bold flex flex-col items-center justify-center transition-all ${activeType === 'lain' ? 'bg-purple-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-purple-50 hover:text-purple-600'}`}>
-              <span className="text-sm uppercase tracking-wide">Input Form</span><span className="text-lg">STSU Lain-lain</span>
-            </button>
-          </div>
-
-          <div className="mb-6">
-             <button 
-                onClick={() => setTransitModal({ ...transitModal, isOpen: true, step: 1, error: '' })}
-                className="w-full bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900 text-white font-bold py-4 px-6 rounded-2xl shadow-lg border border-blue-500 flex justify-center items-center gap-3 transition-transform hover:scale-[1.01]"
-             >
-                <Database size={24} className="text-blue-200" />
-                <div className="text-left">
-                  <span className="block text-lg">Tarik Data dari API 3A</span>
-                  <span className="block text-xs font-normal text-blue-200">Koneksikan ke Bot Python untuk Auto-Input STSU</span>
-                </div>
-             </button>
+          <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-3">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-1.5 flex flex-col sm:flex-row w-full sm:w-auto">
+              <button onClick={() => handleTypeSwitch('utama')} className={`flex-1 sm:flex-none py-2.5 px-6 rounded-xl font-bold flex items-center justify-center transition-all ${activeType === 'utama' ? 'bg-green-600 text-white shadow-md' : 'bg-transparent text-gray-500 hover:bg-green-50 hover:text-green-600'}`}>
+                STSU Pendapatan
+              </button>
+              <button onClick={() => handleTypeSwitch('lain')} className={`flex-1 sm:flex-none py-2.5 px-6 rounded-xl font-bold flex items-center justify-center transition-all ${activeType === 'lain' ? 'bg-purple-600 text-white shadow-md' : 'bg-transparent text-gray-500 hover:bg-purple-50 hover:text-purple-600'}`}>
+                STSU Lain-lain
+              </button>
+            </div>
+            
+            {/* TAMPILKAN TOMBOL HANYA JIKA ACTIVE TYPE ADALAH 'UTAMA' (PENDAPATAN) */}
+            {activeType === 'utama' && (
+              <button 
+                onClick={handleOpenTransit}
+                className="bg-white hover:bg-blue-50 text-blue-600 border border-blue-200 shadow-sm rounded-xl px-5 py-2.5 font-bold flex items-center justify-center gap-2 transition-all w-full sm:w-auto shrink-0 group"
+              >
+                <CloudDownload size={20} className="group-hover:-translate-y-0.5 transition-transform" />
+                <span>Tarik Data 3A</span>
+              </button>
+            )}
           </div>
 
           {activeType === 'lain' && (
