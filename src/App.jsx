@@ -672,6 +672,21 @@ export default function App() {
     if (!Array.isArray(categories)) return [];
     const activeI = Array.isArray(currentReport.activeItems) ? currentReport.activeItems : [];
     const groups = [];
+
+    // Fungsi helper untuk mengurutkan sub-item berdasarkan urutan di master categories
+    const sortDisplayItems = (items, masterItems) => {
+      items.sort((a, b) => {
+        if (a.id === 'direct') return -1;
+        if (b.id === 'direct') return 1;
+        const idxA = masterItems ? masterItems.findIndex(i => i.id === a.id) : -1;
+        const idxB = masterItems ? masterItems.findIndex(i => i.id === b.id) : -1;
+        const posA = idxA !== -1 ? idxA : 999;
+        const posB = idxB !== -1 ? idxB : 999;
+        return posA - posB;
+      });
+      return items;
+    };
+
     categories.forEach((cat, index) => {
       const itemsForCat = activeI.filter(ai => ai.catId === cat.id);
       if (itemsForCat.length === 0) return;
@@ -679,20 +694,28 @@ export default function App() {
         const configsForCat = [];
         itemsForCat.forEach(ai => { const key = ai.isSusulan ? `susulan_${ai.validDate}` : 'normal'; if (!configsForCat.find(c => c.key === key)) configsForCat.push({ key, isSusulan: !!ai.isSusulan, validDate: ai.validDate }); });
         configsForCat.forEach(config => {
-          const displayItems = itemsForCat.filter(ai => !!ai.isSusulan === config.isSusulan && (ai.validDate || '') === (config.validDate || '')).map(ai => {
+          let displayItems = itemsForCat.filter(ai => !!ai.isSusulan === config.isSusulan && (ai.validDate || '') === (config.validDate || '')).map(ai => {
             if (ai.itemId === 'direct') return { ...ai, id: 'direct', name: cat.name };
             const found = cat.items?.find(i => i.id === ai.itemId); return { ...ai, id: ai.itemId, name: found ? found.name : 'Item' };
           });
+          
+          // TERAPKAN PENGURUTAN KE MASTER DI SINI
+          displayItems = sortDisplayItems(displayItems, cat.items);
+          
           groups.push({ groupId: `${cat.id}_${config.key}`, catId: cat.id, name: cat.name, isSusulan: config.isSusulan, validDate: config.validDate, activeItems: displayItems, catIndex: index });
         });
       } else {
         const configsForCat = [];
         itemsForCat.forEach(ai => { const key = `${ai.itemDate ? `date_${ai.itemDate}` : 'nodate'}_note_${ai.itemNote ? ai.itemNote.trim() : ''}`; if (!configsForCat.find(c => c.key === key)) configsForCat.push({ key, itemDate: ai.itemDate, itemNote: ai.itemNote ? ai.itemNote.trim() : '' }); });
         configsForCat.forEach(config => {
-          const displayItems = itemsForCat.filter(ai => (ai.itemDate || '') === (config.itemDate || '') && (ai.itemNote ? ai.itemNote.trim() : '') === config.itemNote).map(ai => {
+          let displayItems = itemsForCat.filter(ai => (ai.itemDate || '') === (config.itemDate || '') && (ai.itemNote ? ai.itemNote.trim() : '') === config.itemNote).map(ai => {
             if (ai.itemId === 'direct') return { ...ai, id: 'direct', name: cat.name };
             const found = cat.items?.find(i => i.id === ai.itemId); return { ...ai, id: ai.itemId, name: found ? found.name : 'Item' };
           });
+          
+          // TERAPKAN PENGURUTAN KE MASTER DI SINI
+          displayItems = sortDisplayItems(displayItems, cat.items);
+          
           groups.push({ groupId: `${cat.id}_${config.key}`, catId: cat.id, name: cat.name, isSusulan: false, itemDate: config.itemDate, itemNote: config.itemNote, activeItems: displayItems, catIndex: index });
         });
       }
