@@ -185,16 +185,16 @@ export default function App() {
   }));
 
   // ==========================================
-  // PEMBARUAN MASTER DATA KATEGORI (DEFAULT)
-  // Sesuai permintaan penamaan IWM & 3A
+  // MASTER DATA DEFAULT KATEGORI
+  // (Penyegaran nama default untuk kemudahan user baru/reset)
   // ==========================================
   const [categories, setCategories] = useState(() => getInitialState('tmr_v19_categories', [
     { id: 'cat_1', name: 'Pemakaian Fasilitas', type: 'utama', items: [{ id: 'item_1a', name: 'Promo Penjualan Produk' }, { id: 'item_1b', name: 'Penempatan banner promosi' }, { id: 'item_1c', name: 'Panggung' }] },
     { id: 'cat_2', name: 'Retribusi Pedagang', type: 'utama', items: [{ id: 'item_2a', name: 'Retribusi pedagang Hari Biasa' }, { id: 'item_2b', name: 'Retribusi pedagang Hari Besar' }] },
-    { id: 'cat_3', name: 'E-Ticketing New Gate', type: 'utama', items: [{ id: 'item_3a', name: 'Tiket Masuk Dewasa' }, { id: 'item_3b', name: 'Tiket Masuk Anak' }, { id: 'item_3c', name: 'Taman Satwa Anak' }, { id: 'item_3d', name: 'Pusat Primata (Hari Biasa)' }, { id: 'item_3e', name: 'Pusat Primata (Weekend)' }, { id: 'item_3f', name: 'Kendaraan Motor' }, { id: 'item_3g', name: 'Kendaraan Mobil' }, { id: 'item_3h', name: 'Rombongan' }] },
-    { id: 'cat_4', name: 'Ticket Online', type: 'utama', items: [{ id: 'item_4a', name: 'Tiket Masuk Dewasa' }, { id: 'item_4b', name: 'Tiket Masuk Anak' }, { id: 'item_4c', name: 'Taman Satwa Anak' }, { id: 'item_4d', name: 'Pusat Primata (Hari Biasa)' }, { id: 'item_4e', name: 'Pusat Primata (Weekend)' }, { id: 'item_4f', name: 'Kendaraan Motor' }, { id: 'item_4g', name: 'Kendaraan Mobil' }] },
+    { id: 'cat_3', name: 'E-Ticketing New Gate', type: 'utama', items: [{ id: 'item_3a', name: 'Tiket Masuk Dewasa' }, { id: 'item_3b', name: 'Tiket Masuk Anak' }, { id: 'item_3c', name: 'Taman Satwa Anak' }, { id: 'item_3d', name: 'Pusat Primata (Hari Biasa)' }, { id: 'item_3e', name: 'Pusat Primata (Weekend)' }, { id: 'item_3f', name: 'Kendaraan Motor' }, { id: 'item_3g', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_3h', name: 'Kendaraan Gol 2' }, { id: 'item_3i', name: 'Kendaraan Gol 1' }, { id: 'item_3j', name: 'Kendaraan Sepeda' }, { id: 'item_3k', name: 'Rombongan' }] },
+    { id: 'cat_4', name: 'Ticket Online', type: 'utama', items: [{ id: 'item_4a', name: 'Tiket Masuk Dewasa' }, { id: 'item_4b', name: 'Tiket Masuk Anak' }, { id: 'item_4c', name: 'Taman Satwa Anak' }, { id: 'item_4d', name: 'Pusat Primata (Hari Biasa)' }, { id: 'item_4e', name: 'Pusat Primata (Weekend)' }, { id: 'item_4f', name: 'Kendaraan Motor' }, { id: 'item_4g', name: 'Kendaraan Gol 3 / Mobil' }] },
     { id: 'cat_5', name: 'Ticket Vending Machine (TVM)', type: 'utama', items: [{ id: 'item_5a', name: 'Tiket Masuk Dewasa' }, { id: 'item_5b', name: 'Tiket Masuk Anak' }, { id: 'item_5c', name: 'Taman Satwa Anak' }] },
-    { id: 'cat_6', name: 'E-Ticketing Old Gate', type: 'utama', items: [{ id: 'item_6a', name: 'Tiket Masuk Dewasa' }, { id: 'item_6b', name: 'Tiket Masuk Anak' }, { id: 'item_6c', name: 'Taman Satwa Anak' }, { id: 'item_6d', name: 'Pusat Primata Dewasa (Hari Biasa)' }, { id: 'item_6e', name: 'Pusat Primata Anak (Hari Biasa)' }, { id: 'item_6f', name: 'Pusat Primata Dewasa (Weekend)' }, { id: 'item_6g', name: 'Pusat Primata Anak (Weekend)' }, { id: 'item_6h', name: 'Kendaraan Motor' }, { id: 'item_6i', name: 'Kendaraan Mobil' }, { id: 'item_6j', name: 'Rombongan' }] }
+    { id: 'cat_6', name: 'E-Ticketing Old Gate', type: 'utama', items: [{ id: 'item_6a', name: 'Tiket Masuk Dewasa' }, { id: 'item_6b', name: 'Tiket Masuk Anak' }, { id: 'item_6c', name: 'Taman Satwa Anak' }, { id: 'item_6d', name: 'Pusat Primata Dewasa (Hari Biasa)' }, { id: 'item_6e', name: 'Pusat Primata Anak (Hari Biasa)' }, { id: 'item_6f', name: 'Pusat Primata Dewasa (Weekend)' }, { id: 'item_6g', name: 'Pusat Primata Anak (Weekend)' }, { id: 'item_6h', name: 'Kendaraan Motor' }, { id: 'item_6i', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_6j', name: 'Kendaraan Gol 2' }, { id: 'item_6k', name: 'Kendaraan Gol 1' }, { id: 'item_6l', name: 'Kendaraan Sepeda' }, { id: 'item_6m', name: 'Rombongan' }] }
   ]));
 
   const [allReports, setAllReports] = useState(() => getInitialState('tmr_v19_allReports', {}));
@@ -426,7 +426,7 @@ export default function App() {
     return "";
   };
 
-  // --- Fungsi AI Matcher Internal (Pencocokan Cerdas) ---
+  // --- Fungsi AI Matcher Internal (Pencocokan Cerdas yang Disempurnakan) ---
   const smartMappingAI = (nameAPI, apiSource) => {
     let guessCat = '';
     let guessItem = '';
@@ -434,11 +434,9 @@ export default function App() {
 
     // 1. CARI KATEGORI (BERDASARKAN KEYWORD API)
     if (apiSource === 'iwm') {
-      // IWM pasti selalu masuk ke E-Ticketing Old Gate
       const cat = categories.find(c => c.name.toLowerCase().includes('old gate') || c.name.toLowerCase().includes('iwm'));
       if (cat) guessCat = cat.id;
     } else {
-      // 3A Gate bisa terpecah
       if (lowerName.includes('gate')) {
         const cat = categories.find(c => c.name.toLowerCase().includes('new gate'));
         if (cat) guessCat = cat.id;
@@ -461,31 +459,55 @@ export default function App() {
           const subName = sub.name.toLowerCase();
           let score = 0;
           
-          // Deteksi Kata Kunci
-          const isDewasa = lowerName.includes('dewasa');
-          const isAnak = lowerName.includes('anak');
-          const isTSA = lowerName.includes('satwa') || lowerName.includes('tsa') || lowerName.includes('children');
-          const isRombongan = lowerName.includes('rombongan') || lowerName.includes('romb');
-          const isPrimata = lowerName.includes('primata') || lowerName.includes('schmutzer');
-          const isWD = lowerName.includes('wd') || lowerName.includes('biasa') || lowerName.includes('hari biasa');
-          const isWE = lowerName.includes('we') || lowerName.includes('libur') || lowerName.includes('besar') || lowerName.includes('weekend');
+          // NORMALISASI: Ubah angka Romawi dan potensi Typo menjadi standar
+          // Lakukan replace berurutan dari III -> II -> I (\b mencegah 'ii' terganti saat mengganti 'i')
+          const normApiName = lowerName
+            .replace(/sepededa/g, 'sepeda')
+            .replace(/gol iii/g, 'gol 3')
+            .replace(/gol ii/g, 'gol 2')
+            .replace(/gol i\b/g, 'gol 1');
+            
+          const normSubName = subName
+            .replace(/sepededa/g, 'sepeda')
+            .replace(/gol iii/g, 'gol 3')
+            .replace(/gol ii/g, 'gol 2')
+            .replace(/gol i\b/g, 'gol 1');
+          
+          // Deteksi Kata Kunci Umum
+          const isDewasa = normApiName.includes('dewasa');
+          const isAnak = normApiName.includes('anak');
+          const isTSA = normApiName.includes('satwa') || normApiName.includes('tsa') || normApiName.includes('children');
+          const isRombongan = normApiName.includes('rombongan') || normApiName.includes('romb');
+          const isPrimata = normApiName.includes('primata') || normApiName.includes('schmutzer');
+          const isWD = normApiName.includes('wd') || normApiName.includes('biasa') || normApiName.includes('hari biasa');
+          const isWE = normApiName.includes('we') || normApiName.includes('libur') || normApiName.includes('besar') || normApiName.includes('weekend');
           
           // Penilaian Tepat Sasaran
-          if (isDewasa && subName.includes('dewasa')) score += 10;
-          if (isAnak && subName.includes('anak') && !isTSA && !subName.includes('satwa')) score += 10; // Anak jangan nabrak TSA
-          if (isTSA && (subName.includes('satwa') || subName.includes('children'))) score += 15;
-          if (isRombongan && subName.includes('rombongan')) score += 15;
-          if (isPrimata && (subName.includes('primata') || subName.includes('schmutzer'))) score += 10;
+          if (isDewasa && normSubName.includes('dewasa')) score += 10;
+          if (isAnak && normSubName.includes('anak') && !isTSA && !normSubName.includes('satwa')) score += 10; // Anak jangan nabrak TSA
+          if (isTSA && (normSubName.includes('satwa') || normSubName.includes('children'))) score += 15;
+          if (isRombongan && normSubName.includes('rombongan')) score += 15;
+          if (isPrimata && (normSubName.includes('primata') || normSubName.includes('schmutzer'))) score += 10;
 
           // Bobot ekstra untuk WD / WE pada Pusat Primata
-          if (isWD && (subName.includes('wd') || subName.includes('biasa') || subName.includes('weekday'))) score += 5;
-          if (isWE && (subName.includes('we') || subName.includes('libur') || subName.includes('besar') || subName.includes('weekend'))) score += 5;
+          if (isWD && (normSubName.includes('wd') || normSubName.includes('biasa') || normSubName.includes('weekday'))) score += 5;
+          if (isWE && (normSubName.includes('we') || normSubName.includes('libur') || normSubName.includes('besar') || normSubName.includes('weekend'))) score += 5;
 
-          // Kendaraan
-          if (lowerName.includes('motor') && subName.includes('motor')) score += 10;
-          if ((lowerName.includes('sepeda') || lowerName.includes('mobil') || lowerName.includes('gol')) && (subName.includes('sepeda') || subName.includes('mobil') || subName.includes('gol'))) score += 10;
+          // ==========================================
+          // UPDATE PRESISI KENDARAAN (GOL 1, 2, 3, MOTOR, SEPEDA)
+          // ==========================================
+          if (normApiName.includes('sepeda') && normSubName.includes('sepeda')) score += 30;
+          if (normApiName.includes('motor') && normSubName.includes('motor')) score += 30;
+          
+          if (normApiName.includes('gol 1') && normSubName.includes('gol 1')) score += 30;
+          if (normApiName.includes('gol 2') && normSubName.includes('gol 2')) score += 30;
+          
+          // Gol 3 biasanya bersinonim dengan Mobil di STSU
+          const isApiMobilOrGol3 = normApiName.includes('gol 3') || normApiName.includes('mobil');
+          const isSubMobilOrGol3 = normSubName.includes('gol 3') || normSubName.includes('mobil');
+          if (isApiMobilOrGol3 && isSubMobilOrGol3) score += 30;
 
-          // Perbarui item terpilih jika skor lebih tinggi
+          // Perbarui item terpilih jika skor saat ini lebih tinggi
           if (score > bestScore) {
             bestScore = score;
             guessItem = sub.id;
@@ -521,7 +543,8 @@ export default function App() {
           fetchedData = [
             { id: 't1', nameAPI: '[MERCHANT_PAGE] Karcis Dewasa (Qty: 387)', amount: 15480000 },
             { id: 't2', nameAPI: '[GATE] Karcis Anak (Qty: 150)', amount: 4500000 },
-            { id: 't3', nameAPI: '[TVM] Taman Satwa Anak (Qty: 800)', amount: 2000000 }
+            { id: 't3', nameAPI: '[TVM] Taman Satwa Anak (Qty: 800)', amount: 2000000 },
+            { id: 't4', nameAPI: '[GATE] Parkir Gol I (Bus Besar) (Qty: 5)', amount: 250000 }
           ];
         } else {
           const baseUrl = ip.startsWith('http') ? ip : `http://${ip}:5000`;
@@ -559,8 +582,8 @@ export default function App() {
             { id: 'i1', nameAPI: '[IWM] Pusat Primata - Dewasa (Reguler) (Hari Biasa)', amount: 582000 },
             { id: 'i2', nameAPI: '[IWM] Pusat Primata - Anak (Reguler) (Hari Biasa)', amount: 24000 },
             { id: 'i3', nameAPI: '[IWM] Pintu Masuk - Dewasa (Reguler)', amount: 2528000 },
-            { id: 'i4', nameAPI: '[IWM] Pintu Masuk - Anak (Reguler)', amount: 708000 }, 
-            { id: 'i5', nameAPI: '[IWM] Kendaraan - Motor', amount: 582000 },
+            { id: 'i4', nameAPI: '[IWM] Kendaraan Gol III', amount: 35000 }, 
+            { id: 'i5', nameAPI: '[IWM] Kendaraan - Sepededa', amount: 15000 },
             { id: 'i6', nameAPI: '[IWM] Rombongan - SD SWASTA MARSUDIRINI', amount: 146250 }
           ];
         } else {
@@ -867,7 +890,7 @@ export default function App() {
 
       {transitModal.isOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
-          <div className={`bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 ${transitModal.step === 'mapping' ? 'max-w-4xl max-h-[90vh]' : 'max-w-md'}`}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 ${transitModal.step === 'mapping' ? 'max-w-4xl max-h-[90vh]' : 'max-w-md'}">
             
             {/* TAHAP 1: KONFIRMASI TANGGAL */}
             {transitModal.step === 'confirm_date' && (
