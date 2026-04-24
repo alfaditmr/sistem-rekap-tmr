@@ -101,12 +101,12 @@ export default function App() {
   const [editNoteModal, setEditNoteModal] = useState({ isOpen: false, group: null, item: null, newNote: '' });
   const [saveToast, setSaveToast] = useState({ show: false, message: '' }); 
 
-  // --- STATE RUANG TRANSIT (DIPERBARUI UNTUK 3A & IWM) ---
+  // --- STATE RUANG TRANSIT ---
   const [transitModal, setTransitModal] = useState({ 
     isOpen: false, step: 'confirm_date', source: '3a', // '3a' or 'iwm'
     targetDate: getLocalYMD(), 
     isLoading: false, data: [], error: '', isOverwriting: false,
-    iwmDiskon: [] // Menampung laporan diskon rombongan khusus IWM
+    iwmDiskon: [] 
   });
 
   const [printMode, setPrintMode] = useState('pdf');
@@ -184,18 +184,20 @@ export default function App() {
     rightRole: 'Bendahara Penerimaan', rightName: 'Evi Irmawati', rightNip: '198101082009042006', location: 'Jakarta'
   }));
 
+  // ==========================================
+  // PEMBARUAN MASTER DATA KATEGORI (DEFAULT)
+  // Sesuai permintaan penamaan IWM & 3A
+  // ==========================================
   const [categories, setCategories] = useState(() => getInitialState('tmr_v19_categories', [
-    { id: 'cat_1', name: 'pemakaian fasilitas', type: 'utama', items: [{ id: 'item_1a', name: 'Promo Penjualan Produk' }, { id: 'item_1b', name: 'Penempatan banner promosi' }, { id: 'item_1c', name: 'Panggung' }] },
+    { id: 'cat_1', name: 'Pemakaian Fasilitas', type: 'utama', items: [{ id: 'item_1a', name: 'Promo Penjualan Produk' }, { id: 'item_1b', name: 'Penempatan banner promosi' }, { id: 'item_1c', name: 'Panggung' }] },
     { id: 'cat_2', name: 'Retribusi Pedagang', type: 'utama', items: [{ id: 'item_2a', name: 'Retribusi pedagang Hari Biasa' }, { id: 'item_2b', name: 'Retribusi pedagang Hari Besar' }] },
-    { id: 'cat_3', name: 'Pendapatan Retribusi Juru Foto', type: 'utama', items: [] },
-    { id: 'cat_4', name: 'Penyediaan satwa jinak untuk berfoto', type: 'utama', items: [] },
-    // Disesuaikan agar penamaan lebih jelas untuk IWM
-    { id: 'cat_5', name: 'E-ticketing (Old Gate)', type: 'utama', items: [{ id: 'item_5a', name: 'Dewasa' }, { id: 'item_5b', name: 'Anak' }, { id: 'item_5c', name: 'Taman Satwa Anak' }, { id: 'item_5d', name: 'Rombongan' }] },
-    { id: 'cat_6', name: 'Ticket online', type: 'utama', items: [{ id: 'item_6a', name: 'Dewasa' }, { id: 'item_6b', name: 'Anak' }, { id: 'item_6c', name: 'Taman Satwa Anak' }] }
+    { id: 'cat_3', name: 'E-Ticketing New Gate', type: 'utama', items: [{ id: 'item_3a', name: 'Tiket Masuk Dewasa' }, { id: 'item_3b', name: 'Tiket Masuk Anak' }, { id: 'item_3c', name: 'Taman Satwa Anak' }, { id: 'item_3d', name: 'Pusat Primata (Hari Biasa)' }, { id: 'item_3e', name: 'Pusat Primata (Weekend)' }, { id: 'item_3f', name: 'Kendaraan Motor' }, { id: 'item_3g', name: 'Kendaraan Mobil' }, { id: 'item_3h', name: 'Rombongan' }] },
+    { id: 'cat_4', name: 'Ticket Online', type: 'utama', items: [{ id: 'item_4a', name: 'Tiket Masuk Dewasa' }, { id: 'item_4b', name: 'Tiket Masuk Anak' }, { id: 'item_4c', name: 'Taman Satwa Anak' }, { id: 'item_4d', name: 'Pusat Primata (Hari Biasa)' }, { id: 'item_4e', name: 'Pusat Primata (Weekend)' }, { id: 'item_4f', name: 'Kendaraan Motor' }, { id: 'item_4g', name: 'Kendaraan Mobil' }] },
+    { id: 'cat_5', name: 'Ticket Vending Machine (TVM)', type: 'utama', items: [{ id: 'item_5a', name: 'Tiket Masuk Dewasa' }, { id: 'item_5b', name: 'Tiket Masuk Anak' }, { id: 'item_5c', name: 'Taman Satwa Anak' }] },
+    { id: 'cat_6', name: 'E-Ticketing Old Gate', type: 'utama', items: [{ id: 'item_6a', name: 'Tiket Masuk Dewasa' }, { id: 'item_6b', name: 'Tiket Masuk Anak' }, { id: 'item_6c', name: 'Taman Satwa Anak' }, { id: 'item_6d', name: 'Pusat Primata Dewasa (Hari Biasa)' }, { id: 'item_6e', name: 'Pusat Primata Anak (Hari Biasa)' }, { id: 'item_6f', name: 'Pusat Primata Dewasa (Weekend)' }, { id: 'item_6g', name: 'Pusat Primata Anak (Weekend)' }, { id: 'item_6h', name: 'Kendaraan Motor' }, { id: 'item_6i', name: 'Kendaraan Mobil' }, { id: 'item_6j', name: 'Rombongan' }] }
   ]));
 
   const [allReports, setAllReports] = useState(() => getInitialState('tmr_v19_allReports', {}));
-  // --- KONFIGURASI IP SERVER BOT ---
   const [apiIpAddress, setApiIpAddress] = useState(() => getInitialState('tmr_v19_api_ip', 'localhost'));
 
   const [reportDate, setReportDate] = useState(getLocalYMD());
@@ -414,17 +416,85 @@ export default function App() {
     setTransitModal(prev => ({ ...prev, isOpen: false, iwmDiskon: [] }));
   };
 
-  // HELPER UNTUK MENDETEKSI HARI BIASA ATAU WEEKEND (Berdasarkan kelipatan harga)
   const getPrimataLabel = (amount) => {
     if (!amount || amount <= 0) return "";
     const isHariBiasa = amount % 6000 === 0;
     const isWeekend = amount % 7500 === 0;
-    
     if (isHariBiasa && !isWeekend) return " (Hari Biasa)";
-    if (isWeekend && !isHariBiasa) return " (Weekend/Besar)";
-    if (isHariBiasa && isWeekend) return " (Hari Biasa / Weekend)"; // Kelipatan 30.000 (bisa keduanya)
-    
-    return ""; // Jika terpotong aneh dan tidak genap dengan tarif standar
+    if (isWeekend && !isHariBiasa) return " (Weekend)";
+    if (isHariBiasa && isWeekend) return " (Hari Biasa / Weekend)";
+    return "";
+  };
+
+  // --- Fungsi AI Matcher Internal (Pencocokan Cerdas) ---
+  const smartMappingAI = (nameAPI, apiSource) => {
+    let guessCat = '';
+    let guessItem = '';
+    const lowerName = (nameAPI || '').toLowerCase();
+
+    // 1. CARI KATEGORI (BERDASARKAN KEYWORD API)
+    if (apiSource === 'iwm') {
+      // IWM pasti selalu masuk ke E-Ticketing Old Gate
+      const cat = categories.find(c => c.name.toLowerCase().includes('old gate') || c.name.toLowerCase().includes('iwm'));
+      if (cat) guessCat = cat.id;
+    } else {
+      // 3A Gate bisa terpecah
+      if (lowerName.includes('gate')) {
+        const cat = categories.find(c => c.name.toLowerCase().includes('new gate'));
+        if (cat) guessCat = cat.id;
+      } else if (lowerName.includes('merchant_page') || lowerName.includes('online')) {
+        const cat = categories.find(c => c.name.toLowerCase().includes('online'));
+        if (cat) guessCat = cat.id;
+      } else if (lowerName.includes('tvm') || lowerName.includes('vending')) {
+        const cat = categories.find(c => c.name.toLowerCase().includes('tvm') || c.name.toLowerCase().includes('vending'));
+        if (cat) guessCat = cat.id;
+      }
+    }
+
+    // 2. CARI SUB KATEGORI MENGGUNAKAN SCORING SYSTEM (AI Logic)
+    if (guessCat) {
+      const targetCat = categories.find(c => c.id === guessCat);
+      if (targetCat && targetCat.items && targetCat.items.length > 0) {
+        let bestScore = 0;
+        
+        targetCat.items.forEach(sub => {
+          const subName = sub.name.toLowerCase();
+          let score = 0;
+          
+          // Deteksi Kata Kunci
+          const isDewasa = lowerName.includes('dewasa');
+          const isAnak = lowerName.includes('anak');
+          const isTSA = lowerName.includes('satwa') || lowerName.includes('tsa') || lowerName.includes('children');
+          const isRombongan = lowerName.includes('rombongan') || lowerName.includes('romb');
+          const isPrimata = lowerName.includes('primata') || lowerName.includes('schmutzer');
+          const isWD = lowerName.includes('wd') || lowerName.includes('biasa') || lowerName.includes('hari biasa');
+          const isWE = lowerName.includes('we') || lowerName.includes('libur') || lowerName.includes('besar') || lowerName.includes('weekend');
+          
+          // Penilaian Tepat Sasaran
+          if (isDewasa && subName.includes('dewasa')) score += 10;
+          if (isAnak && subName.includes('anak') && !isTSA && !subName.includes('satwa')) score += 10; // Anak jangan nabrak TSA
+          if (isTSA && (subName.includes('satwa') || subName.includes('children'))) score += 15;
+          if (isRombongan && subName.includes('rombongan')) score += 15;
+          if (isPrimata && (subName.includes('primata') || subName.includes('schmutzer'))) score += 10;
+
+          // Bobot ekstra untuk WD / WE pada Pusat Primata
+          if (isWD && (subName.includes('wd') || subName.includes('biasa') || subName.includes('weekday'))) score += 5;
+          if (isWE && (subName.includes('we') || subName.includes('libur') || subName.includes('besar') || subName.includes('weekend'))) score += 5;
+
+          // Kendaraan
+          if (lowerName.includes('motor') && subName.includes('motor')) score += 10;
+          if ((lowerName.includes('sepeda') || lowerName.includes('mobil') || lowerName.includes('gol')) && (subName.includes('sepeda') || subName.includes('mobil') || subName.includes('gol'))) score += 10;
+
+          // Perbarui item terpilih jika skor lebih tinggi
+          if (score > bestScore) {
+            bestScore = score;
+            guessItem = sub.id;
+          }
+        });
+      }
+    }
+
+    return { mappedCat: guessCat, mappedItem: guessItem };
   };
 
   const executeFetchData = async (isOverwrite) => {
@@ -486,7 +556,7 @@ export default function App() {
             { lokasi: 'Pintu Utara 3', nama_rombongan: 'SD SWASTA MARSUDIRINI', masuk_anak: 65, masuk_dewasa: 0, pendapatan_rp: 146250 }
           ];
           fetchedData = [
-            { id: 'i1', nameAPI: '[IWM] Pusat Primata - Dewasa (Reguler) (Hari Biasa)', amount: 582000 }, // 582000 habis dibagi 6000
+            { id: 'i1', nameAPI: '[IWM] Pusat Primata - Dewasa (Reguler) (Hari Biasa)', amount: 582000 },
             { id: 'i2', nameAPI: '[IWM] Pusat Primata - Anak (Reguler) (Hari Biasa)', amount: 24000 },
             { id: 'i3', nameAPI: '[IWM] Pintu Masuk - Dewasa (Reguler)', amount: 2528000 },
             { id: 'i4', nameAPI: '[IWM] Pintu Masuk - Anak (Reguler)', amount: 708000 }, 
@@ -556,8 +626,6 @@ export default function App() {
 
           if (iData.area_lainnya) {
             const al = iData.area_lainnya;
-            
-            // Kurangi dengan nilai rombongan Pintu Masuk, pastikan tidak tembus ke angka negatif
             const netDewasa = Math.max(0, (al.dewasa || 0) - deductAlDewasa);
             const netAnak = Math.max(0, (al.anak || 0) - deductAlAnak);
 
@@ -580,42 +648,10 @@ export default function App() {
         }
       }
 
-      // AUTO-MAPPING LOGIC (Disesuaikan IWM -> E-ticketing / Old Gate)
+      // MENGGUNAKAN LOGIKA PENGELOMPOKAN AI TERBARU
       const mappedData = fetchedData.map(item => {
-        let guessCat = '';
-        let guessItem = '';
-        const lowerName = (item.nameAPI || '').toLowerCase();
-        
-        if (source === 'iwm') {
-          // KHUSUS IWM: Paksa (Force) masuk ke kategori E-ticketing (Old Gate) yaitu cat_5
-          guessCat = 'cat_5'; 
-          
-          // Tebak pintar sub-item, admin masih bisa ubah manual nanti
-          if (lowerName.includes('dewasa') && !lowerName.includes('primata') && !lowerName.includes('rombongan')) guessItem = 'item_5a';
-          else if (lowerName.includes('anak') && !lowerName.includes('primata') && !lowerName.includes('children') && !lowerName.includes('rombongan')) guessItem = 'item_5b';
-          else if (lowerName.includes('children zoo') || lowerName.includes('taman satwa')) guessItem = 'item_5c';
-          else if (lowerName.includes('rombongan')) guessItem = 'item_5d';
-          
-        } else {
-          // LOGIKA 3A SEPERTI SEBELUMNYA
-          if (lowerName.includes('online') || lowerName.includes('merchant_page')) {
-              guessCat = 'cat_6'; 
-              if (lowerName.includes('dewasa') && !lowerName.includes('schmutzer') && !lowerName.includes('primata')) guessItem = 'item_6a';
-              else if (lowerName.includes('anak') && !lowerName.includes('satwa') && !lowerName.includes('schmutzer') && !lowerName.includes('primata')) guessItem = 'item_6b';
-              else if (lowerName.includes('taman satwa anak') || lowerName.includes('tsa') || lowerName.includes('children zoo')) guessItem = 'item_6c';
-          } else {
-              guessCat = 'cat_5'; 
-              if (lowerName.includes('dewasa') && !lowerName.includes('schmutzer') && !lowerName.includes('primata')) guessItem = 'item_5a';
-              else if (lowerName.includes('anak') && !lowerName.includes('satwa') && !lowerName.includes('schmutzer') && !lowerName.includes('primata')) guessItem = 'item_5b';
-              else if (lowerName.includes('taman satwa anak') || lowerName.includes('tsa') || lowerName.includes('children zoo')) guessItem = 'item_5c';
-          }
-        }
-
-        const catExists = categories.find(c => c.id === guessCat);
-        if(!catExists) { guessCat = ''; guessItem = ''; }
-        else if (catExists.items.length > 0 && !catExists.items.find(i => i.id === guessItem)) { guessItem = ''; }
-
-        return { ...item, mappedCat: guessCat, mappedItem: guessItem };
+        const { mappedCat, mappedItem } = smartMappingAI(item.nameAPI, source);
+        return { ...item, mappedCat, mappedItem };
       });
 
       setTransitModal(prev => ({ ...prev, step: 'mapping', data: mappedData, iwmDiskon: diskonData }));
