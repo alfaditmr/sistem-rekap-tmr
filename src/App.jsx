@@ -101,11 +101,12 @@ export default function App() {
   const [editNoteModal, setEditNoteModal] = useState({ isOpen: false, group: null, item: null, newNote: '' });
   const [saveToast, setSaveToast] = useState({ show: false, message: '' }); 
 
-  // --- STATE RUANG TRANSIT (DIPERBARUI) ---
+  // --- STATE RUANG TRANSIT (DIPERBARUI UNTUK 3A & IWM) ---
   const [transitModal, setTransitModal] = useState({ 
-    isOpen: false, step: 'confirm_date', // confirm_date, confirm_overwrite, loading, error, mapping
+    isOpen: false, step: 'confirm_date', source: '3a', // '3a' or 'iwm'
     targetDate: getLocalYMD(), 
-    isLoading: false, data: [], error: '', isOverwriting: false
+    isLoading: false, data: [], error: '', isOverwriting: false,
+    iwmDiskon: [] // Menampung laporan diskon rombongan khusus IWM
   });
 
   const [printMode, setPrintMode] = useState('pdf');
@@ -188,7 +189,8 @@ export default function App() {
     { id: 'cat_2', name: 'Retribusi Pedagang', type: 'utama', items: [{ id: 'item_2a', name: 'Retribusi pedagang Hari Biasa' }, { id: 'item_2b', name: 'Retribusi pedagang Hari Besar' }] },
     { id: 'cat_3', name: 'Pendapatan Retribusi Juru Foto', type: 'utama', items: [] },
     { id: 'cat_4', name: 'Penyediaan satwa jinak untuk berfoto', type: 'utama', items: [] },
-    { id: 'cat_5', name: 'E-ticketing', type: 'utama', items: [{ id: 'item_5a', name: 'Dewasa' }, { id: 'item_5b', name: 'Anak' }, { id: 'item_5c', name: 'Taman Satwa Anak' }] },
+    // Disesuaikan agar penamaan lebih jelas untuk IWM
+    { id: 'cat_5', name: 'E-ticketing (Old Gate)', type: 'utama', items: [{ id: 'item_5a', name: 'Dewasa' }, { id: 'item_5b', name: 'Anak' }, { id: 'item_5c', name: 'Taman Satwa Anak' }, { id: 'item_5d', name: 'Rombongan' }] },
     { id: 'cat_6', name: 'Ticket online', type: 'utama', items: [{ id: 'item_6a', name: 'Dewasa' }, { id: 'item_6b', name: 'Anak' }, { id: 'item_6c', name: 'Taman Satwa Anak' }] }
   ]));
 
@@ -394,28 +396,48 @@ export default function App() {
   // ==========================================
   // 🔴 FUNGSI: MENGAMBIL DATA DARI BOT PYTHON
   // ==========================================
-  const handleOpenTransit = () => {
+  const handleOpenTransit3A = () => {
     setTransitModal({
-      isOpen: true,
-      step: 'confirm_date',
-      targetDate: reportDate,
-      isLoading: false, data: [], error: '', isOverwriting: false
+      isOpen: true, step: 'confirm_date', source: '3a', targetDate: reportDate,
+      isLoading: false, data: [], error: '', isOverwriting: false, iwmDiskon: []
+    });
+  };
+
+  const handleOpenTransitIWM = () => {
+    setTransitModal({
+      isOpen: true, step: 'confirm_date', source: 'iwm', targetDate: reportDate,
+      isLoading: false, data: [], error: '', isOverwriting: false, iwmDiskon: []
     });
   };
 
   const closeTransitModal = () => {
-    setTransitModal({ isOpen: false, step: 'confirm_date', targetDate: getLocalYMD(), isLoading: false, data: [], error: '', isOverwriting: false });
+    setTransitModal(prev => ({ ...prev, isOpen: false, iwmDiskon: [] }));
   };
 
-  const executeFetch3A = async (isOverwrite) => {
+  // HELPER UNTUK MENDETEKSI HARI BIASA ATAU WEEKEND (Berdasarkan kelipatan harga)
+  const getPrimataLabel = (amount) => {
+    if (!amount || amount <= 0) return "";
+    const isHariBiasa = amount % 6000 === 0;
+    const isWeekend = amount % 7500 === 0;
+    
+    if (isHariBiasa && !isWeekend) return " (Hari Biasa)";
+    if (isWeekend && !isHariBiasa) return " (Weekend/Besar)";
+    if (isHariBiasa && isWeekend) return " (Hari Biasa / Weekend)"; // Kelipatan 30.000 (bisa keduanya)
+    
+    return ""; // Jika terpotong aneh dan tidak genap dengan tarif standar
+  };
+
+  const executeFetchData = async (isOverwrite) => {
     setTransitModal(prev => ({ ...prev, step: 'loading', isOverwriting: isOverwrite, error: '' }));
     
     try {
       let fetchedData = [];
+      let diskonData = [];
       const ip = apiIpAddress.trim().toLowerCase();
       const targetDate = transitModal.targetDate;
+      const source = transitModal.source; // '3a' or 'iwm'
 
-      const stsuNames = {
+      const stsuNames3A = {
         "1": "Karcis Dewasa", "2": "Karcis Anak", "3": "Romb. Dewasa 25%", "4": "Romb. Anak 25%",
         "5": "Kuda Tunggang", "6": "Unta Tunggang", "7": "Gajah Tunggang", "8": "Taman Satwa Anak",
         "9": "Schmutzer WD Dewasa", "10": "Schmutzer WD Anak", "11": "Schmutzer Romb WD Dws", "12": "Schmutzer Romb WD Ank",
@@ -423,59 +445,170 @@ export default function App() {
         "17": "Parkir Gol I (Bus Besar)", "18": "Parkir Gol II (Bus Kecil)", "19": "Parkir Gol III (Mobil)", "20": "Parkir Motor", "21": "Parkir Sepeda"
       };
 
-      if (ip === 'demo') {
-        await new Promise(r => setTimeout(r, 1200)); 
-        fetchedData = [
-          { id: 't1', name3A: '[MERCHANT_PAGE] Karcis Dewasa (Qty: 387)', amount: 15480000 },
-          { id: 't2', name3A: '[GATE] Karcis Anak (Qty: 150)', amount: 4500000 },
-          { id: 't3', name3A: '[TVM] Taman Satwa Anak (Qty: 800)', amount: 2000000 }
-        ];
-      } else {
-        // CALL KE FLASK API (Bot Python api_rekon_3a.py)
-        const baseUrl = ip.startsWith('http') ? ip : `http://${ip}:5000`;
-        const endpoint = `${baseUrl}/api/tarik_rekon_3a?tanggal=${targetDate}`;
-        
-        const res = await fetch(endpoint);
-        if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
-        
-        const responseJson = await res.json();
-        if (responseJson.status !== 'success') throw new Error(responseJson.message);
-        
-        // Transformasi format JSON bertingkat dari bot python ke format list web app
-        if (responseJson.rekon_data) {
-          Object.keys(responseJson.rekon_data).forEach(channel => {
-            const channelData = responseJson.rekon_data[channel];
-            Object.keys(channelData).forEach(idx => {
-              const nominal = channelData[idx].nominal;
-              const qty = channelData[idx].qty;
-              if (nominal > 0) {
-                fetchedData.push({
-                  id: `${channel}_${idx}`,
-                  name3A: `[${channel}] ${stsuNames[idx] || 'Item '+idx} (Qty: ${qty})`,
-                  amount: nominal
-                });
-              }
+      if (source === '3a') {
+        if (ip === 'demo') {
+          await new Promise(r => setTimeout(r, 1200)); 
+          fetchedData = [
+            { id: 't1', nameAPI: '[MERCHANT_PAGE] Karcis Dewasa (Qty: 387)', amount: 15480000 },
+            { id: 't2', nameAPI: '[GATE] Karcis Anak (Qty: 150)', amount: 4500000 },
+            { id: 't3', nameAPI: '[TVM] Taman Satwa Anak (Qty: 800)', amount: 2000000 }
+          ];
+        } else {
+          const baseUrl = ip.startsWith('http') ? ip : `http://${ip}:5000`;
+          const endpoint = `${baseUrl}/api/tarik_rekon_3a?tanggal=${targetDate}`;
+          const res = await fetch(endpoint);
+          if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+          const responseJson = await res.json();
+          if (responseJson.status !== 'success') throw new Error(responseJson.message);
+          
+          if (responseJson.rekon_data) {
+            Object.keys(responseJson.rekon_data).forEach(channel => {
+              const channelData = responseJson.rekon_data[channel];
+              Object.keys(channelData).forEach(idx => {
+                const nominal = channelData[idx].nominal;
+                const qty = channelData[idx].qty;
+                if (nominal > 0) {
+                  fetchedData.push({
+                    id: `${channel}_${idx}`,
+                    nameAPI: `[${channel}] ${stsuNames3A[idx] || 'Item '+idx} (Qty: ${qty})`,
+                    amount: nominal
+                  });
+                }
+              });
             });
+          }
+        }
+      } 
+      else if (source === 'iwm') {
+        if (ip === 'demo') {
+          await new Promise(r => setTimeout(r, 1200)); 
+          diskonData = [
+            { lokasi: 'Pintu Utara 3', nama_rombongan: 'SD SWASTA MARSUDIRINI', masuk_anak: 65, masuk_dewasa: 0, pendapatan_rp: 146250 }
+          ];
+          fetchedData = [
+            { id: 'i1', nameAPI: '[IWM] Pusat Primata - Dewasa (Reguler) (Hari Biasa)', amount: 582000 }, // 582000 habis dibagi 6000
+            { id: 'i2', nameAPI: '[IWM] Pusat Primata - Anak (Reguler) (Hari Biasa)', amount: 24000 },
+            { id: 'i3', nameAPI: '[IWM] Pintu Masuk - Dewasa (Reguler)', amount: 2528000 },
+            { id: 'i4', nameAPI: '[IWM] Pintu Masuk - Anak (Reguler)', amount: 708000 }, 
+            { id: 'i5', nameAPI: '[IWM] Kendaraan - Motor', amount: 582000 },
+            { id: 'i6', nameAPI: '[IWM] Rombongan - SD SWASTA MARSUDIRINI', amount: 146250 }
+          ];
+        } else {
+          const baseUrl = ip.startsWith('http') ? ip : `http://${ip}:5001`; // PORT IWM 5001
+          const endpoint = `${baseUrl}/api/tarik_rekon_iwm?tanggal=${targetDate}`;
+          const res = await fetch(endpoint);
+          if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+          const responseJson = await res.json();
+          if (responseJson.status !== 'success') throw new Error(responseJson.message);
+          
+          const iData = responseJson.data;
+          
+          diskonData = iData.laporan_diskon || [];
+          
+          // Hitung potongan diskon dari tiket reguler berdasarkan porsi rombongan
+          let deductAlAnak = 0;
+          let deductAlDewasa = 0;
+          let deductPrmAnak = 0;
+          let deductPrmDewasa = 0;
+          
+          diskonData.forEach(d => {
+            const anak = Number(d.masuk_anak) || 0;
+            const dewasa = Number(d.masuk_dewasa) || 0;
+            const totalRp = Number(d.pendapatan_rp) || 0;
+            
+            // Cek apakah rombongan ini masuk ke Primata atau Pintu Masuk
+            const isPrimata = /primata|schmutzer/i.test(d.lokasi || '') || /primata|schmutzer/i.test(d.nama_rombongan || '');
+            
+            if (anak > 0 && dewasa === 0) {
+               if (isPrimata) deductPrmAnak += totalRp; else deductAlAnak += totalRp;
+            } else if (dewasa > 0 && anak === 0) {
+               if (isPrimata) deductPrmDewasa += totalRp; else deductAlDewasa += totalRp;
+            } else if (anak > 0 && dewasa > 0) {
+               // Proporsional berdasarkan harga tiket yg sudah didiskon
+               const porsiAnak = isPrimata ? anak * 1 : anak * 2250;
+               const porsiDewasa = isPrimata ? dewasa * 1 : dewasa * 3000;
+               const totalPorsi = porsiAnak + porsiDewasa;
+               if (totalPorsi > 0) {
+                 const calcAnak = Math.round((porsiAnak / totalPorsi) * totalRp);
+                 const calcDewasa = Math.round((porsiDewasa / totalPorsi) * totalRp);
+                 if (isPrimata) {
+                     deductPrmAnak += calcAnak;
+                     deductPrmDewasa += calcDewasa;
+                 } else {
+                     deductAlAnak += calcAnak;
+                     deductAlDewasa += calcDewasa;
+                 }
+               }
+            }
+          });
+
+          // Flatten IWM data based on the API response structure & Lakukan Pengurangan
+          if (iData.pusat_primata) {
+            const netPrmDewasa = Math.max(0, (iData.pusat_primata.dewasa || 0) - deductPrmDewasa);
+            const netPrmAnak = Math.max(0, (iData.pusat_primata.anak || 0) - deductPrmAnak);
+            if (netPrmDewasa > 0) fetchedData.push({ id: 'prm_dws', nameAPI: `[IWM] Pusat Primata - Dewasa (Reguler)${getPrimataLabel(netPrmDewasa)}`, amount: netPrmDewasa });
+            if (netPrmAnak > 0) fetchedData.push({ id: 'prm_ank', nameAPI: `[IWM] Pusat Primata - Anak (Reguler)${getPrimataLabel(netPrmAnak)}`, amount: netPrmAnak });
+          }
+          
+          if (iData.children_zoo && iData.children_zoo.total > 0) {
+            fetchedData.push({ id: 'cz_tot', nameAPI: '[IWM] Children Zoo (Total)', amount: iData.children_zoo.total });
+          }
+
+          if (iData.area_lainnya) {
+            const al = iData.area_lainnya;
+            
+            // Kurangi dengan nilai rombongan Pintu Masuk, pastikan tidak tembus ke angka negatif
+            const netDewasa = Math.max(0, (al.dewasa || 0) - deductAlDewasa);
+            const netAnak = Math.max(0, (al.anak || 0) - deductAlAnak);
+
+            if (netDewasa > 0) fetchedData.push({ id: 'al_dws', nameAPI: '[IWM] Pintu Masuk - Dewasa (Reguler)', amount: netDewasa });
+            if (netAnak > 0) fetchedData.push({ id: 'al_ank', nameAPI: '[IWM] Pintu Masuk - Anak (Reguler)', amount: netAnak });
+            if (al.gol_i > 0) fetchedData.push({ id: 'al_g1', nameAPI: '[IWM] Kendaraan Gol I', amount: al.gol_i });
+            if (al.gol_ii > 0) fetchedData.push({ id: 'al_g2', nameAPI: '[IWM] Kendaraan Gol II', amount: al.gol_ii });
+            if (al.gol_iii > 0) fetchedData.push({ id: 'al_g3', nameAPI: '[IWM] Kendaraan Gol III', amount: al.gol_iii });
+            if (al.motor > 0) fetchedData.push({ id: 'al_mtr', nameAPI: '[IWM] Kendaraan - Motor', amount: al.motor });
+            if (al.sepeda > 0) fetchedData.push({ id: 'al_spd', nameAPI: '[IWM] Kendaraan - Sepeda', amount: al.sepeda });
+          }
+          
+          // Tambahkan rombongan sebagai data yang akan diinput (Mapping)
+          diskonData.forEach((d, idx) => {
+            const amt = Number(d.pendapatan_rp) || 0;
+            if (amt !== 0) {
+              fetchedData.push({ id: `iwm_romb_${idx}`, nameAPI: `[IWM] Rombongan - ${d.nama_rombongan || d.lokasi}`, amount: Math.abs(amt) });
+            }
           });
         }
       }
 
-      // AUTO-MAPPING LOGIC
+      // AUTO-MAPPING LOGIC (Disesuaikan IWM -> E-ticketing / Old Gate)
       const mappedData = fetchedData.map(item => {
         let guessCat = '';
         let guessItem = '';
-        const lowerName = (item.name3A || '').toLowerCase();
+        const lowerName = (item.nameAPI || '').toLowerCase();
         
-        if (lowerName.includes('online') || lowerName.includes('merchant_page')) {
-            guessCat = 'cat_6'; 
-            if (lowerName.includes('dewasa') && !lowerName.includes('schmutzer')) guessItem = 'item_6a';
-            else if (lowerName.includes('anak') && !lowerName.includes('satwa') && !lowerName.includes('schmutzer')) guessItem = 'item_6b';
-            else if (lowerName.includes('taman satwa anak') || lowerName.includes('tsa')) guessItem = 'item_6c';
+        if (source === 'iwm') {
+          // KHUSUS IWM: Paksa (Force) masuk ke kategori E-ticketing (Old Gate) yaitu cat_5
+          guessCat = 'cat_5'; 
+          
+          // Tebak pintar sub-item, admin masih bisa ubah manual nanti
+          if (lowerName.includes('dewasa') && !lowerName.includes('primata') && !lowerName.includes('rombongan')) guessItem = 'item_5a';
+          else if (lowerName.includes('anak') && !lowerName.includes('primata') && !lowerName.includes('children') && !lowerName.includes('rombongan')) guessItem = 'item_5b';
+          else if (lowerName.includes('children zoo') || lowerName.includes('taman satwa')) guessItem = 'item_5c';
+          else if (lowerName.includes('rombongan')) guessItem = 'item_5d';
+          
         } else {
-            guessCat = 'cat_5'; 
-            if (lowerName.includes('dewasa') && !lowerName.includes('schmutzer')) guessItem = 'item_5a';
-            else if (lowerName.includes('anak') && !lowerName.includes('satwa') && !lowerName.includes('schmutzer')) guessItem = 'item_5b';
-            else if (lowerName.includes('taman satwa anak') || lowerName.includes('tsa')) guessItem = 'item_5c';
+          // LOGIKA 3A SEPERTI SEBELUMNYA
+          if (lowerName.includes('online') || lowerName.includes('merchant_page')) {
+              guessCat = 'cat_6'; 
+              if (lowerName.includes('dewasa') && !lowerName.includes('schmutzer') && !lowerName.includes('primata')) guessItem = 'item_6a';
+              else if (lowerName.includes('anak') && !lowerName.includes('satwa') && !lowerName.includes('schmutzer') && !lowerName.includes('primata')) guessItem = 'item_6b';
+              else if (lowerName.includes('taman satwa anak') || lowerName.includes('tsa') || lowerName.includes('children zoo')) guessItem = 'item_6c';
+          } else {
+              guessCat = 'cat_5'; 
+              if (lowerName.includes('dewasa') && !lowerName.includes('schmutzer') && !lowerName.includes('primata')) guessItem = 'item_5a';
+              else if (lowerName.includes('anak') && !lowerName.includes('satwa') && !lowerName.includes('schmutzer') && !lowerName.includes('primata')) guessItem = 'item_5b';
+              else if (lowerName.includes('taman satwa anak') || lowerName.includes('tsa') || lowerName.includes('children zoo')) guessItem = 'item_5c';
+          }
         }
 
         const catExists = categories.find(c => c.id === guessCat);
@@ -485,7 +618,7 @@ export default function App() {
         return { ...item, mappedCat: guessCat, mappedItem: guessItem };
       });
 
-      setTransitModal(prev => ({ ...prev, step: 'mapping', data: mappedData }));
+      setTransitModal(prev => ({ ...prev, step: 'mapping', data: mappedData, iwmDiskon: diskonData }));
 
     } catch (err) {
       setTransitModal(prev => ({ 
@@ -514,8 +647,10 @@ export default function App() {
       });
       return { ...prev, activeItems: newItems, formData: newFormData };
     });
+    
+    const is3a = transitModal.source === '3a';
     closeTransitModal();
-    showToast('Berhasil! Data dari Bot 3A telah disuntikkan ke STSU.');
+    showToast(`Berhasil! Data dari Bot ${is3a ? '3A' : 'IWM'} telah disuntikkan ke STSU.`);
   };
 
   const computedStsuNo = useMemo(() => {
@@ -678,12 +813,12 @@ export default function App() {
             {/* TAHAP 1: KONFIRMASI TANGGAL */}
             {transitModal.step === 'confirm_date' && (
               <div className="p-8 text-center relative">
-                <button onClick={closeTransitModal} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><Trash size={20} className="opacity-0" /> {/* Spacer */} <span className="absolute top-0 right-0 p-1">✕</span></button>
-                <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-5 shadow-inner">
-                  <Database size={36} className="text-blue-500" />
+                <button onClick={closeTransitModal} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><Trash size={20} className="opacity-0" /> <span className="absolute top-0 right-0 p-1">✕</span></button>
+                <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5 shadow-inner ${transitModal.source === 'iwm' ? 'bg-purple-50' : 'bg-blue-50'}`}>
+                  <Database size={36} className={transitModal.source === 'iwm' ? 'text-purple-500' : 'text-blue-500'} />
                 </div>
-                <h3 className="text-xl font-black text-gray-800 mb-3">Tarik Data 3A</h3>
-                <p className="text-gray-600 mb-8 font-medium">Apakah Anda akan mengambil data dari sistem 3A untuk hari <strong className="text-blue-700">{formatTanggalPopUp(transitModal.targetDate)}</strong>?</p>
+                <h3 className="text-xl font-black text-gray-800 mb-3">Tarik Data {transitModal.source === '3a' ? '3A' : 'IWM'}</h3>
+                <p className="text-gray-600 mb-8 font-medium">Apakah Anda akan mengambil data dari sistem <strong>{transitModal.source === '3a' ? '3A' : 'IWM'}</strong> untuk hari <strong className={transitModal.source === 'iwm' ? 'text-purple-700' : 'text-blue-700'}>{formatTanggalPopUp(transitModal.targetDate)}</strong>?</p>
                 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <button onClick={closeTransitModal} className="px-5 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors order-2 sm:order-1">Batal</button>
@@ -691,9 +826,9 @@ export default function App() {
                     if (currentReport.activeItems && currentReport.activeItems.length > 0) {
                       setTransitModal(prev => ({...prev, step: 'confirm_overwrite'}));
                     } else {
-                      executeFetch3A(false);
+                      executeFetchData(false);
                     }
-                  }} className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition-colors order-1 sm:order-2 flex items-center justify-center gap-2">
+                  }} className={`px-5 py-3 text-white font-bold rounded-xl shadow-md transition-colors order-1 sm:order-2 flex items-center justify-center gap-2 ${transitModal.source === 'iwm' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
                     Ya, Tarik Data
                   </button>
                 </div>
@@ -707,12 +842,12 @@ export default function App() {
                   <AlertCircle size={36} className="text-yellow-600" />
                 </div>
                 <h3 className="text-xl font-black text-gray-800 mb-3">Data Sudah Terisi</h3>
-                <p className="text-gray-600 mb-8 text-sm">Sudah ada data STSU yang tersimpan pada tanggal ini. Apakah data sebelumnya akan <strong>ditimpa</strong> dengan data baru dari 3A?</p>
+                <p className="text-gray-600 mb-8 text-sm">Sudah ada data STSU yang tersimpan pada tanggal ini. Apakah data sebelumnya akan <strong>ditimpa</strong> dengan data baru dari {transitModal.source === '3a' ? '3A' : 'IWM'}?</p>
                 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <button onClick={closeTransitModal} className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors order-3 sm:order-1 text-sm">Batal</button>
-                  <button onClick={() => executeFetch3A(false)} className="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-md transition-colors order-2 text-sm">Gabungkan</button>
-                  <button onClick={() => executeFetch3A(true)} className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-md transition-colors order-1 sm:order-3 text-sm">Ya, Timpa Data</button>
+                  <button onClick={() => executeFetchData(false)} className="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-md transition-colors order-2 text-sm">Gabungkan</button>
+                  <button onClick={() => executeFetchData(true)} className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-md transition-colors order-1 sm:order-3 text-sm">Ya, Timpa Data</button>
                 </div>
               </div>
             )}
@@ -720,9 +855,9 @@ export default function App() {
             {/* TAHAP 3: LOADING API */}
             {transitModal.step === 'loading' && (
               <div className="p-10 text-center flex flex-col items-center">
-                <RefreshCw size={48} className="animate-spin text-blue-500 mb-6" />
+                <RefreshCw size={48} className={`animate-spin mb-6 ${transitModal.source === 'iwm' ? 'text-purple-500' : 'text-blue-500'}`} />
                 <h3 className="text-xl font-black text-gray-800 mb-2">Menghubungi Server Bot...</h3>
-                <p className="text-sm text-gray-500 font-medium">Sedang mengekstrak data dari portal 3A. Silakan tunggu beberapa detik.</p>
+                <p className="text-sm text-gray-500 font-medium">Sedang mengekstrak data dari portal {transitModal.source === '3a' ? '3A' : 'IWM'}. Silakan tunggu beberapa detik.</p>
               </div>
             )}
 
@@ -743,33 +878,34 @@ export default function App() {
             {/* TAHAP 5: MAPPING (Ruang Transit) */}
             {transitModal.step === 'mapping' && (
               <>
-                <div className="bg-gradient-to-r from-blue-700 to-blue-900 p-5 text-white flex justify-between items-center shrink-0">
+                <div className={`p-5 text-white flex justify-between items-center shrink-0 ${transitModal.source === 'iwm' ? 'bg-gradient-to-r from-purple-700 to-purple-900' : 'bg-gradient-to-r from-blue-700 to-blue-900'}`}>
                   <div className="flex items-center gap-3">
                     <Database size={24} />
                     <div>
-                      <h3 className="font-bold text-lg leading-tight">Ruang Transit 3A</h3>
-                      <p className="text-xs text-blue-200">Arahkan data STSU ke form laporan Anda</p>
+                      <h3 className="font-bold text-lg leading-tight">Ruang Transit {transitModal.source === '3a' ? '3A' : 'IWM'}</h3>
+                      <p className={`text-xs ${transitModal.source === 'iwm' ? 'text-purple-200' : 'text-blue-200'}`}>Arahkan data STSU ke form laporan Anda</p>
                     </div>
                   </div>
                   <button onClick={closeTransitModal} className="text-white hover:bg-white/20 p-2 rounded-lg transition-colors">✕</button>
                 </div>
                 <div className="p-6 bg-gray-50 flex-1 overflow-y-auto">
                   <div className="space-y-4">
-                    <div className="bg-blue-50 border border-blue-200 text-blue-800 p-3 rounded-xl text-sm font-medium flex gap-2 items-start">
+                    <div className={`border p-3 rounded-xl text-sm font-medium flex gap-2 items-start ${transitModal.source === 'iwm' ? 'bg-purple-50 border-purple-200 text-purple-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
                       <Sparkles size={18} className="shrink-0 mt-0.5" />
-                      <p>Bot berhasil mengekstrak data STSU! Silakan periksa kembali kecocokan kategorinya sebelum menekan konfirmasi import.</p>
+                      <p>Bot berhasil mengekstrak data! Silakan periksa kembali kecocokan kategorinya sebelum menekan konfirmasi import.</p>
                     </div>
+                    
                     <div className="border border-gray-200 rounded-xl bg-white overflow-hidden shadow-sm">
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 bg-gray-100 p-3 border-b border-gray-200 font-bold text-xs text-gray-600 uppercase tracking-wide hidden md:grid">
-                        <div className="col-span-5">Data STSU Bot 3A</div>
+                        <div className="col-span-5">Data Ditarik ({transitModal.source === '3a' ? '3A' : 'IWM'})</div>
                         <div className="col-span-7 pl-4 border-l border-gray-300">Arahkan Ke Kategori Form STSU</div>
                       </div>
                       <div className="divide-y divide-gray-100">
                         {transitModal.data.map((item) => (
-                          <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 items-center hover:bg-blue-50/30 transition-colors">
+                          <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 items-center hover:bg-gray-50 transition-colors">
                             <div className="col-span-5 flex flex-col">
-                              <span className="font-bold text-gray-800 text-sm">{item.name3A}</span>
-                              <span className="text-blue-600 font-black text-lg">Rp {formatRp(item.amount)}</span>
+                              <span className="font-bold text-gray-800 text-sm">{item.nameAPI}</span>
+                              <span className={`${transitModal.source === 'iwm' ? 'text-purple-600' : 'text-blue-600'} font-black text-lg`}>Rp {formatRp(item.amount)}</span>
                             </div>
                             <div className="col-span-7 flex flex-col sm:flex-row gap-2 relative">
                               <div className="absolute left-[-16px] top-1/2 -translate-y-1/2 text-gray-300 hidden md:block"><ArrowRight size={20} /></div>
@@ -777,7 +913,7 @@ export default function App() {
                                 <select 
                                   value={item.mappedCat || ''} 
                                   onChange={(e) => updateTransitMapping(item.id, 'mappedCat', e.target.value)}
-                                  className={`w-full border rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-medium ${item.mappedCat ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'}`}
+                                  className={`w-full border rounded-lg p-2 text-sm outline-none focus:ring-2 font-medium ${item.mappedCat ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'} ${transitModal.source === 'iwm' ? 'focus:ring-purple-500' : 'focus:ring-blue-500'}`}
                                 >
                                   <option value="">-- Pilih Kategori --</option>
                                   {categories.filter(c => c.type === activeType).map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
@@ -788,7 +924,7 @@ export default function App() {
                                   value={item.mappedItem || ''} 
                                   onChange={(e) => updateTransitMapping(item.id, 'mappedItem', e.target.value)}
                                   disabled={!item.mappedCat}
-                                  className={`w-full border rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-medium ${!item.mappedCat ? 'bg-gray-100 text-gray-400' : item.mappedItem ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'}`}
+                                  className={`w-full border rounded-lg p-2 text-sm outline-none focus:ring-2 font-medium ${!item.mappedCat ? 'bg-gray-100 text-gray-400' : item.mappedItem ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'} ${transitModal.source === 'iwm' ? 'focus:ring-purple-500' : 'focus:ring-blue-500'}`}
                                 >
                                   {!item.mappedCat ? <option value="">Pilih Kategori Dulu</option> : <option value="">-- Pilih Sub Kategori --</option>}
                                   {item.mappedCat && categories.find(c => c.id === item.mappedCat)?.items?.length === 0 && <option value="direct">Langsung isi nominal</option>}
@@ -805,6 +941,41 @@ export default function App() {
                         {transitModal.data.length === 0 && <div className="p-6 text-center text-gray-500 font-medium">Semua data telah dihapus/dibatalkan dari daftar import.</div>}
                       </div>
                     </div>
+
+                    {/* KHUSUS IWM: TAMPILKAN TABEL DISKON JIKA ADA */}
+                    {transitModal.source === 'iwm' && transitModal.iwmDiskon && transitModal.iwmDiskon.length > 0 && (
+                      <div className="mt-6 border border-yellow-200 rounded-xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
+                        <div className="bg-gradient-to-r from-yellow-100 to-yellow-50 px-4 py-2.5 border-b border-yellow-200 flex items-center gap-2">
+                          <Tag size={16} className="text-yellow-700" />
+                          <span className="font-bold text-xs text-yellow-800 uppercase tracking-wide">Laporan Rombongan (Ditambahkan ke Mapping)</span>
+                        </div>
+                        <div className="bg-white overflow-x-auto">
+                          <table className="w-full text-left text-xs whitespace-nowrap">
+                            <thead className="bg-gray-50 text-gray-500 font-bold border-b">
+                              <tr>
+                                <th className="px-4 py-2">Lokasi</th>
+                                <th className="px-4 py-2">Nama Rombongan</th>
+                                <th className="px-4 py-2 text-right">Anak Masuk</th>
+                                <th className="px-4 py-2 text-right">Dewasa Masuk</th>
+                                <th className="px-4 py-2 text-right">Pendapatan (Rp)</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {transitModal.iwmDiskon.map((d, i) => (
+                                <tr key={i} className="hover:bg-gray-50">
+                                  <td className="px-4 py-2 font-medium text-gray-800">{d.lokasi}</td>
+                                  <td className="px-4 py-2 text-gray-600 truncate max-w-[200px]" title={d.nama_rombongan}>{d.nama_rombongan}</td>
+                                  <td className="px-4 py-2 text-right text-gray-600">{d.masuk_anak} org</td>
+                                  <td className="px-4 py-2 text-right text-gray-600">{d.masuk_dewasa} org</td>
+                                  <td className="px-4 py-2 text-right font-bold text-green-600">Rp {formatRp(d.pendapatan_rp)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
                   </div>
                 </div>
                 <div className="bg-white border-t border-gray-200 p-4 flex justify-between items-center shrink-0">
@@ -959,7 +1130,7 @@ export default function App() {
         <div className="max-w-4xl mx-auto px-4 py-6 no-print space-y-6">
           
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Cloud size={20} className="text-blue-500"/> Koneksi Server Bot 3A</h2>
+            <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Cloud size={20} className="text-blue-500"/> Koneksi Server Bot Integrasi</h2>
             <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
                 <label className="text-xs font-bold text-gray-600 uppercase mb-1.5 block">IP Address / Hostname Komputer Server</label>
                 <div className="flex gap-3 items-center">
@@ -968,7 +1139,10 @@ export default function App() {
                   </div>
                   <Database className="text-gray-400 shrink-0 hidden sm:block" size={24} />
                 </div>
-                <p className="text-xs text-gray-500 mt-2 font-medium">Isi dengan <strong className="text-gray-700">localhost</strong> jika Bot Python berjalan di PC yang sama dengan Web App ini. Atau isi dengan <strong className="text-gray-700">demo</strong> untuk mode animasi pura-pura.</p>
+                <p className="text-xs text-gray-500 mt-2 font-medium">Isi dengan <strong className="text-gray-700">localhost</strong> jika Bot Python berjalan di PC yang sama dengan Web App ini. Atau isi dengan <strong className="text-gray-700">demo</strong> untuk mode simulasi data.</p>
+                <div className="mt-3 text-[10px] text-gray-500 bg-white p-2 rounded border border-gray-200 inline-block font-mono">
+                  Sistem otomatis menembak Port <strong className="text-blue-600">5000 (3A)</strong> dan Port <strong className="text-purple-600">5001 (IWM)</strong> berdasarkan port standar Bot.
+                </div>
             </div>
           </div>
 
@@ -1049,15 +1223,24 @@ export default function App() {
               </button>
             </div>
             
-            {/* TAMPILKAN TOMBOL HANYA JIKA ACTIVE TYPE ADALAH 'UTAMA' (PENDAPATAN) */}
+            {/* PANEL DUA TOMBOL ROBOT (3A & IWM) */}
             {activeType === 'utama' && (
-              <button 
-                onClick={handleOpenTransit}
-                className="bg-white hover:bg-blue-50 text-blue-600 border border-blue-200 shadow-sm rounded-xl px-5 py-2.5 font-bold flex items-center justify-center gap-2 transition-all w-full sm:w-auto shrink-0 group"
-              >
-                <CloudDownload size={20} className="group-hover:-translate-y-0.5 transition-transform" />
-                <span>Tarik Data 3A</span>
-              </button>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <button 
+                  onClick={handleOpenTransit3A}
+                  className="bg-white hover:bg-blue-50 text-blue-600 border border-blue-200 shadow-sm rounded-xl px-4 py-2.5 font-bold flex-1 sm:flex-none flex items-center justify-center gap-2 transition-all group"
+                >
+                  <CloudDownload size={20} className="group-hover:-translate-y-0.5 transition-transform" />
+                  <span>Tarik 3A</span>
+                </button>
+                <button 
+                  onClick={handleOpenTransitIWM}
+                  className="bg-white hover:bg-purple-50 text-purple-600 border border-purple-200 shadow-sm rounded-xl px-4 py-2.5 font-bold flex-1 sm:flex-none flex items-center justify-center gap-2 transition-all group"
+                >
+                  <CloudDownload size={20} className="group-hover:-translate-y-0.5 transition-transform" />
+                  <span>Tarik IWM</span>
+                </button>
+              </div>
             )}
           </div>
 
