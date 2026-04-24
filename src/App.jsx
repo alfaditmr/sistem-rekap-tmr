@@ -76,7 +76,7 @@ const getDayName = (dateStr) => {
 // 🔴 FUNGSI PEMANGGILAN API GEMINI (LLM) 
 // ==========================================
 const callGeminiAPI = async (prompt, systemInstruction) => {
-  const apiKey = ""; // Runtime injeksi di eksekusi Canvas
+  const apiKey = ""; 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
   const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: systemInstruction }] } };
   for (let i = 0; i < 5; i++) {
@@ -184,10 +184,6 @@ export default function App() {
     rightRole: 'Bendahara Penerimaan', rightName: 'Evi Irmawati', rightNip: '198101082009042006', location: 'Jakarta'
   }));
 
-  // ==========================================
-  // MASTER DATA DEFAULT KATEGORI
-  // (Penyegaran nama default untuk kemudahan user baru/reset)
-  // ==========================================
   const [categories, setCategories] = useState(() => getInitialState('tmr_v19_categories', [
     { id: 'cat_1', name: 'Pemakaian Fasilitas', type: 'utama', items: [{ id: 'item_1a', name: 'Promo Penjualan Produk' }, { id: 'item_1b', name: 'Penempatan banner promosi' }, { id: 'item_1c', name: 'Panggung' }] },
     { id: 'cat_2', name: 'Retribusi Pedagang', type: 'utama', items: [{ id: 'item_2a', name: 'Retribusi pedagang Hari Biasa' }, { id: 'item_2b', name: 'Retribusi pedagang Hari Besar' }] },
@@ -426,7 +422,7 @@ export default function App() {
     return "";
   };
 
-  // --- Fungsi AI Matcher Internal (Pencocokan Cerdas yang Disempurnakan) ---
+  // --- Fungsi AI Matcher Internal (Pencocokan Cerdas) ---
   const smartMappingAI = (nameAPI, apiSource) => {
     let guessCat = '';
     let guessItem = '';
@@ -460,7 +456,6 @@ export default function App() {
           let score = 0;
           
           // NORMALISASI: Ubah angka Romawi dan potensi Typo menjadi standar
-          // Lakukan replace berurutan dari III -> II -> I (\b mencegah 'ii' terganti saat mengganti 'i')
           const normApiName = lowerName
             .replace(/sepededa/g, 'sepeda')
             .replace(/gol iii/g, 'gol 3')
@@ -484,7 +479,7 @@ export default function App() {
           
           // Penilaian Tepat Sasaran
           if (isDewasa && normSubName.includes('dewasa')) score += 10;
-          if (isAnak && normSubName.includes('anak') && !isTSA && !normSubName.includes('satwa')) score += 10; // Anak jangan nabrak TSA
+          if (isAnak && normSubName.includes('anak') && !isTSA && !normSubName.includes('satwa')) score += 10; 
           if (isTSA && (normSubName.includes('satwa') || normSubName.includes('children'))) score += 15;
           if (isRombongan && normSubName.includes('rombongan')) score += 15;
           if (isPrimata && (normSubName.includes('primata') || normSubName.includes('schmutzer'))) score += 10;
@@ -493,21 +488,16 @@ export default function App() {
           if (isWD && (normSubName.includes('wd') || normSubName.includes('biasa') || normSubName.includes('weekday'))) score += 5;
           if (isWE && (normSubName.includes('we') || normSubName.includes('libur') || normSubName.includes('besar') || normSubName.includes('weekend'))) score += 5;
 
-          // ==========================================
-          // UPDATE PRESISI KENDARAAN (GOL 1, 2, 3, MOTOR, SEPEDA)
-          // ==========================================
+          // Kendaraan
           if (normApiName.includes('sepeda') && normSubName.includes('sepeda')) score += 30;
           if (normApiName.includes('motor') && normSubName.includes('motor')) score += 30;
-          
           if (normApiName.includes('gol 1') && normSubName.includes('gol 1')) score += 30;
           if (normApiName.includes('gol 2') && normSubName.includes('gol 2')) score += 30;
           
-          // Gol 3 biasanya bersinonim dengan Mobil di STSU
           const isApiMobilOrGol3 = normApiName.includes('gol 3') || normApiName.includes('mobil');
           const isSubMobilOrGol3 = normSubName.includes('gol 3') || normSubName.includes('mobil');
           if (isApiMobilOrGol3 && isSubMobilOrGol3) score += 30;
 
-          // Perbarui item terpilih jika skor saat ini lebih tinggi
           if (score > bestScore) {
             bestScore = score;
             guessItem = sub.id;
@@ -527,7 +517,7 @@ export default function App() {
       let diskonData = [];
       const ip = apiIpAddress.trim().toLowerCase();
       const targetDate = transitModal.targetDate;
-      const source = transitModal.source; // '3a' or 'iwm'
+      const source = transitModal.source;
 
       const stsuNames3A = {
         "1": "Karcis Dewasa", "2": "Karcis Anak", "3": "Romb. Dewasa 25%", "4": "Romb. Anak 25%",
@@ -587,7 +577,7 @@ export default function App() {
             { id: 'i6', nameAPI: '[IWM] Rombongan - SD SWASTA MARSUDIRINI', amount: 146250 }
           ];
         } else {
-          const baseUrl = ip.startsWith('http') ? ip : `http://${ip}:5001`; // PORT IWM 5001
+          const baseUrl = ip.startsWith('http') ? ip : `http://${ip}:5001`;
           const endpoint = `${baseUrl}/api/tarik_rekon_iwm?tanggal=${targetDate}`;
           const res = await fetch(endpoint);
           if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
@@ -598,7 +588,6 @@ export default function App() {
           
           diskonData = iData.laporan_diskon || [];
           
-          // Hitung potongan diskon dari tiket reguler berdasarkan porsi rombongan
           let deductAlAnak = 0;
           let deductAlDewasa = 0;
           let deductPrmAnak = 0;
@@ -609,7 +598,6 @@ export default function App() {
             const dewasa = Number(d.masuk_dewasa) || 0;
             const totalRp = Number(d.pendapatan_rp) || 0;
             
-            // Cek apakah rombongan ini masuk ke Primata atau Pintu Masuk
             const isPrimata = /primata|schmutzer/i.test(d.lokasi || '') || /primata|schmutzer/i.test(d.nama_rombongan || '');
             
             if (anak > 0 && dewasa === 0) {
@@ -617,7 +605,6 @@ export default function App() {
             } else if (dewasa > 0 && anak === 0) {
                if (isPrimata) deductPrmDewasa += totalRp; else deductAlDewasa += totalRp;
             } else if (anak > 0 && dewasa > 0) {
-               // Proporsional berdasarkan harga tiket yg sudah didiskon
                const porsiAnak = isPrimata ? anak * 1 : anak * 2250;
                const porsiDewasa = isPrimata ? dewasa * 1 : dewasa * 3000;
                const totalPorsi = porsiAnak + porsiDewasa;
@@ -635,7 +622,6 @@ export default function App() {
             }
           });
 
-          // Flatten IWM data based on the API response structure & Lakukan Pengurangan
           if (iData.pusat_primata) {
             const netPrmDewasa = Math.max(0, (iData.pusat_primata.dewasa || 0) - deductPrmDewasa);
             const netPrmAnak = Math.max(0, (iData.pusat_primata.anak || 0) - deductPrmAnak);
@@ -661,7 +647,6 @@ export default function App() {
             if (al.sepeda > 0) fetchedData.push({ id: 'al_spd', nameAPI: '[IWM] Kendaraan - Sepeda', amount: al.sepeda });
           }
           
-          // Tambahkan rombongan sebagai data yang akan diinput (Mapping)
           diskonData.forEach((d, idx) => {
             const amt = Number(d.pendapatan_rp) || 0;
             if (amt !== 0) {
@@ -671,7 +656,6 @@ export default function App() {
         }
       }
 
-      // MENGGUNAKAN LOGIKA PENGELOMPOKAN AI TERBARU
       const mappedData = fetchedData.map(item => {
         const { mappedCat, mappedItem } = smartMappingAI(item.nameAPI, source);
         return { ...item, mappedCat, mappedItem };
@@ -732,7 +716,6 @@ export default function App() {
     const activeI = Array.isArray(currentReport.activeItems) ? currentReport.activeItems : [];
     const groups = [];
 
-    // Fungsi helper untuk mengurutkan sub-item berdasarkan urutan di master categories
     const sortDisplayItems = (items, masterItems) => {
       items.sort((a, b) => {
         if (a.id === 'direct') return -1;
@@ -757,10 +740,7 @@ export default function App() {
             if (ai.itemId === 'direct') return { ...ai, id: 'direct', name: cat.name };
             const found = cat.items?.find(i => i.id === ai.itemId); return { ...ai, id: ai.itemId, name: found ? found.name : 'Item' };
           });
-          
-          // TERAPKAN PENGURUTAN KE MASTER DI SINI
           displayItems = sortDisplayItems(displayItems, cat.items);
-          
           groups.push({ groupId: `${cat.id}_${config.key}`, catId: cat.id, name: cat.name, isSusulan: config.isSusulan, validDate: config.validDate, activeItems: displayItems, catIndex: index });
         });
       } else {
@@ -771,10 +751,7 @@ export default function App() {
             if (ai.itemId === 'direct') return { ...ai, id: 'direct', name: cat.name };
             const found = cat.items?.find(i => i.id === ai.itemId); return { ...ai, id: ai.itemId, name: found ? found.name : 'Item' };
           });
-          
-          // TERAPKAN PENGURUTAN KE MASTER DI SINI
           displayItems = sortDisplayItems(displayItems, cat.items);
-          
           groups.push({ groupId: `${cat.id}_${config.key}`, catId: cat.id, name: cat.name, isSusulan: false, itemDate: config.itemDate, itemNote: config.itemNote, activeItems: displayItems, catIndex: index });
         });
       }
@@ -890,7 +867,7 @@ export default function App() {
 
       {transitModal.isOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
-          <div className="bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 ${transitModal.step === 'mapping' ? 'max-w-4xl max-h-[90vh]' : 'max-w-md'}">
+          <div className={`bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 ${transitModal.step === 'mapping' ? 'max-w-3xl max-h-[85vh]' : 'max-w-md'}`}>
             
             {/* TAHAP 1: KONFIRMASI TANGGAL */}
             {transitModal.step === 'confirm_date' && (
@@ -957,10 +934,10 @@ export default function App() {
               </div>
             )}
 
-            {/* TAHAP 5: MAPPING (Ruang Transit) */}
+            {/* TAHAP 5: MAPPING (Ruang Transit) - DIPERBAIKI MENJADI CARD & SCROLLABLE */}
             {transitModal.step === 'mapping' && (
               <>
-                <div className={`p-5 text-white flex justify-between items-center shrink-0 ${transitModal.source === 'iwm' ? 'bg-gradient-to-r from-purple-700 to-purple-900' : 'bg-gradient-to-r from-blue-700 to-blue-900'}`}>
+                <div className={`p-4 text-white flex justify-between items-center shrink-0 shadow-sm ${transitModal.source === 'iwm' ? 'bg-gradient-to-r from-purple-700 to-purple-900' : 'bg-gradient-to-r from-blue-700 to-blue-900'}`}>
                   <div className="flex items-center gap-3">
                     <Database size={24} />
                     <div>
@@ -970,86 +947,79 @@ export default function App() {
                   </div>
                   <button onClick={closeTransitModal} className="text-white hover:bg-white/20 p-2 rounded-lg transition-colors">✕</button>
                 </div>
-                <div className="p-6 bg-gray-50 flex-1 overflow-y-auto">
-                  <div className="space-y-4">
-                    <div className={`border p-3 rounded-xl text-sm font-medium flex gap-2 items-start ${transitModal.source === 'iwm' ? 'bg-purple-50 border-purple-200 text-purple-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+                
+                {/* Scrollable Container dengan min-h-0 agar flexbox bisa meng-handle scroll */}
+                <div className="p-4 sm:p-5 bg-gray-50 flex-1 overflow-y-auto min-h-0">
+                  <div className="space-y-3">
+                    <div className={`border p-3 rounded-xl text-sm font-medium flex gap-2 items-start shadow-sm bg-white ${transitModal.source === 'iwm' ? 'border-purple-200 text-purple-800' : 'border-blue-200 text-blue-800'}`}>
                       <Sparkles size={18} className="shrink-0 mt-0.5" />
-                      <p>Bot berhasil mengekstrak data! Silakan periksa kembali kecocokan kategorinya sebelum menekan konfirmasi import.</p>
+                      <p>Bot berhasil mengekstrak data! Silakan periksa kembali kecocokan kategori di bawah ini sebelum menekan konfirmasi import.</p>
                     </div>
                     
-                    <div className="border border-gray-200 rounded-xl bg-white overflow-hidden shadow-sm">
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 bg-gray-100 p-3 border-b border-gray-200 font-bold text-xs text-gray-600 uppercase tracking-wide hidden md:grid">
-                        <div className="col-span-5">Data Ditarik ({transitModal.source === '3a' ? '3A' : 'IWM'})</div>
-                        <div className="col-span-7 pl-4 border-l border-gray-300">Arahkan Ke Kategori Form STSU</div>
-                      </div>
-                      <div className="divide-y divide-gray-100">
-                        {transitModal.data.map((item) => (
-                          <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 items-center hover:bg-gray-50 transition-colors">
-                            <div className="col-span-5 flex flex-col">
-                              <span className="font-bold text-gray-800 text-sm">{item.nameAPI}</span>
-                              <span className={`${transitModal.source === 'iwm' ? 'text-purple-600' : 'text-blue-600'} font-black text-lg`}>Rp {formatRp(item.amount)}</span>
-                            </div>
-                            <div className="col-span-7 flex flex-col sm:flex-row gap-2 relative">
-                              <div className="absolute left-[-16px] top-1/2 -translate-y-1/2 text-gray-300 hidden md:block"><ArrowRight size={20} /></div>
-                              <div className="flex-1">
-                                <select 
-                                  value={item.mappedCat || ''} 
-                                  onChange={(e) => updateTransitMapping(item.id, 'mappedCat', e.target.value)}
-                                  className={`w-full border rounded-lg p-2 text-sm outline-none focus:ring-2 font-medium ${item.mappedCat ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'} ${transitModal.source === 'iwm' ? 'focus:ring-purple-500' : 'focus:ring-blue-500'}`}
-                                >
-                                  <option value="">-- Pilih Kategori --</option>
-                                  {categories.filter(c => c.type === activeType).map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                                </select>
-                              </div>
-                              <div className="flex-1">
-                                <select 
-                                  value={item.mappedItem || ''} 
-                                  onChange={(e) => updateTransitMapping(item.id, 'mappedItem', e.target.value)}
-                                  disabled={!item.mappedCat}
-                                  className={`w-full border rounded-lg p-2 text-sm outline-none focus:ring-2 font-medium ${!item.mappedCat ? 'bg-gray-100 text-gray-400' : item.mappedItem ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'} ${transitModal.source === 'iwm' ? 'focus:ring-purple-500' : 'focus:ring-blue-500'}`}
-                                >
-                                  {!item.mappedCat ? <option value="">Pilih Kategori Dulu</option> : <option value="">-- Pilih Sub Kategori --</option>}
-                                  {item.mappedCat && categories.find(c => c.id === item.mappedCat)?.items?.length === 0 && <option value="direct">Langsung isi nominal</option>}
-                                  {item.mappedCat && categories.find(c => c.id === item.mappedCat)?.items?.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
-                                </select>
-                              </div>
-                              <button 
-                                onClick={() => setTransitModal(prev => ({...prev, data: prev.data.filter(d => d.id !== item.id)}))}
-                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg shrink-0 transition-colors" title="Jangan Import Data Ini"
-                              ><Trash size={18} /></button>
-                            </div>
-                          </div>
-                        ))}
-                        {transitModal.data.length === 0 && <div className="p-6 text-center text-gray-500 font-medium">Semua data telah dihapus/dibatalkan dari daftar import.</div>}
-                      </div>
-                    </div>
-
-                    {/* KHUSUS IWM: TAMPILKAN TABEL DISKON JIKA ADA */}
-                    {transitModal.source === 'iwm' && transitModal.iwmDiskon && transitModal.iwmDiskon.length > 0 && (
-                      <div className="mt-6 border border-yellow-200 rounded-xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
-                        <div className="bg-gradient-to-r from-yellow-100 to-yellow-50 px-4 py-2.5 border-b border-yellow-200 flex items-center gap-2">
-                          <Tag size={16} className="text-yellow-700" />
-                          <span className="font-bold text-xs text-yellow-800 uppercase tracking-wide">Laporan Rombongan (Ditambahkan ke Mapping)</span>
+                    {/* Daftar Data Mapping berupa Card List (Ramping) */}
+                    {transitModal.data.map((item) => (
+                      <div key={item.id} className="bg-white border border-gray-200 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-gray-800 text-sm truncate" title={item.nameAPI}>{item.nameAPI}</div>
+                          <div className={`${transitModal.source === 'iwm' ? 'text-purple-600' : 'text-blue-600'} font-black text-sm`}>Rp {formatRp(item.amount)}</div>
                         </div>
-                        <div className="bg-white overflow-x-auto">
+                        <div className="flex flex-col sm:flex-row gap-2 shrink-0 items-center">
+                          <select 
+                            value={item.mappedCat || ''} 
+                            onChange={(e) => updateTransitMapping(item.id, 'mappedCat', e.target.value)}
+                            className={`w-full sm:w-44 border rounded-lg p-2 text-xs outline-none focus:ring-2 font-medium ${item.mappedCat ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'} ${transitModal.source === 'iwm' ? 'focus:ring-purple-500' : 'focus:ring-blue-500'}`}
+                          >
+                            <option value="">-- Kategori --</option>
+                            {categories.filter(c => c.type === activeType).map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                          </select>
+                          
+                          <select 
+                            value={item.mappedItem || ''} 
+                            onChange={(e) => updateTransitMapping(item.id, 'mappedItem', e.target.value)}
+                            disabled={!item.mappedCat}
+                            className={`w-full sm:w-48 border rounded-lg p-2 text-xs outline-none focus:ring-2 font-medium ${!item.mappedCat ? 'bg-gray-100 text-gray-400' : item.mappedItem ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'} ${transitModal.source === 'iwm' ? 'focus:ring-purple-500' : 'focus:ring-blue-500'}`}
+                          >
+                            {!item.mappedCat ? <option value="">Pilih Kategori Dulu</option> : <option value="">-- Sub Kategori --</option>}
+                            {item.mappedCat && categories.find(c => c.id === item.mappedCat)?.items?.length === 0 && <option value="direct">Isi Nominal</option>}
+                            {item.mappedCat && categories.find(c => c.id === item.mappedCat)?.items?.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
+                          </select>
+                          
+                          <button 
+                            onClick={() => setTransitModal(prev => ({...prev, data: prev.data.filter(d => d.id !== item.id)}))}
+                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Jangan Import Data Ini"
+                          ><Trash size={18} /></button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {transitModal.data.length === 0 && <div className="p-6 text-center text-gray-500 font-medium">Semua data telah dihapus/dibatalkan dari daftar import.</div>}
+
+                    {/* KHUSUS IWM: TAMPILKAN TABEL DISKON */}
+                    {transitModal.source === 'iwm' && transitModal.iwmDiskon && transitModal.iwmDiskon.length > 0 && (
+                      <div className="mt-4 border border-yellow-200 rounded-xl overflow-hidden shadow-sm bg-white">
+                        <div className="bg-yellow-50 px-3 py-2 border-b border-yellow-200 flex items-center gap-2">
+                          <Tag size={16} className="text-yellow-700" />
+                          <span className="font-bold text-xs text-yellow-800 uppercase">Laporan Rombongan</span>
+                        </div>
+                        <div className="overflow-x-auto">
                           <table className="w-full text-left text-xs whitespace-nowrap">
                             <thead className="bg-gray-50 text-gray-500 font-bold border-b">
                               <tr>
-                                <th className="px-4 py-2">Lokasi</th>
-                                <th className="px-4 py-2">Nama Rombongan</th>
-                                <th className="px-4 py-2 text-right">Anak Masuk</th>
-                                <th className="px-4 py-2 text-right">Dewasa Masuk</th>
-                                <th className="px-4 py-2 text-right">Pendapatan (Rp)</th>
+                                <th className="p-2 pl-3">Lokasi</th>
+                                <th className="p-2">Nama Rombongan</th>
+                                <th className="p-2 text-right">Anak</th>
+                                <th className="p-2 text-right">Dewasa</th>
+                                <th className="p-2 text-right pr-3">Pendapatan (Rp)</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                               {transitModal.iwmDiskon.map((d, i) => (
                                 <tr key={i} className="hover:bg-gray-50">
-                                  <td className="px-4 py-2 font-medium text-gray-800">{d.lokasi}</td>
-                                  <td className="px-4 py-2 text-gray-600 truncate max-w-[200px]" title={d.nama_rombongan}>{d.nama_rombongan}</td>
-                                  <td className="px-4 py-2 text-right text-gray-600">{d.masuk_anak} org</td>
-                                  <td className="px-4 py-2 text-right text-gray-600">{d.masuk_dewasa} org</td>
-                                  <td className="px-4 py-2 text-right font-bold text-green-600">Rp {formatRp(d.pendapatan_rp)}</td>
+                                  <td className="p-2 pl-3 font-medium text-gray-800">{d.lokasi}</td>
+                                  <td className="p-2 text-gray-600 truncate max-w-[150px]" title={d.nama_rombongan}>{d.nama_rombongan}</td>
+                                  <td className="p-2 text-right text-gray-600">{d.masuk_anak}</td>
+                                  <td className="p-2 text-right text-gray-600">{d.masuk_dewasa}</td>
+                                  <td className="p-2 text-right pr-3 font-bold text-green-600">{formatRp(d.pendapatan_rp)}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -1060,13 +1030,14 @@ export default function App() {
 
                   </div>
                 </div>
+
                 <div className="bg-white border-t border-gray-200 p-4 flex justify-between items-center shrink-0">
-                  <button onClick={closeTransitModal} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors">Batal / Kembali</button>
+                  <button onClick={closeTransitModal} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors text-sm">Batal / Kembali</button>
                   <button 
                     onClick={confirmTransitInjection}
                     disabled={transitModal.data.length === 0 || transitModal.data.some(d => d.mappedCat && !d.mappedItem)}
-                    className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  ><Save size={18} /> Konfirmasi & Masukkan ke Form</button>
+                    className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
+                  ><Save size={16} /> Import ke Form</button>
                 </div>
               </>
             )}
