@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save, Database, ArrowRight, CloudDownload } from 'lucide-react';
+import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save, Database, ArrowRight, CloudDownload, Move } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
@@ -196,6 +196,80 @@ export default function App() {
   const [allReports, setAllReports] = useState(() => getInitialState('tmr_v19_allReports', {}));
   const [apiIpAddress, setApiIpAddress] = useState(() => getInitialState('tmr_v19_api_ip', 'localhost'));
 
+  // =========================================================
+  // 🔴 STATE & LOGIKA KALIBRASI NCR (DRAG & DROP)
+  // =========================================================
+  const [ncrOffset, setNcrOffset] = useState(() => getInitialState('tmr_v19_ncr_offset', { x: 0, y: 0 }));
+  const [ncrPositions, setNcrPositions] = useState(() => getInitialState('tmr_v19_ncr_positions', {}));
+  const [selectedNcrElementId, setSelectedNcrElementId] = useState(null);
+  const [dragInfo, setDragInfo] = useState(null);
+
+  const ncrElementsConfig = {
+    day: { label: 'Hari', default: { top: 37, left: 75 } },
+    date: { label: 'Tanggal', default: { top: 37, left: 110 } },
+    category: { label: 'Nama Kategori', default: { top: 53, left: 75 } },
+    items: { label: 'Uraian Tiket', default: { top: 58, left: 20 } },
+    from: { label: 'Dari (Seksi)', default: { top: 69, left: 75 } },
+    amountTop: { label: 'Total (Atas)', default: { top: 79, left: 75 } },
+    terbilang: { label: 'Terbilang', default: { top: 84, left: 20 } },
+    signDate: { label: 'Tanggal TTD', default: { top: 100, left: 130 } },
+    amountBottom: { label: 'Total (Bawah)', default: { top: 105, left: 130 } },
+    signatures: { label: 'Blok TTD', default: { top: 137, left: 0 } }
+  };
+
+  const getPos = (id) => ({
+    top: ncrPositions[id]?.top ?? ncrElementsConfig[id].default.top,
+    left: ncrPositions[id]?.left ?? ncrElementsConfig[id].default.left
+  });
+
+  const handleNcrMouseDown = (e, id) => {
+      e.stopPropagation();
+      e.preventDefault();
+      setSelectedNcrElementId(id);
+      setDragInfo({ id, startX: e.clientX, startY: e.clientY, startLeft: getPos(id).left, startTop: getPos(id).top });
+  };
+
+  useEffect(() => {
+      if (!dragInfo) return;
+      const handleMouseMove = (e) => {
+          const deltaXmm = (e.clientX - dragInfo.startX) * 0.264583;
+          const deltaYmm = (e.clientY - dragInfo.startY) * 0.264583;
+          setNcrPositions(prev => ({
+              ...prev,
+              [dragInfo.id]: { left: dragInfo.startLeft + deltaXmm, top: dragInfo.startTop + deltaYmm }
+          }));
+      };
+      const handleMouseUp = () => setDragInfo(null);
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
+  }, [dragInfo]);
+
+  const adjustNcrPos = (axis, delta) => {
+      if (selectedNcrElementId) {
+          setNcrPositions(prev => {
+             const currentPos = prev[selectedNcrElementId] || ncrElementsConfig[selectedNcrElementId].default;
+             return { ...prev, [selectedNcrElementId]: { ...currentPos, [axis === 'x' ? 'left' : 'top']: currentPos[axis === 'x' ? 'left' : 'top'] + delta } };
+          });
+      } else { setNcrOffset(p => ({ ...p, [axis]: p[axis] + delta })); }
+  };
+
+  const renderNcrElement = (id, className, style, content) => {
+      const pos = getPos(id);
+      const isSelected = selectedNcrElementId === id;
+      return (
+        <div
+          onMouseDown={(e) => handleNcrMouseDown(e, id)}
+          className={`absolute transition-shadow select-none cursor-move print:!ring-0 print:!bg-transparent print:!outline-none rounded p-1 ${isSelected ? 'ring-2 ring-blue-500 bg-blue-100/50 z-10' : 'hover:ring-1 hover:ring-blue-300 hover:bg-blue-50/40'} ${className}`}
+          style={{ top: `${pos.top}mm`, left: `${pos.left}mm`, ...style }}
+        >
+          {content}
+          {isSelected && <div className="absolute -top-6 left-0 text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded shadow-sm print:hidden whitespace-nowrap font-bold">{ncrElementsConfig[id].label}</div>}
+        </div>
+      );
+  };
+  // =========================================================
+
   const [reportDate, setReportDate] = useState(getLocalYMD());
   const [activeType, setActiveType] = useState('utama'); 
   const [activeLainIndex, setActiveLainIndex] = useState(1); 
@@ -213,6 +287,10 @@ export default function App() {
   useEffect(() => { if (typeof window !== 'undefined') window.localStorage.setItem('tmr_v19_categories', JSON.stringify(categories)); }, [categories]);
   useEffect(() => { if (typeof window !== 'undefined') window.localStorage.setItem('tmr_v19_allReports', JSON.stringify(allReports)); }, [allReports]);
   useEffect(() => { if (typeof window !== 'undefined') window.localStorage.setItem('tmr_v19_api_ip', JSON.stringify(apiIpAddress)); }, [apiIpAddress]);
+  
+  // Efek khusus untuk menyimpan posisi Drag & Drop
+  useEffect(() => { if (typeof window !== 'undefined') window.localStorage.setItem('tmr_v19_ncr_offset', JSON.stringify(ncrOffset)); }, [ncrOffset]);
+  useEffect(() => { if (typeof window !== 'undefined') window.localStorage.setItem('tmr_v19_ncr_positions', JSON.stringify(ncrPositions)); }, [ncrPositions]);
 
   const getDocRef = () => { return doc(db, 'tmr_data', user ? user.uid : 'demo_rekapitulasi_laporan'); };
 
@@ -1513,6 +1591,60 @@ export default function App() {
             </div>
           )}
 
+          {/* PANEL KALIBRASI DOT MATRIX (HANYA MUNCUL DI MODE NCR PRINT) */}
+          {printMode === 'ncr' && (
+            <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-300 mb-6 no-print flex flex-col items-center gap-4 animate-in slide-in-from-top-4 shadow-sm">
+              <div className="w-full flex flex-col md:flex-row justify-between items-center gap-4">
+                <div>
+                  <h3 className="font-bold text-yellow-900 flex items-center gap-2"><Move size={18}/> Kalibrasi Posisi Cetak NCR</h3>
+                  <p className="text-xs text-yellow-800 mt-1 leading-relaxed">
+                    <strong>Tips Cepat:</strong> Arahkan kursor ke kertas di bawah, <strong>klik dan geser (drag)</strong> teks mana saja untuk memindahkannya dengan bebas! Atau, Bapak bisa menggunakan tombol (+/-) presisi di bawah ini.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                   <select 
+                      value={selectedNcrElementId || 'global'} 
+                      onChange={(e) => setSelectedNcrElementId(e.target.value === 'global' ? null : e.target.value)}
+                      className="border border-yellow-400 bg-white text-sm rounded p-2 text-yellow-900 font-bold outline-none cursor-pointer"
+                   >
+                      <option value="global">Seluruh Kertas (Global)</option>
+                      {Object.entries(ncrElementsConfig).map(([id, config]) => (
+                          <option key={id} value={id}>Elemen: {config.label}</option>
+                      ))}
+                   </select>
+                   <button onClick={() => {
+                      if (selectedNcrElementId) { setNcrPositions(prev => { const n = {...prev}; delete n[selectedNcrElementId]; return n; }); } 
+                      else { setNcrOffset({x:0, y:0}); }
+                   }} className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-2.5 rounded border border-red-300 font-bold transition-colors">Reset Posisi</button>
+                </div>
+              </div>
+              
+              <div className="flex gap-4 sm:gap-6 bg-white p-3 rounded-lg border border-yellow-200 shadow-inner w-full justify-center">
+                  <div className="flex flex-col items-center">
+                    <span className="text-[10px] font-bold text-yellow-800 mb-1.5 uppercase">Kiri / Kanan (X)</span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => adjustNcrPos('x', -0.5)} className="bg-gray-100 hover:bg-blue-100 border px-3 py-1.5 rounded text-gray-700 font-bold hover:text-blue-700">-</button>
+                      <span className="font-mono font-bold text-sm w-16 text-center text-blue-700">
+                         {selectedNcrElementId ? getPos(selectedNcrElementId).left.toFixed(1) : ncrOffset.x.toFixed(1)} mm
+                      </span>
+                      <button onClick={() => adjustNcrPos('x', 0.5)} className="bg-gray-100 hover:bg-blue-100 border px-3 py-1.5 rounded text-gray-700 font-bold hover:text-blue-700">+</button>
+                    </div>
+                  </div>
+                  <div className="w-px bg-yellow-200"></div>
+                  <div className="flex flex-col items-center">
+                    <span className="text-[10px] font-bold text-yellow-800 mb-1.5 uppercase">Atas / Bawah (Y)</span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => adjustNcrPos('y', -0.5)} className="bg-gray-100 hover:bg-blue-100 border px-3 py-1.5 rounded text-gray-700 font-bold hover:text-blue-700">-</button>
+                      <span className="font-mono font-bold text-sm w-16 text-center text-blue-700">
+                         {selectedNcrElementId ? getPos(selectedNcrElementId).top.toFixed(1) : ncrOffset.y.toFixed(1)} mm
+                      </span>
+                      <button onClick={() => adjustNcrPos('y', 0.5)} className="bg-gray-100 hover:bg-blue-100 border px-3 py-1.5 rounded text-gray-700 font-bold hover:text-blue-700">+</button>
+                    </div>
+                  </div>
+              </div>
+            </div>
+          )}
+
           {printMode === 'pdf' ? (
             <div id="printable-area" className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative print:border-none print:shadow-none print:p-0">
               <div className="absolute top-10 right-10 text-gray-200 font-bold text-3xl opacity-50 uppercase tracking-widest print:opacity-0 pointer-events-none">DRAFT {activeType === 'utama' ? 'SU' : 'SU/L'}</div>
@@ -1565,31 +1697,39 @@ export default function App() {
           ) : (
             <div id="printable-area-ncr" className="print-container bg-white mx-auto relative overflow-hidden shadow-lg border border-gray-300 print:border-none print:shadow-none" style={{ minHeight: '165mm', width: '210mm' }}>
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-purple-100 font-black text-6xl opacity-30 uppercase tracking-widest print:opacity-0 pointer-events-none -rotate-45 whitespace-nowrap">PREVIEW NCR DOT MATRIX</div>
-              {selectedNcrGroup && (() => {
-                 const ncrTotal = subtotals[selectedNcrGroup.groupId] || 0;
-                 const isDirect = Array.isArray(selectedNcrGroup.activeItems) && selectedNcrGroup.activeItems.length === 1 && selectedNcrGroup.activeItems[0].id === 'direct';
-                 let itemsToPrint = selectedNcrGroup.activeItems.filter(i => (currentReport.formData[getActiveItemKey(selectedNcrGroup.catId, i.id, selectedNcrGroup.isSusulan, selectedNcrGroup.validDate, selectedNcrGroup.itemDate, i.itemNote)] || 0) > 0);
-                 let ncrItemsString = isDirect ? (selectedNcrGroup.activeItems[0].itemNote ? selectedNcrGroup.activeItems[0].itemNote.replace(/\n/g, ', ') : '') : itemsToPrint.map(i => i.name + (i.itemNote ? ` (${i.itemNote.replace(/\n/g, ' ')})` : '')).join(', ');
-                 return (
-                   <>
-                      <div className="absolute font-bold" style={{ top: '37mm', left: '75mm' }}>{getDayName(reportDate)}</div>
-                      <div className="absolute font-bold" style={{ top: '37mm', left: '110mm' }}>{reportDate}</div>
-                      <div className="absolute font-bold text-center" style={{ top: '53mm', left: '75mm', width: '80mm' }}>{selectedNcrGroup.name}</div>
-                      <div className="absolute" style={{ top: '58mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}>{ncrItemsString}</div>
-                      <div className="absolute" style={{ top: '69mm', left: '75mm' }}>DARI : Seksi Pelayanan dan Informasi</div>
-                      <div className="absolute font-bold text-lg" style={{ top: '79mm', left: '75mm' }}>{formatRp(ncrTotal)}</div>
-                      <div className="absolute italic font-bold capitalize" style={{ top: '84mm', left: '20mm', right: '10mm', lineHeight: '1.5' }}># {terbilang(ncrTotal)} rupiah #</div>
-                      <div className="absolute" style={{ top: '100mm', left: '130mm' }}>{currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}</div>
-                      <div className="absolute font-bold text-lg" style={{ top: '105mm', left: '130mm' }}>{formatRp(ncrTotal)}</div>
-                      <div className="absolute w-full" style={{ top: '137mm', left: '0' }}>
-                         <div className="flex justify-between w-full" style={{ paddingLeft: '15mm', paddingRight: '15mm' }}>
-                            <div className="text-center w-[80mm]"><div className="font-bold underline">{signatures.leftName}</div>{signatures.leftNip ? <div>NIP {signatures.leftNip}</div> : <div>NIP ..............................</div>}</div>
-                            <div className="text-center w-[80mm]"><div className="font-bold underline">{signatures.rightName}</div>{signatures.rightNip ? <div>NIP {signatures.rightNip}</div> : <div>NIP ..............................</div>}</div>
-                         </div>
-                      </div>
-                   </>
-                 );
-              })()}
+              
+              {/* WRAPPER KALIBRASI X DAN Y (GLOBAL & PER ELEMEN) */}
+              <div 
+                style={{ position: 'absolute', top: `${ncrOffset.y}mm`, left: `${ncrOffset.x}mm`, width: '100%', height: '100%' }}
+                onClick={() => setSelectedNcrElementId(null)} // Klik layar kosong untuk deselect
+              >
+                {selectedNcrGroup && (() => {
+                   const ncrTotal = subtotals[selectedNcrGroup.groupId] || 0;
+                   const isDirect = Array.isArray(selectedNcrGroup.activeItems) && selectedNcrGroup.activeItems.length === 1 && selectedNcrGroup.activeItems[0].id === 'direct';
+                   let itemsToPrint = selectedNcrGroup.activeItems.filter(i => (currentReport.formData[getActiveItemKey(selectedNcrGroup.catId, i.id, selectedNcrGroup.isSusulan, selectedNcrGroup.validDate, selectedNcrGroup.itemDate, i.itemNote)] || 0) > 0);
+                   let ncrItemsString = isDirect ? (selectedNcrGroup.activeItems[0].itemNote ? selectedNcrGroup.activeItems[0].itemNote.replace(/\n/g, ', ') : '') : itemsToPrint.map(i => i.name + (i.itemNote ? ` (${i.itemNote.replace(/\n/g, ' ')})` : '')).join(', ');
+                   
+                   return (
+                     <>
+                        {renderNcrElement('day', 'font-bold p-1', {}, getDayName(reportDate))}
+                        {renderNcrElement('date', 'font-bold p-1', {}, reportDate)}
+                        {renderNcrElement('category', 'font-bold text-center p-1', { width: '80mm' }, selectedNcrGroup.name)}
+                        {renderNcrElement('items', 'p-1', { right: '10mm', lineHeight: '1.5' }, ncrItemsString)}
+                        {renderNcrElement('from', 'p-1', {}, 'DARI : Seksi Pelayanan dan Informasi')}
+                        {renderNcrElement('amountTop', 'font-bold text-lg p-1', {}, formatRp(ncrTotal))}
+                        {renderNcrElement('terbilang', 'italic font-bold capitalize p-1', { right: '10mm', lineHeight: '1.5' }, `# ${terbilang(ncrTotal)} rupiah #`)}
+                        {renderNcrElement('signDate', 'p-1', {}, `${currentReport.signatureDate.split('-')[2]} ${new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} ${currentReport.signatureDate.split('-')[0]}`)}
+                        {renderNcrElement('amountBottom', 'font-bold text-lg p-1', {}, formatRp(ncrTotal))}
+                        {renderNcrElement('signatures', 'w-full p-1', {}, (
+                           <div className="flex justify-between w-full" style={{ paddingLeft: '15mm', paddingRight: '15mm' }}>
+                              <div className="text-center w-[80mm]"><div className="font-bold underline">{signatures.leftName}</div>{signatures.leftNip ? <div>NIP {signatures.leftNip}</div> : <div>NIP ..............................</div>}</div>
+                              <div className="text-center w-[80mm]"><div className="font-bold underline">{signatures.rightName}</div>{signatures.rightNip ? <div>NIP {signatures.rightNip}</div> : <div>NIP ..............................</div>}</div>
+                           </div>
+                        ))}
+                     </>
+                   );
+                })()}
+              </div>
             </div>
           )}
         </div>
