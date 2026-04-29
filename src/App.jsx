@@ -1715,7 +1715,7 @@ export default function App() {
                         {renderNcrElement('date', 'font-bold p-1', {}, reportDate)}
                         {renderNcrElement('category', 'font-bold text-center p-1', { width: '80mm' }, selectedNcrGroup.name)}
                         {renderNcrElement('items', 'p-1', { right: '10mm', lineHeight: '1.5' }, ncrItemsString)}
-                        {renderNcrElement('from', 'p-1', {}, 'DARI : Seksi Pelayanan dan Informasi')}
+                        {renderNcrElement('from', 'p-1', {}, 'Seksi Pelayanan dan Informasi')}
                         {renderNcrElement('amountTop', 'font-bold text-lg p-1', {}, formatRp(ncrTotal))}
                         {renderNcrElement('terbilang', 'italic font-bold capitalize p-1', { right: '10mm', lineHeight: '1.5' }, `# ${terbilang(ncrTotal)} rupiah #`)}
                         {renderNcrElement('signDate', 'p-1', {}, `${currentReport.signatureDate.split('-')[2]} ${new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} ${currentReport.signatureDate.split('-')[0]}`)}
