@@ -944,8 +944,8 @@ export default function App() {
           body { background-color: white; margin: 0; padding: 0; }
           .no-print { display: none !important; }
           ${printMode === 'ncr' ? `
-            .print-container { width: 215mm; height: 165mm; margin: 0; padding: 0; font-family: 'Courier New', Courier, monospace !important; font-size: 11pt; color: black; box-shadow: none !important; border: none !important; }
-            @page { size: 215mm 165mm; margin: 0; }
+            .print-container { width: 210mm; height: 148mm; margin: 0; padding: 0; font-family: 'Courier New', Courier, monospace !important; font-size: 11pt; color: black; box-shadow: none !important; border: none !important; overflow: hidden; }
+            @page { size: 210mm 148mm; margin: 0; }
           ` : `
             .print-container { width: 100%; max-width: 100%; margin: 0; padding: 0; font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: black; box-shadow: none !important; border: none !important; }
             @page { margin: 15mm; }
@@ -1028,7 +1028,7 @@ export default function App() {
               </div>
             )}
 
-            {/* TAHAP 5: MAPPING (Ruang Transit) - DIPERBAIKI MENJADI CARD & SCROLLABLE */}
+            {/* TAHAP 5: MAPPING (Ruang Transit) */}
             {transitModal.step === 'mapping' && (
               <>
                 <div className={`p-4 text-white flex justify-between items-center shrink-0 shadow-sm ${transitModal.source === 'iwm' ? 'bg-gradient-to-r from-purple-700 to-purple-900' : 'bg-gradient-to-r from-blue-700 to-blue-900'}`}>
@@ -1042,7 +1042,6 @@ export default function App() {
                   <button onClick={closeTransitModal} className="text-white hover:bg-white/20 p-2 rounded-lg transition-colors">✕</button>
                 </div>
                 
-                {/* Scrollable Container dengan min-h-0 agar flexbox bisa meng-handle scroll */}
                 <div className="p-4 sm:p-5 bg-gray-50 flex-1 overflow-y-auto min-h-0">
                   <div className="space-y-3">
                     <div className={`border p-3 rounded-xl text-sm font-medium flex gap-2 items-start shadow-sm bg-white ${transitModal.source === 'iwm' ? 'border-purple-200 text-purple-800' : 'border-blue-200 text-blue-800'}`}>
@@ -1050,7 +1049,6 @@ export default function App() {
                       <p>Bot berhasil mengekstrak data! Silakan periksa kembali kecocokan kategori di bawah ini sebelum menekan konfirmasi import.</p>
                     </div>
                     
-                    {/* Daftar Data Mapping berupa Card List (Ramping) */}
                     {transitModal.data.map((item) => (
                       <div key={item.id} className="bg-white border border-gray-200 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex-1 min-w-0">
@@ -1088,7 +1086,6 @@ export default function App() {
 
                     {transitModal.data.length === 0 && <div className="p-6 text-center text-gray-500 font-medium">Semua data telah dihapus/dibatalkan dari daftar import.</div>}
 
-                    {/* KHUSUS IWM: TAMPILKAN TABEL DISKON */}
                     {transitModal.source === 'iwm' && transitModal.iwmDiskon && transitModal.iwmDiskon.length > 0 && (
                       <div className="mt-4 border border-yellow-200 rounded-xl overflow-hidden shadow-sm bg-white">
                         <div className="bg-yellow-50 px-3 py-2 border-b border-yellow-200 flex items-center gap-2">
@@ -1657,7 +1654,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div id="printable-area-ncr" className="print-container bg-white mx-auto relative overflow-hidden shadow-lg border border-gray-300 print:border-none print:shadow-none" style={{ minHeight: '165mm', width: '210mm' }}>
+            <div id="printable-area-ncr" className="print-container bg-white mx-auto relative overflow-hidden shadow-lg border border-gray-300 print:border-none print:shadow-none" style={{ minHeight: '148mm', width: '210mm' }}>
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-purple-100 font-black text-6xl opacity-30 uppercase tracking-widest print:opacity-0 pointer-events-none -rotate-45 whitespace-nowrap">PREVIEW NCR DOT MATRIX</div>
               {selectedNcrGroup && (() => {
                  const ncrTotal = subtotals[selectedNcrGroup.groupId] || 0;
@@ -1670,16 +1667,16 @@ export default function App() {
                       <DraggableElement defaultTop="37mm" defaultLeft="110mm" className="font-bold">{reportDate}</DraggableElement>
                       <DraggableElement defaultTop="53mm" defaultLeft="75mm" className="font-bold text-center w-[80mm]">{safeString(selectedNcrGroup.name)}</DraggableElement>
                       <DraggableElement defaultTop="58mm" defaultLeft="20mm" className="w-[180mm] leading-relaxed">{safeString(ncrItemsString)}</DraggableElement>
-                      <DraggableElement defaultTop="69mm" defaultLeft="75mm">DARI : Seksi Pelayanan dan Informasi</DraggableElement>
+                      <DraggableElement defaultTop="69mm" defaultLeft="75mm">Seksi Pelayanan dan Informasi</DraggableElement>
                       <DraggableElement defaultTop="79mm" defaultLeft="75mm" className="font-bold text-lg">{formatRp(ncrTotal)}</DraggableElement>
                       <DraggableElement defaultTop="84mm" defaultLeft="20mm" className="w-[180mm] italic font-bold capitalize leading-relaxed"># {terbilang(ncrTotal)} rupiah #</DraggableElement>
                       <DraggableElement defaultTop="100mm" defaultLeft="130mm">{currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}</DraggableElement>
                       <DraggableElement defaultTop="105mm" defaultLeft="130mm" className="font-bold text-lg">{formatRp(ncrTotal)}</DraggableElement>
-                      <DraggableElement defaultTop="137mm" defaultLeft="15mm" className="text-center w-[80mm]">
+                      <DraggableElement defaultTop="125mm" defaultLeft="15mm" className="text-center w-[80mm]">
                          <div className="font-bold underline">{safeString(signatures.leftName)}</div>
                          {signatures.leftNip ? <div>NIP {safeString(signatures.leftNip)}</div> : <div>NIP ..............................</div>}
                       </DraggableElement>
-                      <DraggableElement defaultTop="137mm" defaultLeft="115mm" className="text-center w-[80mm]">
+                      <DraggableElement defaultTop="125mm" defaultLeft="115mm" className="text-center w-[80mm]">
                          <div className="font-bold underline">{safeString(signatures.rightName)}</div>
                          {signatures.rightNip ? <div>NIP {safeString(signatures.rightNip)}</div> : <div>NIP ..............................</div>}
                       </DraggableElement>
