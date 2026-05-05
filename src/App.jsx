@@ -3,11 +3,11 @@ import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
 
 // ==========================================
-// 🔴 KONFIGURASI DATABASE FIREBASE
+// 🔴 KONFIGURASI DATABASE FIREBASE USER
 // ==========================================
 const myFirebaseConfig = {
   apiKey: "AIzaSyB_PtIg3kNwwpa62bIeFmBiDkn-KRxm5es",
@@ -18,16 +18,8 @@ const myFirebaseConfig = {
   appId: "1:811185738366:web:2db209f6eab966bccd7e2f"
 };
 
-let isCanvasEnv = false;
-let finalConfig = myFirebaseConfig;
-try {
-  // eslint-disable-next-line no-undef
-  if (typeof __firebase_config !== 'undefined') {
-    isCanvasEnv = true;
-    // eslint-disable-next-line no-undef
-    finalConfig = JSON.parse(__firebase_config);
-  }
-} catch (error) {}
+// 🔥 PERBAIKAN: Memaksa aplikasi untuk menggunakan Firebase Anda secara mutlak
+const finalConfig = myFirebaseConfig;
 
 let app, auth, db;
 try {
@@ -38,27 +30,44 @@ try {
   console.error("Firebase init error", e);
 }
 
+// --- FUNGSI PENGAMAN TEKS (Mencegah Crash "Objects are not valid as a React child") ---
+const safeString = (val) => {
+  if (val === null || val === undefined) return "";
+  if (typeof val === 'object') {
+    try { return JSON.stringify(val); } catch(e) { return ""; }
+  }
+  return String(val);
+};
+
 // --- FUNGSI FORMATTING ---
-function terbilang(angka) {
-  angka = Math.floor(Math.abs(angka));
-  if (angka === 0) return "nol";
+function terbilang(angka, depth = 0) {
+  if (depth > 20) return ""; // Failsafe mencegah infinite loop (RangeError)
+  const num = Number(angka);
+  if (isNaN(num) || !isFinite(num)) return ""; // Mengabaikan object, NaN, atau string tidak valid
+  
+  let val = Math.floor(Math.abs(num));
+  if (val === 0) return "nol";
+  
   const huruf = ["", "satu", "dua", "tiga", "empat", "lima", "enam", "tujuh", "delapan", "sembilan", "sepuluh", "sebelas"];
   let divide = 0; let word = "";
-  if (angka < 12) return huruf[angka];
-  else if (angka < 20) return terbilang(angka - 10) + " belas";
-  else if (angka < 100) { divide = Math.floor(angka / 10); word = huruf[divide] + " puluh"; let rem = angka % 10; return rem > 0 ? word + " " + terbilang(rem) : word; }
-  else if (angka < 200) { let rem = angka - 100; return rem > 0 ? "seratus " + terbilang(rem) : "seratus"; }
-  else if (angka < 1000) { divide = Math.floor(angka / 100); word = huruf[divide] + " ratus"; let rem = angka % 1000; return rem > 0 ? word + " " + terbilang(rem) : word; }
-  else if (angka < 2000) { let rem = angka - 1000; return rem > 0 ? "seribu " + terbilang(rem) : "seribu"; }
-  else if (angka < 1000000) { divide = Math.floor(angka / 1000); word = terbilang(divide) + " ribu"; let rem = angka % 1000; return rem > 0 ? word + " " + terbilang(rem) : word; }
-  else if (angka < 1000000000) { divide = Math.floor(angka / 1000000); word = terbilang(divide) + " juta"; let rem = angka % 1000000; return rem > 0 ? word + " " + terbilang(rem) : word; }
-  else if (angka < 1000000000000) { divide = Math.floor(angka / 1000000000); word = terbilang(divide) + " miliar"; let rem = angka % 1000000000; return rem > 0 ? word + " " + terbilang(rem) : word; }
+  
+  if (val < 12) return huruf[val];
+  else if (val < 20) return terbilang(val - 10, depth + 1) + " belas";
+  else if (val < 100) { divide = Math.floor(val / 10); word = huruf[divide] + " puluh"; let rem = val % 10; return rem > 0 ? word + " " + terbilang(rem, depth + 1) : word; }
+  else if (val < 200) { let rem = val - 100; return rem > 0 ? "seratus " + terbilang(rem, depth + 1) : "seratus"; }
+  else if (val < 1000) { divide = Math.floor(val / 100); word = huruf[divide] + " ratus"; let rem = val % 100; return rem > 0 ? word + " " + terbilang(rem, depth + 1) : word; }
+  else if (val < 2000) { let rem = val - 1000; return rem > 0 ? "seribu " + terbilang(rem, depth + 1) : "seribu"; }
+  else if (val < 1000000) { divide = Math.floor(val / 1000); word = terbilang(divide, depth + 1) + " ribu"; let rem = val % 1000; return rem > 0 ? word + " " + terbilang(rem, depth + 1) : word; }
+  else if (val < 1000000000) { divide = Math.floor(val / 1000000); word = terbilang(divide, depth + 1) + " juta"; let rem = val % 1000000; return rem > 0 ? word + " " + terbilang(rem, depth + 1) : word; }
+  else if (val < 1000000000000) { divide = Math.floor(val / 1000000000); word = terbilang(divide, depth + 1) + " miliar"; let rem = val % 1000000000; return rem > 0 ? word + " " + terbilang(rem, depth + 1) : word; }
+  else if (val < 1000000000000000) { divide = Math.floor(val / 1000000000000); word = terbilang(divide, depth + 1) + " triliun"; let rem = val % 1000000000000; return rem > 0 ? word + " " + terbilang(rem, depth + 1) : word; }
   return "";
 }
 
 const formatRp = (angka) => {
-  if (!angka) return "0";
-  return angka.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const num = Number(angka);
+  if (isNaN(num) || num === 0) return "0";
+  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 };
 
 const getLocalYMD = () => {
@@ -84,10 +93,7 @@ const DraggableElement = ({ defaultTop, defaultLeft, children, className }) => {
     setIsDragging(true);
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    setStartPos({
-      x: clientX - pos.x,
-      y: clientY - pos.y
-    });
+    setStartPos({ x: clientX - pos.x, y: clientY - pos.y });
     e.stopPropagation();
   };
 
@@ -96,10 +102,7 @@ const DraggableElement = ({ defaultTop, defaultLeft, children, className }) => {
       if (!isDragging) return;
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      setPos({
-        x: clientX - startPos.x,
-        y: clientY - startPos.y
-      });
+      setPos({ x: clientX - startPos.x, y: clientY - startPos.y });
     };
     const handlePointerUp = () => {
       if (isDragging) setIsDragging(false);
@@ -162,7 +165,7 @@ export default function App() {
 
   // --- STATE RUANG TRANSIT ---
   const [transitModal, setTransitModal] = useState({ 
-    isOpen: false, step: 'confirm_date', source: '3a', // '3a' or 'iwm'
+    isOpen: false, step: 'confirm_date', source: '3a',
     targetDate: getLocalYMD(), 
     isLoading: false, data: [], error: '', isOverwriting: false,
     iwmDiskon: [] 
@@ -193,18 +196,6 @@ export default function App() {
 
   useEffect(() => {
     if (!auth) return;
-    const initAuth = async () => {
-      // eslint-disable-next-line no-undef
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        try {
-          // eslint-disable-next-line no-undef
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } catch (e) {
-          console.error("Auth Token Error", e);
-        }
-      }
-    };
-    initAuth();
     const unsub = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setAuthReady(true);
@@ -268,11 +259,23 @@ export default function App() {
   const [lainItemDate, setLainItemDate] = useState('');
   const [lainItemNote, setLainItemNote] = useState('');
 
-  useEffect(() => { if (typeof window !== 'undefined') window.localStorage.setItem('tmr_v19_signatures', JSON.stringify(signatures)); }, [signatures]);
-  useEffect(() => { if (typeof window !== 'undefined') window.localStorage.setItem('tmr_v19_categories', JSON.stringify(categories)); }, [categories]);
-  useEffect(() => { if (typeof window !== 'undefined') window.localStorage.setItem('tmr_v19_allReports', JSON.stringify(allReports)); }, [allReports]);
-  useEffect(() => { if (typeof window !== 'undefined') window.localStorage.setItem('tmr_v19_api_ip', JSON.stringify(apiIpAddress)); }, [apiIpAddress]);
+  // 🔥 PERBAIKAN: Fungsi aman untuk menyimpan ke LocalStorage agar tidak crash saat memori penuh
+  const safeSetLocalStorage = (key, value) => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(key, JSON.stringify(value));
+      } catch (e) {
+        console.warn(`Gagal menyimpan ${key} ke memori lokal (mungkin QuotaExceeded). Aplikasi tetap berjalan menggunakan Cloud Firebase.`);
+      }
+    }
+  };
 
+  useEffect(() => { safeSetLocalStorage('tmr_v19_signatures', signatures); }, [signatures]);
+  useEffect(() => { safeSetLocalStorage('tmr_v19_categories', categories); }, [categories]);
+  useEffect(() => { safeSetLocalStorage('tmr_v19_allReports', allReports); }, [allReports]);
+  useEffect(() => { safeSetLocalStorage('tmr_v19_api_ip', apiIpAddress); }, [apiIpAddress]);
+
+  // Menggunakan Firebase milik Anda
   const getDocRef = () => { return doc(db, 'tmr_data', user ? user.uid : 'demo_rekapitulasi_laporan'); };
 
   useEffect(() => {
@@ -287,8 +290,13 @@ export default function App() {
           if (data.categories) setCategories(data.categories);
           if (data.allReports) setAllReports(data.allReports);
         }
-        setDbReady(true); setSyncStatus('synced');
-      } catch (e) { setSyncStatus('offline'); }
+        setDbReady(true); 
+        setSyncStatus('synced');
+      } catch (e) { 
+        console.error("Load Database Error:", e);
+        setDbReady(true);
+        setSyncStatus('offline'); 
+      }
     };
     loadData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -298,8 +306,13 @@ export default function App() {
     if (!user || !dbReady || !db) return;
     setSyncStatus('syncing');
     const saveData = async () => {
-      try { await setDoc(getDocRef(), { signatures, categories, allReports, lastUpdated: new Date().toISOString() }); setSyncStatus('synced'); } 
-      catch(e) { setSyncStatus('offline'); }
+      try { 
+        await setDoc(getDocRef(), { signatures, categories, allReports, lastUpdated: new Date().toISOString() }); 
+        setSyncStatus('synced'); 
+      } catch(e) { 
+        console.error("Save Database Error:", e);
+        setSyncStatus('offline'); 
+      }
     };
     const timer = setTimeout(saveData, 1000);
     return () => clearTimeout(timer);
@@ -309,8 +322,14 @@ export default function App() {
   const handleForceSave = async () => {
     if (!user || !dbReady) return;
     setSyncStatus('syncing');
-    try { await setDoc(getDocRef(), { signatures, categories, allReports, lastUpdated: new Date().toISOString() }); setSyncStatus('synced'); showToast('Data berhasil disimpan ke Cloud!'); } 
-    catch(e) { setSyncStatus('offline'); }
+    try { 
+      await setDoc(getDocRef(), { signatures, categories, allReports, lastUpdated: new Date().toISOString() }); 
+      setSyncStatus('synced'); 
+      showToast('Data berhasil disimpan ke Cloud!'); 
+    } catch(e) { 
+      console.error("Force Save Error:", e);
+      setSyncStatus('offline'); 
+    }
   };
 
   const showToast = (message) => { setSaveToast({ show: true, message }); setTimeout(() => setSaveToast({ show: false, message: '' }), 3000); };
@@ -706,7 +725,6 @@ export default function App() {
             if (al.sepeda > 0) fetchedData.push({ id: 'al_spd', nameAPI: '[IWM] Kendaraan - Sepeda', amount: al.sepeda });
           }
           
-          // 🔥 PERBAIKAN LOGIK IWM ROMBONGAN: Menyertakan nama_rombongan ke dalam itemNote di Mode API Live
           diskonData.forEach((d, idx) => {
             const amt = Number(d.pendapatan_rp) || 0;
             if (amt !== 0) {
@@ -776,7 +794,6 @@ export default function App() {
     if (!selectedCatToAdd) return []; const cat = categories.find(c => c.id === selectedCatToAdd); if (!cat) return [];
     const activeI = Array.isArray(currentReport.activeItems) ? currentReport.activeItems : [];
     
-    // 🔥 PERBAIKAN LOGIK IS-ADDED: Agar item dari dropdown tetap bisa di-add (meski item yang sama versi note hasil injek IWM sudah ada)
     const isAdded = (iId) => {
       if (activeType === 'utama') return activeI.some(a => a.catId === selectedCatToAdd && a.itemId === iId && !!a.isSusulan === isAddingSusulan && (a.validDate || '') === (susulanValidDate || '') && !a.itemNote);
       else return activeI.some(a => a.catId === selectedCatToAdd && a.itemId === iId && (a.itemDate || '') === (lainItemDate || '') && (a.itemNote || '') === (lainItemNote.trim() || ''));
@@ -843,8 +860,7 @@ export default function App() {
     activeGroups.forEach(group => { 
       let sub = 0; 
       group.activeItems.forEach(item => { 
-        // 🔥 PERBAIKAN LOGIK: Ubah group.itemNote jadi item.itemNote di kalkulasi Total
-        sub += cForm[getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate, item.itemNote)] || 0; 
+        sub += Number(cForm[getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate, item.itemNote)]) || 0; 
       }); 
       subs[group.groupId] = sub; 
       gt += sub; 
@@ -910,15 +926,11 @@ export default function App() {
           </div>
           <h1 className="text-2xl font-black text-center text-gray-800 mb-2">Sistem Rekap STSU</h1>
           <p className="text-center text-gray-500 text-sm mb-8">Silakan login untuk mengakses brankas data STSU.</p>
-          {loginError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-6 flex items-center gap-2 border border-red-100"><AlertCircle size={18} className="shrink-0" /> {loginError}</div>}
+          {loginError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-6 flex items-center gap-2 border border-red-100"><AlertCircle size={18} className="shrink-0" /> {safeString(loginError)}</div>}
           <form onSubmit={handleLogin} className="space-y-5">
             <div><label className="block text-xs font-bold text-gray-600 uppercase mb-1">Email / Username</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 focus:bg-white transition-all font-medium" placeholder="kasir@stsu.com" /></div>
             <div><label className="block text-xs font-bold text-gray-600 uppercase mb-1">Password</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 focus:bg-white transition-all font-medium" placeholder="••••••••" /></div>
             <button type="submit" disabled={isLoggingIn} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-md mt-2 disabled:bg-gray-400">{isLoggingIn ? 'Memeriksa Kredensial...' : 'Masuk ke Aplikasi'}</button>
-            {isCanvasEnv && (<>
-              <div className="relative flex items-center py-2"><div className="flex-grow border-t border-gray-200"></div><span className="flex-shrink-0 mx-4 text-gray-400 text-xs font-medium">ATAU</span><div className="flex-grow border-t border-gray-200"></div></div>
-              <button type="button" onClick={handleDemoLogin} disabled={isLoggingIn} className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold py-3.5 rounded-xl transition-all shadow-sm border border-blue-200 disabled:opacity-50">Masuk Tanpa Sandi (Mode Demo)</button>
-            </>)}
           </form>
         </div>
       </div>
@@ -943,7 +955,7 @@ export default function App() {
 
       {saveToast.show && (
         <div className="fixed top-20 right-4 sm:right-10 z-[9999] bg-green-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-5 duration-300">
-          <CheckCircle size={20} /> <div className="font-bold text-sm">{saveToast.message}</div>
+          <CheckCircle size={20} /> <div className="font-bold text-sm">{safeString(saveToast.message)}</div>
         </div>
       )}
 
@@ -1010,7 +1022,7 @@ export default function App() {
                 </div>
                 <h3 className="text-xl font-black text-gray-800 mb-3">Gagal Menarik Data</h3>
                 <div className="bg-red-50 border border-red-100 p-4 rounded-xl text-red-700 text-sm mb-8 text-left max-h-32 overflow-y-auto">
-                  {transitModal.error}
+                  {safeString(transitModal.error)}
                 </div>
                 <button onClick={closeTransitModal} className="px-6 py-3 w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl transition-colors shadow-sm">Tutup & Periksa Bot</button>
               </div>
@@ -1042,7 +1054,7 @@ export default function App() {
                     {transitModal.data.map((item) => (
                       <div key={item.id} className="bg-white border border-gray-200 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex-1 min-w-0">
-                          <div className="font-bold text-gray-800 text-sm truncate" title={item.nameAPI}>{item.nameAPI}</div>
+                          <div className="font-bold text-gray-800 text-sm truncate" title={safeString(item.nameAPI)}>{safeString(item.nameAPI)}</div>
                           <div className={`${transitModal.source === 'iwm' ? 'text-purple-600' : 'text-blue-600'} font-black text-sm`}>Rp {formatRp(item.amount)}</div>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-2 shrink-0 items-center">
@@ -1052,7 +1064,7 @@ export default function App() {
                             className={`w-full sm:w-44 border rounded-lg p-2 text-xs outline-none focus:ring-2 font-medium ${item.mappedCat ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'} ${transitModal.source === 'iwm' ? 'focus:ring-purple-500' : 'focus:ring-blue-500'}`}
                           >
                             <option value="">-- Kategori --</option>
-                            {categories.filter(c => c.type === activeType).map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                            {categories.filter(c => c.type === activeType).map(cat => <option key={cat.id} value={cat.id}>{safeString(cat.name)}</option>)}
                           </select>
                           
                           <select 
@@ -1063,7 +1075,7 @@ export default function App() {
                           >
                             {!item.mappedCat ? <option value="">Pilih Kategori Dulu</option> : <option value="">-- Sub Kategori --</option>}
                             {item.mappedCat && categories.find(c => c.id === item.mappedCat)?.items?.length === 0 && <option value="direct">Isi Nominal</option>}
-                            {item.mappedCat && categories.find(c => c.id === item.mappedCat)?.items?.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
+                            {item.mappedCat && categories.find(c => c.id === item.mappedCat)?.items?.map(sub => <option key={sub.id} value={sub.id}>{safeString(sub.name)}</option>)}
                           </select>
                           
                           <button 
@@ -1097,8 +1109,8 @@ export default function App() {
                             <tbody className="divide-y divide-gray-100">
                               {transitModal.iwmDiskon.map((d, i) => (
                                 <tr key={i} className="hover:bg-gray-50">
-                                  <td className="p-2 pl-3 font-medium text-gray-800">{d.lokasi}</td>
-                                  <td className="p-2 text-gray-600 truncate max-w-[150px]" title={d.nama_rombongan}>{d.nama_rombongan}</td>
+                                  <td className="p-2 pl-3 font-medium text-gray-800">{safeString(d.lokasi)}</td>
+                                  <td className="p-2 text-gray-600 truncate max-w-[150px]" title={safeString(d.nama_rombongan)}>{safeString(d.nama_rombongan)}</td>
                                   <td className="p-2 text-right text-gray-600">{d.masuk_anak}</td>
                                   <td className="p-2 text-right text-gray-600">{d.masuk_dewasa}</td>
                                   <td className="p-2 text-right pr-3 font-bold text-green-600">{formatRp(d.pendapatan_rp)}</td>
@@ -1131,7 +1143,7 @@ export default function App() {
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in fade-in zoom-in duration-200">
             <div className="flex items-center gap-3 text-red-600 mb-4"><AlertCircle size={28} /><h3 className="font-bold text-xl">Konfirmasi</h3></div>
-            <p className="text-gray-600 mb-8 leading-relaxed font-medium">{confirmDialog.message}</p>
+            <p className="text-gray-600 mb-8 leading-relaxed font-medium">{safeString(confirmDialog.message)}</p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setConfirmDialog({isOpen: false, message: '', onConfirm: null})} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors">Batal</button>
               <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({isOpen: false, message: '', onConfirm: null}); }} className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors shadow-md">Lanjutkan</button>
@@ -1179,7 +1191,7 @@ export default function App() {
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in fade-in zoom-in duration-200">
             <div className="flex items-center gap-3 text-red-600 mb-4"><AlertCircle size={28} /><h3 className="font-bold text-xl">Konfirmasi Reset</h3></div>
             <p className="text-gray-600 mb-4 text-sm font-medium">Apakah Anda yakin ingin <strong className="text-red-600">MENGHAPUS SEMUA DATA</strong> di form STSU {activeType === 'utama' ? 'Pendapatan' : 'Lain-lain'} untuk tanggal ini? Data tidak dapat dikembalikan.</p>
-            {resetDialog.error && <div className="bg-red-50 text-red-600 p-2 rounded text-xs mb-4 border border-red-100 font-semibold">{resetDialog.error}</div>}
+            {resetDialog.error && <div className="bg-red-50 text-red-600 p-2 rounded text-xs mb-4 border border-red-100 font-semibold">{safeString(resetDialog.error)}</div>}
             <form onSubmit={handleConfirmReset}>
               <div className="mb-6"><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Masukkan Password ADMIN</label><input type="password" value={resetDialog.password} onChange={(e) => setResetDialog(prev => ({...prev, password: e.target.value}))} placeholder="••••••••" className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-red-500 bg-gray-50 font-bold" required autoFocus /></div>
               <div className="flex gap-3 justify-end">
@@ -1241,13 +1253,13 @@ export default function App() {
                       <div className="mt-1 w-full px-1 flex flex-col gap-1 items-center overflow-y-auto no-scrollbar pb-1">
                         {d.hasUtama && (
                           <div className="w-full bg-green-50 border border-green-200 rounded shadow-sm flex flex-col overflow-hidden shrink-0">
-                            <div className="bg-green-500 text-white flex justify-between items-center px-1.5 py-0.5"><span className="text-[9px] font-bold">SU</span>{d.utamaSequence && d.utamaSequence !== '...' && <span className="text-[9px] font-bold">{d.utamaSequence}</span>}</div>
+                            <div className="bg-green-500 text-white flex justify-between items-center px-1.5 py-0.5"><span className="text-[9px] font-bold">SU</span>{d.utamaSequence && d.utamaSequence !== '...' && <span className="text-[9px] font-bold">{safeString(d.utamaSequence)}</span>}</div>
                             <div className="text-[9px] sm:text-[10px] font-black text-green-800 text-right px-1.5 py-0.5 truncate" title={`Rp ${formatRp(d.utamaTotal)}`}>Rp {formatRp(d.utamaTotal)}</div>
                           </div>
                         )}
                         {d.lainDocs.map((lainDoc, index) => (
                           <div key={index} className="w-full bg-purple-50 border border-purple-200 rounded shadow-sm flex flex-col overflow-hidden shrink-0">
-                            <div className="bg-purple-500 text-white flex justify-between items-center px-1.5 py-0.5"><span className="text-[9px] font-bold">SU/L</span>{lainDoc.sequence && lainDoc.sequence !== '...' && <span className="text-[9px] font-bold">{lainDoc.sequence}</span>}</div>
+                            <div className="bg-purple-500 text-white flex justify-between items-center px-1.5 py-0.5"><span className="text-[9px] font-bold">SU/L</span>{lainDoc.sequence && lainDoc.sequence !== '...' && <span className="text-[9px] font-bold">{safeString(lainDoc.sequence)}</span>}</div>
                             <div className="text-[9px] sm:text-[10px] font-black text-purple-800 text-right px-1.5 py-0.5 truncate" title={`Rp ${formatRp(lainDoc.total)}`}>Rp {formatRp(lainDoc.total)}</div>
                           </div>
                         ))}
@@ -1403,7 +1415,7 @@ export default function App() {
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nomor Urut STSU</label>
                 <div className="flex gap-2">
                   <input type="text" placeholder="07" value={currentReport.sequence || ''} onChange={handleSequenceChange} className="w-16 border border-gray-300 rounded-lg p-2.5 text-center font-bold outline-none focus:border-blue-500 bg-white shadow-inner text-lg" />
-                  <div className="flex-1 border border-dashed border-gray-300 rounded-lg bg-gray-50 p-2 flex items-center overflow-x-auto min-w-0"><span className="font-mono font-bold text-gray-600 text-xs sm:text-sm whitespace-nowrap truncate">{computedStsuNo || 'Preview...'}</span></div>
+                  <div className="flex-1 border border-dashed border-gray-300 rounded-lg bg-gray-50 p-2 flex items-center overflow-x-auto min-w-0"><span className="font-mono font-bold text-gray-600 text-xs sm:text-sm whitespace-nowrap truncate">{safeString(computedStsuNo || 'Preview...')}</span></div>
                 </div>
               </div>
               <div className={`p-3 rounded-xl border flex flex-col justify-center shadow-inner items-end ${activeType === 'utama' ? 'bg-green-50 border-green-200' : 'bg-purple-50 border-purple-200'}`}>
@@ -1449,14 +1461,14 @@ export default function App() {
                   <label className={`block text-xs font-semibold mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'}`}>Kategori</label>
                   <select value={selectedCatToAdd} onChange={(e) => handleCatChange(e.target.value)} className="w-full border border-gray-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                     <option value="">-- Pilih Kategori --</option>
-                    {filteredCategories.map(cat => <option key={cat.id} value={cat.id} className="capitalize">{cat.name}</option>)}
+                    {filteredCategories.map(cat => <option key={cat.id} value={cat.id} className="capitalize">{safeString(cat.name)}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className={`block text-xs font-semibold mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'}`}>Sub-Kategori</label>
                   <select value={selectedItemToAdd} onChange={(e) => setSelectedItemToAdd(e.target.value)} disabled={!selectedCatToAdd || availableItemsToAdd.length === 0 || (availableItemsToAdd.length === 1 && availableItemsToAdd[0].id === 'direct')} className="w-full border border-gray-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500">
                     {!selectedCatToAdd ? <option value="">Pilih Kategori Dulu</option> : availableItemsToAdd.length === 0 ? <option value="">Semua item ditambahkan</option> : (availableItemsToAdd.length === 1 && availableItemsToAdd[0].id === 'direct') ? <option value="direct">Langsung isi nominal</option> : <option value="">-- Pilih Item --</option>}
-                    {availableItemsToAdd.map(item => item.id !== 'direct' && <option key={item.id} value={item.id}>{item.name}</option>)}
+                    {availableItemsToAdd.map(item => item.id !== 'direct' && <option key={item.id} value={item.id}>{safeString(item.name)}</option>)}
                   </select>
                 </div>
               </div>
@@ -1485,7 +1497,7 @@ export default function App() {
                   <div className={`px-4 py-3 border-b flex justify-between items-center ${group.isSusulan ? 'bg-yellow-50 border-yellow-200' : (activeType === 'utama' ? 'bg-green-50/50 border-green-100' : 'bg-purple-50/50 border-purple-100')}`}>
                     <h3 className="font-bold text-gray-800 flex items-center gap-2 capitalize">
                       <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${group.isSusulan ? 'bg-yellow-400 text-yellow-900' : (activeType === 'utama' ? 'bg-green-200 text-green-800' : 'bg-purple-200 text-purple-800')}`}>{idx + 1}</span> 
-                      {group.name}
+                      {safeString(group.name)}
                       {group.isSusulan && <span className="text-[10px] bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ml-1 shadow-sm">Susulan: {formatTanggalTtd(group.validDate)}</span>}
                       {activeType === 'lain' && group.itemDate && <span className="text-[10px] bg-purple-400 text-purple-900 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ml-1 shadow-sm">Tanggal: {formatTanggalTtd(group.itemDate)}</span>}
                     </h3>
@@ -1498,10 +1510,10 @@ export default function App() {
                           <div className="flex items-start gap-2 sm:w-1/2">
                             <button onClick={() => handleRemoveActiveItem(item)} className="text-red-400 hover:text-red-600 p-2 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm mt-0.5 shrink-0"><Trash size={18} /></button>
                             <div className="flex flex-col w-full">
-                              <label className="text-gray-700 font-medium">{item.id === 'direct' ? 'Nominal Pemasukan' : item.name}</label>
+                              <label className="text-gray-700 font-medium">{item.id === 'direct' ? 'Nominal Pemasukan' : safeString(item.name)}</label>
                               {item.itemNote && (
                                 <div className="flex items-center gap-2 mt-1 group/note w-full">
-                                  <span className="text-xs text-purple-600 whitespace-pre-wrap font-medium flex-1">{item.itemNote}</span>
+                                  <span className="text-xs text-purple-600 whitespace-pre-wrap font-medium flex-1">{safeString(item.itemNote)}</span>
                                   <button onClick={() => openEditNote(group, item)} className="text-gray-400 hover:text-blue-600 opacity-50 group-hover/note:opacity-100 transition-opacity bg-gray-50 p-1 rounded-md shrink-0"><Edit size={14} /></button>
                                 </div>
                               )}
@@ -1565,7 +1577,7 @@ export default function App() {
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4 no-print">
              <div>
                <h2 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-                 {printMode === 'pdf' ? (<><FileText size={20} className={activeType === 'utama' ? 'text-green-600' : 'text-purple-600'}/> Preview & Download Laporan Gabungan</>) : (<><Printer size={20} className="text-purple-600"/> Mode Cetak NCR: {selectedNcrGroup?.name}</>)}
+                 {printMode === 'pdf' ? (<><FileText size={20} className={activeType === 'utama' ? 'text-green-600' : 'text-purple-600'}/> Preview & Download Laporan Gabungan</>) : (<><Printer size={20} className="text-purple-600"/> Mode Cetak NCR: {safeString(selectedNcrGroup?.name)}</>)}
                </h2>
              </div>
              <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
@@ -1589,7 +1601,7 @@ export default function App() {
                <h3 className="font-bold text-purple-900 mb-2 flex items-center gap-2 text-sm"><Printer size={16}/> Cetak NCR Kertas Rangkap 3 (Per Kategori)</h3>
                <div className="flex flex-wrap gap-2">
                  {activeGroups.map(group => (
-                    <button key={group.groupId} onClick={() => { setSelectedNcrGroup(group); setPrintMode('ncr'); }} className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-2 transition-transform hover:scale-105">🖨️ Kategori: {group.name}</button>
+                    <button key={group.groupId} onClick={() => { setSelectedNcrGroup(group); setPrintMode('ncr'); }} className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-2 transition-transform hover:scale-105">🖨️ Kategori: {safeString(group.name)}</button>
                  ))}
                </div>
             </div>
@@ -1598,7 +1610,7 @@ export default function App() {
           {printMode === 'pdf' ? (
             <div id="printable-area" className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative print:border-none print:shadow-none print:p-0">
               <div className="absolute top-10 right-10 text-gray-200 font-bold text-3xl opacity-50 uppercase tracking-widest print:opacity-0 pointer-events-none">DRAFT {activeType === 'utama' ? 'SU' : 'SU/L'}</div>
-              <div className="font-bold underline mb-8 text-[11pt]">No. {computedStsuNo}</div>
+              <div className="font-bold underline mb-8 text-[11pt]">No. {safeString(computedStsuNo)}</div>
               <div className="mb-6 text-[11pt]">Diterima uang hasil pendapatan {formatTanggalCetak(reportDate)} sebagai berikut;</div>
               <div className="space-y-2">
                 {activeGroups.map((group, index) => {
@@ -1609,14 +1621,14 @@ export default function App() {
                   else if (activeType === 'lain') { let parts = [group.name]; if (group.itemNote) parts.push(`dari ${group.itemNote.replace(/\n/g, ' ')}`); if (group.itemDate) parts.push(`tanggal ${formatTanggalTtd(group.itemDate)}`); groupTitle = parts.join(' '); }
                   return (
                     <div key={group.groupId} className="text-[11pt] pb-3">
-                      <div className="font-bold mb-1 leading-relaxed">{index + 1}. Diterima uang hasil pendapatan {groupTitle}, sebagai berikut :</div>
+                      <div className="font-bold mb-1 leading-relaxed">{index + 1}. Diterima uang hasil pendapatan {safeString(groupTitle)}, sebagai berikut :</div>
                       <div className="w-full">
                         {!isDirect && group.activeItems.map(item => {
                           const val = currentReport.formData[getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate, item.itemNote)] || 0;
                           if (val === 0) return null;
                           return (
                             <div key={item.id} className="flex w-full max-w-[450px] mb-0.5 pl-4 sm:pl-6">
-                              <div className="flex-1 pr-2 font-normal">{item.name}</div><span className="w-[40px] text-left">Rp.</span><span className="w-[100px] text-right">{formatRp(val)}</span>
+                              <div className="flex-1 pr-2 font-normal">{safeString(item.name)}</div><span className="w-[40px] text-left">Rp.</span><span className="w-[100px] text-right">{formatRp(val)}</span>
                             </div>
                           );
                         })}
@@ -1633,14 +1645,14 @@ export default function App() {
               </div>
               <div className="mt-8 text-[11pt]">
                 <p className="mb-4"><strong>Terbilang : </strong> <i className="capitalize">{terbilang(grandTotal)} rupiah</i></p>
-                <p className="text-justify leading-relaxed">Disetor uang kebendahara penerimaan hasil retribusi layanan masuk tempat rekreasi dan pemakaian fasilitas Pada hari {formatTanggalCetak(reportDate)} dengan STSU No. {computedStsuNo} dengan uang sebesar Rp. {formatRp(grandTotal)}</p>
+                <p className="text-justify leading-relaxed">Disetor uang kebendahara penerimaan hasil retribusi layanan masuk tempat rekreasi dan pemakaian fasilitas Pada hari {formatTanggalCetak(reportDate)} dengan STSU No. {safeString(computedStsuNo)} dengan uang sebesar Rp. {formatRp(grandTotal)}</p>
               </div>
               <div className="flex justify-between mt-16 text-center text-[11pt]">
                 <div className="w-[45%] flex flex-col justify-between">
-                  <div>Mengetahui,<br/>{signatures.leftRole}</div><div className="mt-28 font-bold underline">({signatures.leftName})</div>
+                  <div>Mengetahui,<br/>{safeString(signatures.leftRole)}</div><div className="mt-28 font-bold underline">({safeString(signatures.leftName)})</div>
                 </div>
                 <div className="w-[45%] flex flex-col justify-between">
-                  <div>{signatures.location}, {formatTanggalTtd(currentReport.signatureDate)}<br/>{signatures.rightRole}</div><div className="mt-24 font-bold underline">({signatures.rightName})</div>
+                  <div>{safeString(signatures.location)}, {formatTanggalTtd(currentReport.signatureDate)}<br/>{safeString(signatures.rightRole)}</div><div className="mt-24 font-bold underline">({safeString(signatures.rightName)})</div>
                 </div>
               </div>
             </div>
@@ -1656,20 +1668,20 @@ export default function App() {
                    <>
                       <DraggableElement defaultTop="37mm" defaultLeft="75mm" className="font-bold">{getDayName(reportDate)}</DraggableElement>
                       <DraggableElement defaultTop="37mm" defaultLeft="110mm" className="font-bold">{reportDate}</DraggableElement>
-                      <DraggableElement defaultTop="53mm" defaultLeft="75mm" className="font-bold text-center w-[80mm]">{selectedNcrGroup.name}</DraggableElement>
-                      <DraggableElement defaultTop="58mm" defaultLeft="20mm" className="w-[180mm] leading-relaxed">{ncrItemsString}</DraggableElement>
+                      <DraggableElement defaultTop="53mm" defaultLeft="75mm" className="font-bold text-center w-[80mm]">{safeString(selectedNcrGroup.name)}</DraggableElement>
+                      <DraggableElement defaultTop="58mm" defaultLeft="20mm" className="w-[180mm] leading-relaxed">{safeString(ncrItemsString)}</DraggableElement>
                       <DraggableElement defaultTop="69mm" defaultLeft="75mm">DARI : Seksi Pelayanan dan Informasi</DraggableElement>
                       <DraggableElement defaultTop="79mm" defaultLeft="75mm" className="font-bold text-lg">{formatRp(ncrTotal)}</DraggableElement>
                       <DraggableElement defaultTop="84mm" defaultLeft="20mm" className="w-[180mm] italic font-bold capitalize leading-relaxed"># {terbilang(ncrTotal)} rupiah #</DraggableElement>
                       <DraggableElement defaultTop="100mm" defaultLeft="130mm">{currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}</DraggableElement>
                       <DraggableElement defaultTop="105mm" defaultLeft="130mm" className="font-bold text-lg">{formatRp(ncrTotal)}</DraggableElement>
                       <DraggableElement defaultTop="137mm" defaultLeft="15mm" className="text-center w-[80mm]">
-                         <div className="font-bold underline">{signatures.leftName}</div>
-                         {signatures.leftNip ? <div>NIP {signatures.leftNip}</div> : <div>NIP ..............................</div>}
+                         <div className="font-bold underline">{safeString(signatures.leftName)}</div>
+                         {signatures.leftNip ? <div>NIP {safeString(signatures.leftNip)}</div> : <div>NIP ..............................</div>}
                       </DraggableElement>
                       <DraggableElement defaultTop="137mm" defaultLeft="115mm" className="text-center w-[80mm]">
-                         <div className="font-bold underline">{signatures.rightName}</div>
-                         {signatures.rightNip ? <div>NIP {signatures.rightNip}</div> : <div>NIP ..............................</div>}
+                         <div className="font-bold underline">{safeString(signatures.rightName)}</div>
+                         {signatures.rightNip ? <div>NIP {safeString(signatures.rightNip)}</div> : <div>NIP ..............................</div>}
                       </DraggableElement>
                    </>
                  );
