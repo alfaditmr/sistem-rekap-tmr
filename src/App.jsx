@@ -18,7 +18,6 @@ const myFirebaseConfig = {
   appId: "1:811185738366:web:2db209f6eab966bccd7e2f"
 };
 
-// 🔥 PERBAIKAN: Memaksa aplikasi untuk menggunakan Firebase Anda secara mutlak
 const finalConfig = myFirebaseConfig;
 
 let app, auth, db;
@@ -30,7 +29,7 @@ try {
   console.error("Firebase init error", e);
 }
 
-// --- FUNGSI PENGAMAN TEKS (Mencegah Crash "Objects are not valid as a React child") ---
+// --- FUNGSI PENGAMAN TEKS ---
 const safeString = (val) => {
   if (val === null || val === undefined) return "";
   if (typeof val === 'object') {
@@ -41,9 +40,9 @@ const safeString = (val) => {
 
 // --- FUNGSI FORMATTING ---
 function terbilang(angka, depth = 0) {
-  if (depth > 20) return ""; // Failsafe mencegah infinite loop (RangeError)
+  if (depth > 20) return ""; 
   const num = Number(angka);
-  if (isNaN(num) || !isFinite(num)) return ""; // Mengabaikan object, NaN, atau string tidak valid
+  if (isNaN(num) || !isFinite(num)) return ""; 
   
   let val = Math.floor(Math.abs(num));
   if (val === 0) return "nol";
@@ -240,7 +239,7 @@ export default function App() {
     { id: 'cat_3', name: 'E-Ticketing New Gate', type: 'utama', items: [{ id: 'item_3a', name: 'Tiket Masuk Dewasa' }, { id: 'item_3b', name: 'Tiket Masuk Anak' }, { id: 'item_3c', name: 'Taman Satwa Anak' }, { id: 'item_3d', name: 'Pusat Primata (Hari Biasa)' }, { id: 'item_3e', name: 'Pusat Primata (Weekend)' }, { id: 'item_3f', name: 'Kendaraan Motor' }, { id: 'item_3g', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_3h', name: 'Kendaraan Gol 2' }, { id: 'item_3i', name: 'Kendaraan Gol 1' }, { id: 'item_3j', name: 'Kendaraan Sepeda' }, { id: 'item_3k', name: 'Rombongan' }] },
     { id: 'cat_4', name: 'Ticket Online', type: 'utama', items: [{ id: 'item_4a', name: 'Tiket Masuk Dewasa' }, { id: 'item_4b', name: 'Tiket Masuk Anak' }, { id: 'item_4c', name: 'Taman Satwa Anak' }, { id: 'item_4d', name: 'Pusat Primata (Hari Biasa)' }, { id: 'item_4e', name: 'Pusat Primata (Weekend)' }, { id: 'item_4f', name: 'Kendaraan Motor' }, { id: 'item_4g', name: 'Kendaraan Gol 3 / Mobil' }] },
     { id: 'cat_5', name: 'Ticket Vending Machine (TVM)', type: 'utama', items: [{ id: 'item_5a', name: 'Tiket Masuk Dewasa' }, { id: 'item_5b', name: 'Tiket Masuk Anak' }, { id: 'item_5c', name: 'Taman Satwa Anak' }] },
-    { id: 'cat_6', name: 'E-Ticketing Old Gate', type: 'utama', items: [{ id: 'item_6a', name: 'Tiket Masuk Dewasa' }, { id: 'item_6b', name: 'Tiket Masuk Anak' }, { id: 'item_6c', name: 'Taman Satwa Anak' }, { id: 'item_6d', name: 'Pusat Primata Dewasa (Hari Biasa)' }, { id: 'item_6e', name: 'Pusat Primata Anak (Hari Biasa)' }, { id: 'item_6f', name: 'Pusat Primata Dewasa (Weekend)' }, { id: 'item_6g', name: 'Pusat Primata Anak (Weekend)' }, { id: 'item_6h', name: 'Kendaraan Motor' }, { id: 'item_6i', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_6j', name: 'Kendaraan Gol 2' }, { id: 'item_6k', name: 'Kendaraan Gol 1' }, { id: 'item_6l', name: 'Kendaraan Sepeda' }, { id: 'item_6m', name: 'Rombongan' }] }
+    { id: 'cat_6', name: 'E-Ticketing Old Gate', type: 'utama', items: [{ id: 'item_6a', name: 'Tiket Masuk Dewasa' }, { id: 'item_6b', name: 'Tiket Masuk Anak' }, { id: 'item_6c', name: 'Taman Satwa Anak' }, { id: 'item_6d', name: 'Pusat Primata Dewasa (Hari Biasa)' }, { id: 'item_6e', name: 'Pusat Primata Anak (Hari Biasa)' }, { id: 'item_6f', name: 'Pusat Primata Dewasa (Weekend)' }, { id: 'item_6g', name: 'Pusat Primata Anak (Weekend)' }, { id: 'item_6h', name: 'Kendaraan Motor' }, { id: 'item_6i', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_6j', name: 'Kendaraan Gol 2' }, { id: 'item_6k', name: 'Kendaraan Gol 1' }, { id: 'item_6l', name: 'Kendaraan Sepeda' }, { id: 'item_6m', name: 'Rombongan Dewasa' }, { id: 'item_6n', name: 'Rombongan Anak' }] }
   ]));
 
   const [allReports, setAllReports] = useState(() => getInitialState('tmr_v19_allReports', {}));
@@ -259,13 +258,12 @@ export default function App() {
   const [lainItemDate, setLainItemDate] = useState('');
   const [lainItemNote, setLainItemNote] = useState('');
 
-  // 🔥 PERBAIKAN: Fungsi aman untuk menyimpan ke LocalStorage agar tidak crash saat memori penuh
   const safeSetLocalStorage = (key, value) => {
     if (typeof window !== 'undefined') {
       try {
         window.localStorage.setItem(key, JSON.stringify(value));
       } catch (e) {
-        console.warn(`Gagal menyimpan ${key} ke memori lokal (mungkin QuotaExceeded). Aplikasi tetap berjalan menggunakan Cloud Firebase.`);
+        console.warn(`Gagal menyimpan ${key} ke memori lokal. Aplikasi tetap berjalan.`);
       }
     }
   };
@@ -275,7 +273,6 @@ export default function App() {
   useEffect(() => { safeSetLocalStorage('tmr_v19_allReports', allReports); }, [allReports]);
   useEffect(() => { safeSetLocalStorage('tmr_v19_api_ip', apiIpAddress); }, [apiIpAddress]);
 
-  // Menggunakan Firebase milik Anda
   const getDocRef = () => { return doc(db, 'tmr_data', user ? user.uid : 'demo_rekapitulasi_laporan'); };
 
   useEffect(() => {
@@ -533,7 +530,6 @@ export default function App() {
           const subName = sub.name.toLowerCase();
           let score = 0;
           
-          // NORMALISASI: Ubah angka Romawi dan potensi Typo menjadi standar
           const normApiName = lowerName
             .replace(/sepededa/g, 'sepeda')
             .replace(/gol iii/g, 'gol 3')
@@ -546,7 +542,6 @@ export default function App() {
             .replace(/gol ii/g, 'gol 2')
             .replace(/gol i\b/g, 'gol 1');
           
-          // Deteksi Kata Kunci Umum
           const isDewasa = normApiName.includes('dewasa');
           const isAnak = normApiName.includes('anak');
           const isTSA = normApiName.includes('satwa') || normApiName.includes('tsa') || normApiName.includes('children');
@@ -555,18 +550,15 @@ export default function App() {
           const isWD = normApiName.includes('wd') || normApiName.includes('biasa') || normApiName.includes('hari biasa');
           const isWE = normApiName.includes('we') || normApiName.includes('libur') || normApiName.includes('besar') || normApiName.includes('weekend');
           
-          // Penilaian Tepat Sasaran
           if (isDewasa && normSubName.includes('dewasa')) score += 10;
           if (isAnak && normSubName.includes('anak') && !isTSA && !normSubName.includes('satwa')) score += 10; 
           if (isTSA && (normSubName.includes('satwa') || normSubName.includes('children'))) score += 15;
           if (isRombongan && normSubName.includes('rombongan')) score += 15;
           if (isPrimata && (normSubName.includes('primata') || normSubName.includes('schmutzer'))) score += 10;
 
-          // Bobot ekstra untuk WD / WE pada Pusat Primata
           if (isWD && (normSubName.includes('wd') || normSubName.includes('biasa') || normSubName.includes('weekday'))) score += 5;
           if (isWE && (normSubName.includes('we') || normSubName.includes('libur') || normSubName.includes('besar') || normSubName.includes('weekend'))) score += 5;
 
-          // Kendaraan
           if (normApiName.includes('sepeda') && normSubName.includes('sepeda')) score += 30;
           if (normApiName.includes('motor') && normSubName.includes('motor')) score += 30;
           if (normApiName.includes('gol 1') && normSubName.includes('gol 1')) score += 30;
@@ -644,15 +636,17 @@ export default function App() {
         if (ip === 'demo') {
           await new Promise(r => setTimeout(r, 1200)); 
           diskonData = [
-            { lokasi: 'Pintu Utara 3', nama_rombongan: 'SD SWASTA MARSUDIRINI', masuk_anak: 65, masuk_dewasa: 0, pendapatan_rp: 146250 }
+            { lokasi: 'Pintu Utara 3', nama_rombongan: 'SD SWASTA MARSUDIRINI', masuk_anak: 65, masuk_dewasa: 0, pendapatan_rp: 146250 },
+            { lokasi: 'Pintu Masuk', nama_rombongan: 'GURU PENDAKIAN', masuk_anak: 0, masuk_dewasa: 10, pendapatan_rp: 30000 },
           ];
           fetchedData = [
             { id: 'i1', nameAPI: '[IWM] Pusat Primata - Dewasa (Reguler) (Hari Biasa)', amount: 582000 },
             { id: 'i2', nameAPI: '[IWM] Pusat Primata - Anak (Reguler) (Hari Biasa)', amount: 24000 },
             { id: 'i3', nameAPI: '[IWM] Pintu Masuk - Dewasa (Reguler)', amount: 2528000 },
             { id: 'i4', nameAPI: '[IWM] Kendaraan Gol III', amount: 35000 }, 
-            { id: 'i5', nameAPI: '[IWM] Kendaraan - Sepededa', amount: 15000 },
-            { id: 'i6', nameAPI: '[IWM] Rombongan - SD SWASTA MARSUDIRINI', amount: 146250, itemNote: 'SD SWASTA MARSUDIRINI' }
+            { id: 'i5', nameAPI: '[IWM] Kendaraan - Sepeda', amount: 15000 },
+            { id: 'i6_ank', nameAPI: '[IWM] Rombongan Anak - SD SWASTA MARSUDIRINI', amount: 146250, itemNote: 'SD SWASTA MARSUDIRINI' },
+            { id: 'i7_dws', nameAPI: '[IWM] Rombongan Dewasa - GURU PENDAKIAN', amount: 30000, itemNote: 'GURU PENDAKIAN' }
           ];
         } else {
           const baseUrl = ip.startsWith('http') ? ip : `http://${ip}:5001`;
@@ -671,6 +665,7 @@ export default function App() {
           let deductPrmAnak = 0;
           let deductPrmDewasa = 0;
           
+          // 🔥 PERBAIKAN LOGIKA: Memisahkan nilai Anak & Dewasa per-rombongan IWM sejak awal
           diskonData.forEach(d => {
             const anak = Number(d.masuk_anak) || 0;
             const dewasa = Number(d.masuk_dewasa) || 0;
@@ -678,17 +673,22 @@ export default function App() {
             
             const isPrimata = /primata|schmutzer/i.test(d.lokasi || '') || /primata|schmutzer/i.test(d.nama_rombongan || '');
             
+            let calcAnak = 0;
+            let calcDewasa = 0;
+
             if (anak > 0 && dewasa === 0) {
+               calcAnak = totalRp;
                if (isPrimata) deductPrmAnak += totalRp; else deductAlAnak += totalRp;
             } else if (dewasa > 0 && anak === 0) {
+               calcDewasa = totalRp;
                if (isPrimata) deductPrmDewasa += totalRp; else deductAlDewasa += totalRp;
             } else if (anak > 0 && dewasa > 0) {
                const porsiAnak = isPrimata ? anak * 1 : anak * 2250;
                const porsiDewasa = isPrimata ? dewasa * 1 : dewasa * 3000;
                const totalPorsi = porsiAnak + porsiDewasa;
                if (totalPorsi > 0) {
-                 const calcAnak = Math.round((porsiAnak / totalPorsi) * totalRp);
-                 const calcDewasa = Math.round((porsiDewasa / totalPorsi) * totalRp);
+                 calcAnak = Math.round((porsiAnak / totalPorsi) * totalRp);
+                 calcDewasa = totalRp - calcAnak; // Cegah selisih desimal
                  if (isPrimata) {
                      deductPrmAnak += calcAnak;
                      deductPrmDewasa += calcDewasa;
@@ -698,6 +698,11 @@ export default function App() {
                  }
                }
             }
+            
+            // Simpan porsi yang telah dipisah untuk dikonversi menjadi baris terpisah
+            d._calcAnak = calcAnak;
+            d._calcDewasa = calcDewasa;
+            d._isPrimata = isPrimata;
           });
 
           if (iData.pusat_primata) {
@@ -725,16 +730,26 @@ export default function App() {
             if (al.sepeda > 0) fetchedData.push({ id: 'al_spd', nameAPI: '[IWM] Kendaraan - Sepeda', amount: al.sepeda });
           }
           
+          // 🔥 Mendorong Data Rombongan yang sudah dipisahkan (Anak vs Dewasa)
           diskonData.forEach((d, idx) => {
-            const amt = Number(d.pendapatan_rp) || 0;
-            if (amt !== 0) {
-              const isPrm = /primata|schmutzer/i.test(d.lokasi || '') || /primata|schmutzer/i.test(d.nama_rombongan || '');
-              const rombName = d.nama_rombongan || d.lokasi || `Rombongan ${idx + 1}`;
-              const finalNote = isPrm ? `${rombName} (Pusat Primata)` : rombName;
+            const isPrm = d._isPrimata;
+            const rombName = d.nama_rombongan || d.lokasi || `Rombongan ${idx + 1}`;
+            const prmLabel = isPrm ? ' (Primata)' : '';
+            const finalNote = isPrm ? `${rombName} (Pusat Primata)` : rombName;
+            
+            if (d._calcDewasa > 0) {
               fetchedData.push({ 
-                id: `iwm_romb_${idx}`, 
-                nameAPI: `[IWM] Rombongan - ${rombName}${isPrm ? ' (Primata)' : ''}`, 
-                amount: Math.abs(amt),
+                id: `iwm_romb_dws_${idx}`, 
+                nameAPI: `[IWM] Rombongan Dewasa - ${rombName}${prmLabel}`, 
+                amount: Math.abs(d._calcDewasa),
+                itemNote: finalNote
+              });
+            }
+            if (d._calcAnak > 0) {
+              fetchedData.push({ 
+                id: `iwm_romb_ank_${idx}`, 
+                nameAPI: `[IWM] Rombongan Anak - ${rombName}${prmLabel}`, 
+                amount: Math.abs(d._calcAnak),
                 itemNote: finalNote
               });
             }
@@ -761,6 +776,9 @@ export default function App() {
     setTransitModal(prev => ({ ...prev, data: prev.data.map(d => { if (d.id === id) { const newData = { ...d, [field]: value }; if (field === 'mappedCat') newData.mappedItem = ''; return newData; } return d; }) }));
   };
 
+  // ==========================================
+  // 🔴 FUNGSI INJEKSI & AGREGASI PENGGABUNGAN TIKET SAMA
+  // ==========================================
   const confirmTransitInjection = () => {
     updateCurrentReport(prev => {
       let newItems = transitModal.isOverwriting ? [] : [...(prev.activeItems || [])];
@@ -768,13 +786,29 @@ export default function App() {
 
       transitModal.data.forEach(t => {
         if (t.mappedCat && t.mappedItem) {
-          const finalNote = t.itemNote || lainItemNote;
+          
+          // 🔥 AGREGASI OTOMATIS:
+          // Menghapus itemNote (Catatan detail IWM/3A) pada STSU Utama (SU).
+          // Akibatnya: Jika ada Rombongan Anak A dan Rombongan Anak B yang diarahkan ke "Rombongan Anak", 
+          // maka ID pengenalnya akan KEMBAR, dan nominalnya akan otomatis DIJUMLAHKAN (Digabungkan).
+          // Berlaku juga untuk Primata Weekend & Weekday dari 3A (jika diarahkan ke STSU Primata yang sama).
+          const finalNote = activeType === 'lain' ? (lainItemNote || '') : ''; 
+          
           const key = getActiveItemKey(t.mappedCat, t.mappedItem, isAddingSusulan, susulanValidDate, lainItemDate, finalNote);
           const exists = newItems.find(i => getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote) === key);
           
           if (!exists) {
-            newItems.push({ catId: t.mappedCat, itemId: t.mappedItem, isSusulan: isAddingSusulan, validDate: susulanValidDate, itemDate: lainItemDate, itemNote: finalNote });
+            newItems.push({ 
+              catId: t.mappedCat, 
+              itemId: t.mappedItem, 
+              isSusulan: isAddingSusulan, 
+              validDate: susulanValidDate, 
+              itemDate: lainItemDate, 
+              itemNote: finalNote 
+            });
           }
+          
+          // Penjumlahan total untuk semua item yang diarahkan ke sub-kategori yang sama
           newFormData[key] = (newFormData[key] || 0) + Number(t.amount);
         }
       });
@@ -783,7 +817,7 @@ export default function App() {
     
     const is3a = transitModal.source === '3a';
     closeTransitModal();
-    showToast(`Berhasil! Data dari Bot ${is3a ? '3A' : 'IWM'} telah disuntikkan ke STSU.`);
+    showToast(`Berhasil! Data dari Bot ${is3a ? '3A' : 'IWM'} telah disuntikkan dan otomatis digabungkan pada STSU.`);
   };
 
   const computedStsuNo = useMemo(() => {
@@ -988,7 +1022,7 @@ export default function App() {
               </div>
             )}
 
-            {/* TAHAP 2: KONFIRMASI OVERWRITE (Jika Data Sudah Ada) */}
+            {/* TAHAP 2: KONFIRMASI OVERWRITE */}
             {transitModal.step === 'confirm_overwrite' && (
               <div className="p-8 text-center relative">
                 <div className="w-20 h-20 bg-yellow-50 rounded-full flex items-center justify-center mx-auto mb-5 shadow-inner">
@@ -1046,7 +1080,7 @@ export default function App() {
                   <div className="space-y-3">
                     <div className={`border p-3 rounded-xl text-sm font-medium flex gap-2 items-start shadow-sm bg-white ${transitModal.source === 'iwm' ? 'border-purple-200 text-purple-800' : 'border-blue-200 text-blue-800'}`}>
                       <Sparkles size={18} className="shrink-0 mt-0.5" />
-                      <p>Bot berhasil mengekstrak data! Silakan periksa kembali kecocokan kategori di bawah ini sebelum menekan konfirmasi import.</p>
+                      <p>Bot berhasil mengekstrak data! <br/><br/><strong>Catatan Penggabungan:</strong> Rombongan IWM (Anak/Dewasa) telah dipisah otomatis. Jika Anda mengarahkan item ke kategori yang sama di STSU (misal rombongan SD A dan SMP B sama-sama diarahkan ke "Rombongan Anak"), nominalnya akan <strong>otomatis tergabung</strong> (tidak muncul ganda) saat Import.</p>
                     </div>
                     
                     {transitModal.data.map((item) => (
@@ -1090,7 +1124,7 @@ export default function App() {
                       <div className="mt-4 border border-yellow-200 rounded-xl overflow-hidden shadow-sm bg-white">
                         <div className="bg-yellow-50 px-3 py-2 border-b border-yellow-200 flex items-center gap-2">
                           <Tag size={16} className="text-yellow-700" />
-                          <span className="font-bold text-xs text-yellow-800 uppercase">Laporan Rombongan</span>
+                          <span className="font-bold text-xs text-yellow-800 uppercase">Daftar Mentah Rombongan IWM</span>
                         </div>
                         <div className="overflow-x-auto">
                           <table className="w-full text-left text-xs whitespace-nowrap">
@@ -1100,7 +1134,7 @@ export default function App() {
                                 <th className="p-2">Nama Rombongan</th>
                                 <th className="p-2 text-right">Anak</th>
                                 <th className="p-2 text-right">Dewasa</th>
-                                <th className="p-2 text-right pr-3">Pendapatan (Rp)</th>
+                                <th className="p-2 text-right pr-3">Total Nominal (Rp)</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -1667,7 +1701,7 @@ export default function App() {
                       <DraggableElement defaultTop="37mm" defaultLeft="110mm" className="font-bold">{reportDate}</DraggableElement>
                       <DraggableElement defaultTop="53mm" defaultLeft="75mm" className="font-bold text-center w-[80mm]">{safeString(selectedNcrGroup.name)}</DraggableElement>
                       <DraggableElement defaultTop="58mm" defaultLeft="20mm" className="w-[180mm] leading-relaxed">{safeString(ncrItemsString)}</DraggableElement>
-                      <DraggableElement defaultTop="69mm" defaultLeft="75mm">Seksi Pelayanan dan Informasi</DraggableElement>
+                      <DraggableElement defaultTop="69mm" defaultLeft="75mm">DARI : Seksi Pelayanan dan Informasi</DraggableElement>
                       <DraggableElement defaultTop="79mm" defaultLeft="75mm" className="font-bold text-lg">{formatRp(ncrTotal)}</DraggableElement>
                       <DraggableElement defaultTop="84mm" defaultLeft="20mm" className="w-[180mm] italic font-bold capitalize leading-relaxed"># {terbilang(ncrTotal)} rupiah #</DraggableElement>
                       <DraggableElement defaultTop="100mm" defaultLeft="130mm">{currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}</DraggableElement>
