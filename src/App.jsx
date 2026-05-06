@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save, Database, ArrowRight, CloudDownload } from 'lucide-react';
+import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save, Database, CloudDownload, ArrowRight } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
@@ -207,14 +207,6 @@ export default function App() {
     setLoginError(''); setIsLoggingIn(true);
     try { await signInWithEmailAndPassword(auth, email, password); } 
     catch (err) { setLoginError('Akses Ditolak! Email atau Password salah.'); } 
-    finally { setIsLoggingIn(false); }
-  };
-
-  const handleDemoLogin = async (e) => {
-    e.preventDefault();
-    setLoginError(''); setIsLoggingIn(true);
-    try { await signInAnonymously(auth); } 
-    catch (err) { setLoginError('Gagal masuk mode demo: ' + err.message); } 
     finally { setIsLoggingIn(false); }
   };
 
@@ -547,8 +539,6 @@ export default function App() {
           const isTSA = normApiName.includes('satwa') || normApiName.includes('tsa') || normApiName.includes('children');
           const isRombongan = normApiName.includes('rombongan') || normApiName.includes('romb');
           const isPrimata = normApiName.includes('primata') || normApiName.includes('schmutzer');
-          const isWD = normApiName.includes('wd') || normApiName.includes('biasa') || normApiName.includes('hari biasa');
-          const isWE = normApiName.includes('we') || normApiName.includes('libur') || normApiName.includes('besar') || normApiName.includes('weekend') || normApiName.includes('holiday') || normApiName.includes('sabtu') || normApiName.includes('minggu');
           
           if (isDewasa && normSubName.includes('dewasa')) score += 10;
           if (isAnak && normSubName.includes('anak') && !isTSA && !normSubName.includes('satwa')) score += 10; 
@@ -556,7 +546,11 @@ export default function App() {
           if (isRombongan && normSubName.includes('rombongan')) score += 15;
           if (isPrimata && (normSubName.includes('primata') || normSubName.includes('schmutzer'))) score += 10;
 
-          if (isWD && (normSubName.includes('wd') || normSubName.includes('biasa') || normSubName.includes('weekday'))) score += 5;
+          // Deteksi Hari Biasa vs Hari Besar agar Mapping-nya akurat
+          const isWd = normApiName.includes('wd') || normApiName.includes('biasa') || normApiName.includes('selasa') || normApiName.includes('jumat');
+          const isWE = normApiName.includes('we') || normApiName.includes('libur') || normApiName.includes('besar') || normApiName.includes('weekend') || normApiName.includes('holiday') || normApiName.includes('sabtu') || normApiName.includes('minggu');
+
+          if (isWd && (normSubName.includes('wd') || normSubName.includes('biasa') || normSubName.includes('weekday') || normSubName.includes('selasa') || normSubName.includes('jumat'))) score += 5;
           if (isWE && (normSubName.includes('we') || normSubName.includes('libur') || normSubName.includes('besar') || normSubName.includes('weekend') || normSubName.includes('holiday') || normSubName.includes('sabtu') || normSubName.includes('minggu'))) score += 5;
 
           if (normApiName.includes('sepeda') && normSubName.includes('sepeda')) score += 30;
@@ -603,9 +597,9 @@ export default function App() {
           fetchedData = [
             { id: 't1', nameAPI: '[MERCHANT_PAGE] Karcis Dewasa (Qty: 387)', amount: 15480000 },
             { id: 't2', nameAPI: '[GATE] Karcis Anak (Qty: 150)', amount: 4500000 },
-            { id: 't3', nameAPI: '[TVM] Taman Satwa Anak (Qty: 800)', amount: 2000000 },
+            { id: 't3', nameAPI: '[TVM] Taman Satwa Anak (Total) (Qty: 800)', amount: 2000000 },
             { id: 't4', nameAPI: '[GATE] Parkir Gol I (Bus Besar) (Qty: 5)', amount: 250000 },
-            { id: 't5', nameAPI: '[GATE] Pusat Primata Dewasa (Weekend/Holiday) (Qty: 20)', amount: 150000 }
+            { id: 't5', nameAPI: '[GATE] Pusat Primata Dewasa (Weekend/Hari Besar) (Qty: 20)', amount: 150000 }
           ];
         } else {
           const baseUrl = ip.startsWith('http') ? ip : `http://${ip}:5000`;
@@ -616,7 +610,7 @@ export default function App() {
           if (responseJson.status !== 'success') throw new Error(responseJson.message);
           
           if (responseJson.rekon_data) {
-            // 🔥 PERBAIKAN LOGIKA 3A: Agregasi Awal untuk Weekend + Holiday Pusat Primata
+            // 🔥 LOGIKA 3A: Agregasi Awal (Primata & Taman Satwa Anak)
             const grouped3A = {};
 
             Object.keys(responseJson.rekon_data).forEach(channel => {
@@ -635,21 +629,37 @@ export default function App() {
                   
                   const isPrimata = /schmutzer|primata/i.test(lowerName);
                   const isRombongan = /romb/i.test(lowerName);
+                  const isTsa = /taman satwa|tsa/i.test(lowerName);
                   
-                  // Jika tiket Primata Reguler (Bukan Rombongan)
-                  if (isPrimata && !isRombongan) {
+                  // 1. TAMAN SATWA ANAK (Digabung jadi satu persis seperti format STSU)
+                  if (isTsa) {
+                    groupKey = `${channel}_tsa_all`;
+                    groupName = `[${channel}] Taman Satwa Anak (Total)`;
+                  }
+                  // 2. PUSAT PRIMATA (Non-Rombongan, digabung sesuai format STSU)
+                  else if (isPrimata && !isRombongan) {
                     const isDewasa = /dewasa/i.test(lowerName);
                     const isAnak = /anak/i.test(lowerName);
+                    // Mendeteksi varian tiket hari libur, weekend, atau hari besar
                     const isWeHol = /we\b|weekend|holiday|libur|besar|sabtu|minggu/i.test(lowerName);
+                    const isWd = /wd\b|weekday|biasa|selasa|jumat|jum'at/i.test(lowerName);
                     
-                    // Gabungkan semua bentuk Weekend dan Holiday ke dalam SATU entitas per Channel
                     if (isWeHol) {
                       if (isDewasa) {
                         groupKey = `${channel}_prm_we_dws`;
-                        groupName = `[${channel}] Pusat Primata Dewasa (Weekend/Holiday)`;
+                        groupName = `[${channel}] Pusat Primata Dewasa (Weekend/Hari Besar)`;
                       } else if (isAnak) {
                         groupKey = `${channel}_prm_we_ank`;
-                        groupName = `[${channel}] Pusat Primata Anak (Weekend/Holiday)`;
+                        groupName = `[${channel}] Pusat Primata Anak (Weekend/Hari Besar)`;
+                      }
+                    }
+                    else if (isWd) {
+                      if (isDewasa) {
+                        groupKey = `${channel}_prm_wd_dws`;
+                        groupName = `[${channel}] Pusat Primata Dewasa (Hari Biasa)`;
+                      } else if (isAnak) {
+                        groupKey = `${channel}_prm_wd_ank`;
+                        groupName = `[${channel}] Pusat Primata Anak (Hari Biasa)`;
                       }
                     }
                   }
@@ -663,11 +673,11 @@ export default function App() {
               });
             });
 
-            // Konversi dari objek grouping kembali ke format fetchedData
+            // Konversi objek grouping kembali ke format fetchedData yang siap ditampikan
             Object.values(grouped3A).forEach(g => {
               fetchedData.push({
                 id: g.id,
-                nameAPI: g.nameAPI.includes('(Qty:') ? g.nameAPI : `${g.nameAPI} (Qty: ${g.qty})`,
+                nameAPI: g.nameAPI.includes('(Qty:') || g.qty === 0 ? g.nameAPI : `${g.nameAPI} (Qty: ${g.qty})`,
                 amount: g.amount
               });
             });
@@ -841,6 +851,7 @@ export default function App() {
             });
           }
           
+          // Agregasi akhir saat disuntikkan ke STSU form
           newFormData[key] = (newFormData[key] || 0) + Number(t.amount);
         }
       });
@@ -1112,7 +1123,7 @@ export default function App() {
                   <div className="space-y-3">
                     <div className={`border p-3 rounded-xl text-sm font-medium flex gap-2 items-start shadow-sm bg-white ${transitModal.source === 'iwm' ? 'border-purple-200 text-purple-800' : 'border-blue-200 text-blue-800'}`}>
                       <Sparkles size={18} className="shrink-0 mt-0.5" />
-                      <p>Bot berhasil mengekstrak data! <br/><br/><strong>Catatan Penggabungan:</strong> Rombongan IWM (Anak/Dewasa) serta Pusat Primata (Weekend/Holiday) 3A telah disatukan secara otomatis. Jika Anda mengarahkan item ke kategori yang sama di STSU, nominalnya akan <strong>otomatis tergabung</strong> (tidak muncul ganda) saat di-Import.</p>
+                      <p>Bot berhasil mengekstrak data! <br/><br/><strong>Catatan:</strong> Jika tiket memiliki varian (seperti "Weekend" & "Holiday"), sistem telah <strong>menggabungkan otomatis</strong> menjadi kesatuan (Hari Besar) sesuai format cetak STSU Anda, lalu mengkalkulasi total nominalnya agar mudah di-Import.</p>
                     </div>
                     
                     {transitModal.data.map((item) => (
