@@ -1106,8 +1106,20 @@ export default function App() {
           body { background-color: white; margin: 0; padding: 0; }
           .no-print { display: none !important; }
           ${printMode === 'ncr' ? `
-            .print-container { width: 210mm; height: 148mm; margin: 0; padding: 0; font-family: 'Courier New', Courier, monospace !important; font-size: 11pt; color: black; box-shadow: none !important; border: none !important; overflow: hidden; }
+            /* KERTAS A5 LANDSCAPE (MENDATAR) UNTUK DOT MATRIX */
             @page { size: 210mm 148mm; margin: 0; }
+            .print-container { 
+              width: 210mm; 
+              height: 148mm; 
+              margin: 0; 
+              padding: 0; 
+              font-family: 'Courier New', Courier, monospace !important; 
+              color: black; 
+              box-shadow: none !important; 
+              border: none !important; 
+              overflow: hidden;
+              position: relative;
+            }
           ` : `
             .print-container { width: 100%; max-width: 100%; margin: 0; padding: 0; font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: black; box-shadow: none !important; border: none !important; }
             @page { margin: 15mm; }
@@ -1809,7 +1821,7 @@ export default function App() {
             </div>
           ) : (
             <div id="printable-area-ncr" className="print-container bg-white mx-auto relative overflow-hidden shadow-lg border border-gray-300 print:border-none print:shadow-none" style={{ minHeight: '148mm', width: '210mm' }}>
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-purple-100 font-black text-6xl opacity-30 uppercase tracking-widest print:opacity-0 pointer-events-none -rotate-45 whitespace-nowrap">PREVIEW NCR DOT MATRIX</div>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-purple-100 font-black text-6xl opacity-30 uppercase tracking-widest print:opacity-0 pointer-events-none -rotate-12 whitespace-nowrap">PREVIEW DOT MATRIX A5</div>
               {selectedNcrGroup && (() => {
                  const ncrTotal = subtotals[selectedNcrGroup.groupId] || 0;
                  const isDirect = Array.isArray(selectedNcrGroup.activeItems) && selectedNcrGroup.activeItems.length === 1 && selectedNcrGroup.activeItems[0].id === 'direct';
@@ -1817,22 +1829,29 @@ export default function App() {
                  let ncrItemsString = isDirect ? (selectedNcrGroup.activeItems[0].itemNote ? selectedNcrGroup.activeItems[0].itemNote.replace(/\n/g, ', ') : '') : itemsToPrint.map(i => i.name + (i.itemNote ? ` (${i.itemNote.replace(/\n/g, ' ')})` : '')).join(', ');
                  return (
                    <>
-                      <DraggableElement defaultTop="37mm" defaultLeft="75mm" className="font-bold">{getDayName(reportDate)}</DraggableElement>
-                      <DraggableElement defaultTop="37mm" defaultLeft="110mm" className="font-bold">{reportDate}</DraggableElement>
-                      <DraggableElement defaultTop="53mm" defaultLeft="75mm" className="font-bold text-center w-[80mm]">{safeString(selectedNcrGroup.name)}</DraggableElement>
-                      <DraggableElement defaultTop="58mm" defaultLeft="20mm" className="w-[180mm] leading-relaxed">{safeString(ncrItemsString)}</DraggableElement>
-                      <DraggableElement defaultTop="69mm" defaultLeft="75mm">Seksi Pelayanan dan Informasi</DraggableElement>
-                      <DraggableElement defaultTop="79mm" defaultLeft="75mm" className="font-bold text-lg">{formatRp(ncrTotal)}</DraggableElement>
-                      <DraggableElement defaultTop="84mm" defaultLeft="20mm" className="w-[180mm] italic font-bold capitalize leading-relaxed"># {terbilang(ncrTotal)} rupiah #</DraggableElement>
-                      <DraggableElement defaultTop="100mm" defaultLeft="130mm">{currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}</DraggableElement>
-                      <DraggableElement defaultTop="105mm" defaultLeft="130mm" className="font-bold text-lg">{formatRp(ncrTotal)}</DraggableElement>
-                      <DraggableElement defaultTop="125mm" defaultLeft="15mm" className="text-center w-[80mm]">
-                         <div className="font-bold underline">{safeString(signatures.leftName)}</div>
-                         {signatures.leftNip ? <div>NIP {safeString(signatures.leftNip)}</div> : <div>NIP ..............................</div>}
+                      <DraggableElement defaultTop="33mm" defaultLeft="125mm" className="font-bold text-sm tracking-wide">{getDayName(reportDate)}</DraggableElement>
+                      <DraggableElement defaultTop="33mm" defaultLeft="160mm" className="font-bold text-sm tracking-wide">{reportDate}</DraggableElement>
+                      
+                      <DraggableElement defaultTop="50mm" defaultLeft="20mm" className="w-[170mm] leading-8 font-bold text-sm">{safeString(selectedNcrGroup.name)}: {safeString(ncrItemsString)}</DraggableElement>
+                      
+                      <DraggableElement defaultTop="71mm" defaultLeft="45mm" className="font-bold text-sm">Seksi Pelayanan dan Informasi</DraggableElement>
+                      
+                      <DraggableElement defaultTop="83mm" defaultLeft="65mm" className="font-bold text-lg tracking-widest">{formatRp(ncrTotal)}</DraggableElement>
+                      
+                      <DraggableElement defaultTop="93mm" defaultLeft="25mm" className="w-[160mm] italic font-bold capitalize leading-relaxed text-sm"># {terbilang(ncrTotal)} rupiah #</DraggableElement>
+                      
+                      <DraggableElement defaultTop="103mm" defaultLeft="145mm" className="font-bold text-sm">{currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}</DraggableElement>
+                      
+                      <DraggableElement defaultTop="111mm" defaultLeft="165mm" className="font-bold text-base tracking-wider">{formatRp(ncrTotal)}</DraggableElement>
+                      
+                      <DraggableElement defaultTop="130mm" defaultLeft="20mm" className="text-center w-[70mm]">
+                         <div className="font-bold underline text-sm tracking-wide">{safeString(signatures.leftName)}</div>
+                         <div className="text-xs mt-1">NIP. {signatures.leftNip ? safeString(signatures.leftNip) : ".............................."}</div>
                       </DraggableElement>
-                      <DraggableElement defaultTop="125mm" defaultLeft="115mm" className="text-center w-[80mm]">
-                         <div className="font-bold underline">{safeString(signatures.rightName)}</div>
-                         {signatures.rightNip ? <div>NIP {safeString(signatures.rightNip)}</div> : <div>NIP ..............................</div>}
+                      
+                      <DraggableElement defaultTop="130mm" defaultLeft="125mm" className="text-center w-[70mm]">
+                         <div className="font-bold underline text-sm tracking-wide">{safeString(signatures.rightName)}</div>
+                         <div className="text-xs mt-1">NIP. {signatures.rightNip ? safeString(signatures.rightNip) : ".............................."}</div>
                       </DraggableElement>
                    </>
                  );
