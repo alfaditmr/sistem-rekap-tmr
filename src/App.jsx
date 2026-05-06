@@ -229,9 +229,9 @@ export default function App() {
     { id: 'cat_1', name: 'Pemakaian Fasilitas', type: 'utama', items: [{ id: 'item_1a', name: 'Promo Penjualan Produk' }, { id: 'item_1b', name: 'Penempatan banner promosi' }, { id: 'item_1c', name: 'Panggung' }] },
     { id: 'cat_2', name: 'Retribusi Pedagang', type: 'utama', items: [{ id: 'item_2a', name: 'Retribusi pedagang Hari Biasa' }, { id: 'item_2b', name: 'Retribusi pedagang Hari Besar' }] },
     { id: 'cat_3', name: 'E-Ticketing New Gate', type: 'utama', items: [{ id: 'item_3a', name: 'Tiket Masuk Dewasa' }, { id: 'item_3b', name: 'Tiket Masuk Anak' }, { id: 'item_3c', name: 'Taman Satwa Anak' }, { id: 'item_3d', name: 'Pusat Primata (Hari Biasa)' }, { id: 'item_3e', name: 'Pusat Primata (Weekend)' }, { id: 'item_3f', name: 'Kendaraan Motor' }, { id: 'item_3g', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_3h', name: 'Kendaraan Gol 2' }, { id: 'item_3i', name: 'Kendaraan Gol 1' }, { id: 'item_3j', name: 'Kendaraan Sepeda' }, { id: 'item_3k', name: 'Rombongan' }] },
-    { id: 'cat_4', name: 'Ticket Online', type: 'utama', items: [{ id: 'item_4a', name: 'Tiket Masuk Dewasa' }, { id: 'item_4b', name: 'Tiket Masuk Anak' }, { id: 'item_4c', name: 'Taman Satwa Anak' }, { id: 'item_4d', name: 'Pusat Primata (Hari Biasa)' }, { id: 'item_4e', name: 'Pusat Primata (Weekend)' }, { id: 'item_4f', name: 'Kendaraan Motor' }, { id: 'item_4g', name: 'Kendaraan Gol 3 / Mobil' }] },
+    { id: 'cat_4', name: 'Ticket Online', type: 'utama', items: [{ id: 'item_4a', name: 'Tiket Masuk Dewasa' }, { id: 'item_4b', name: 'Tiket Masuk Anak' }, { id: 'item_4c', name: 'Taman Satwa Anak' }, { id: 'item_4d', name: 'Pusat Primata Hari Biasa Dewasa' }, { id: 'item_4d2', name: 'Pusat Primata Hari Biasa Anak' }, { id: 'item_4e', name: 'Pusat Primata Hari Besar Dewasa' }, { id: 'item_4e2', name: 'Pusat Primata Hari Besar Anak' }, { id: 'item_4f', name: 'Kendaraan Motor' }, { id: 'item_4g', name: 'Kendaraan Gol 3 / Mobil' }] },
     { id: 'cat_5', name: 'Ticket Vending Machine (TVM)', type: 'utama', items: [{ id: 'item_5a', name: 'Tiket Masuk Dewasa' }, { id: 'item_5b', name: 'Tiket Masuk Anak' }, { id: 'item_5c', name: 'Taman Satwa Anak' }] },
-    { id: 'cat_6', name: 'E-Ticketing Old Gate', type: 'utama', items: [{ id: 'item_6a', name: 'Tiket Masuk Dewasa' }, { id: 'item_6b', name: 'Tiket Masuk Anak' }, { id: 'item_6c', name: 'Taman Satwa Anak' }, { id: 'item_6d', name: 'Pusat Primata Dewasa (Hari Biasa)' }, { id: 'item_6e', name: 'Pusat Primata Anak (Hari Biasa)' }, { id: 'item_6f', name: 'Pusat Primata Dewasa (Weekend)' }, { id: 'item_6g', name: 'Pusat Primata Anak (Weekend)' }, { id: 'item_6h', name: 'Kendaraan Motor' }, { id: 'item_6i', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_6j', name: 'Kendaraan Gol 2' }, { id: 'item_6k', name: 'Kendaraan Gol 1' }, { id: 'item_6l', name: 'Kendaraan Sepeda' }, { id: 'item_6m', name: 'Rombongan Dewasa' }, { id: 'item_6n', name: 'Rombongan Anak' }] }
+    { id: 'cat_6', name: 'E-Ticketing Old Gate', type: 'utama', items: [{ id: 'item_6a', name: 'Tiket Masuk Dewasa' }, { id: 'item_6b', name: 'Tiket Masuk Anak' }, { id: 'item_6c', name: 'Taman Satwa Anak' }, { id: 'item_6d', name: 'Pusat Primata Hari Biasa Dewasa' }, { id: 'item_6e', name: 'Pusat Primata Hari Biasa Anak' }, { id: 'item_6f', name: 'Pusat Primata Hari Besar Dewasa' }, { id: 'item_6g', name: 'Pusat Primata Hari Besar Anak' }, { id: 'item_6h', name: 'Kendaraan Motor' }, { id: 'item_6i', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_6j', name: 'Kendaraan Gol 2' }, { id: 'item_6k', name: 'Kendaraan Gol 1' }, { id: 'item_6l', name: 'Kendaraan Sepeda' }, { id: 'item_6m', name: 'Rombongan Dewasa' }, { id: 'item_6n', name: 'Rombongan Anak' }] }
   ]));
 
   const [allReports, setAllReports] = useState(() => getInitialState('tmr_v19_allReports', {}));
@@ -535,7 +535,7 @@ export default function App() {
             .replace(/gol i\b/g, 'gol 1');
           
           const isDewasa = normApiName.includes('dewasa');
-          const isAnak = normApiName.includes('anak');
+          const isAnak = normApiName.includes('anak') || normApiName.includes('3-12');
           const isTSA = normApiName.includes('satwa') || normApiName.includes('tsa') || normApiName.includes('children');
           const isRombongan = normApiName.includes('rombongan') || normApiName.includes('romb');
           const isPrimata = normApiName.includes('primata') || normApiName.includes('schmutzer');
@@ -546,12 +546,12 @@ export default function App() {
           if (isRombongan && normSubName.includes('rombongan')) score += 15;
           if (isPrimata && (normSubName.includes('primata') || normSubName.includes('schmutzer'))) score += 10;
 
-          // Deteksi Hari Biasa vs Hari Besar agar Mapping-nya akurat
-          const isWd = normApiName.includes('wd') || normApiName.includes('biasa') || normApiName.includes('selasa') || normApiName.includes('jumat');
-          const isWE = normApiName.includes('we') || normApiName.includes('libur') || normApiName.includes('besar') || normApiName.includes('weekend') || normApiName.includes('holiday') || normApiName.includes('sabtu') || normApiName.includes('minggu');
+          // BUG FIX: Gunakan Regex \b (Word Boundary) agar we tidak keliru mendeteksi huruf we dalam kata weekday
+          const isWd = /\b(wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at)\b/i.test(normApiName);
+          const isWE = /\b(we|weekend|holiday|libur|besar|sabtu|minggu)\b/i.test(normApiName);
 
-          if (isWd && (normSubName.includes('wd') || normSubName.includes('biasa') || normSubName.includes('weekday') || normSubName.includes('selasa') || normSubName.includes('jumat'))) score += 5;
-          if (isWE && (normSubName.includes('we') || normSubName.includes('libur') || normSubName.includes('besar') || normSubName.includes('weekend') || normSubName.includes('holiday') || normSubName.includes('sabtu') || normSubName.includes('minggu'))) score += 5;
+          if (isWd && /\b(wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at)\b/i.test(normSubName)) score += 5;
+          if (isWE && /\b(we|weekend|holiday|libur|besar|sabtu|minggu)\b/i.test(normSubName)) score += 5;
 
           if (normApiName.includes('sepeda') && normSubName.includes('sepeda')) score += 30;
           if (normApiName.includes('motor') && normSubName.includes('motor')) score += 30;
@@ -639,10 +639,11 @@ export default function App() {
                   // 2. PUSAT PRIMATA (Non-Rombongan, digabung sesuai format STSU)
                   else if (isPrimata && !isRombongan) {
                     const isDewasa = /dewasa/i.test(lowerName);
-                    const isAnak = /anak/i.test(lowerName);
-                    // Mendeteksi varian tiket hari libur, weekend, atau hari besar
-                    const isWeHol = /we\b|weekend|holiday|libur|besar|sabtu|minggu/i.test(lowerName);
-                    const isWd = /wd\b|weekday|biasa|selasa|jumat|jum'at/i.test(lowerName);
+                    const isAnak = /anak/i.test(lowerName) || lowerName.includes('3-12');
+                    
+                    // BUG FIX: Gunakan \b (Word Boundary) Murni agar "we" tidak menangkap huruf "we" di dalam kata "weekday"
+                    const isWeHol = /\b(we|weekend|holiday|libur|besar|sabtu|minggu)\b/i.test(lowerName);
+                    const isWd = /\b(wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at)\b/i.test(lowerName);
                     
                     if (isWeHol) {
                       if (isDewasa) {
@@ -1038,7 +1039,7 @@ export default function App() {
 
       {transitModal.isOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
-          <div className={`bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 ${transitModal.step === 'mapping' ? 'max-w-3xl max-h-[85vh]' : 'max-w-md'}`}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 ${transitModal.step === 'mapping' ? 'max-w-3xl max-h-[85vh]' : 'max-w-md'}">
             
             {/* TAHAP 1: KONFIRMASI TANGGAL */}
             {transitModal.step === 'confirm_date' && (
