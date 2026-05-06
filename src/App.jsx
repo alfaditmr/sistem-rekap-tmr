@@ -228,8 +228,8 @@ export default function App() {
   const [categories, setCategories] = useState(() => getInitialState('tmr_v19_categories', [
     { id: 'cat_1', name: 'Pemakaian Fasilitas', type: 'utama', items: [{ id: 'item_1a', name: 'Promo Penjualan Produk' }, { id: 'item_1b', name: 'Penempatan banner promosi' }, { id: 'item_1c', name: 'Panggung' }] },
     { id: 'cat_2', name: 'Retribusi Pedagang', type: 'utama', items: [{ id: 'item_2a', name: 'Retribusi pedagang Hari Biasa' }, { id: 'item_2b', name: 'Retribusi pedagang Hari Besar' }] },
-    { id: 'cat_3', name: 'E-Ticketing New Gate', type: 'utama', items: [{ id: 'item_3a', name: 'Tiket Masuk Dewasa' }, { id: 'item_3b', name: 'Tiket Masuk Anak' }, { id: 'item_3c', name: 'Taman Satwa Anak' }, { id: 'item_3d', name: 'Pusat Primata (Hari Biasa)' }, { id: 'item_3e', name: 'Pusat Primata (Weekend)' }, { id: 'item_3f', name: 'Kendaraan Motor' }, { id: 'item_3g', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_3h', name: 'Kendaraan Gol 2' }, { id: 'item_3i', name: 'Kendaraan Gol 1' }, { id: 'item_3j', name: 'Kendaraan Sepeda' }, { id: 'item_3k', name: 'Rombongan' }] },
-    { id: 'cat_4', name: 'Ticket Online', type: 'utama', items: [{ id: 'item_4a', name: 'Tiket Masuk Dewasa' }, { id: 'item_4b', name: 'Tiket Masuk Anak' }, { id: 'item_4c', name: 'Taman Satwa Anak' }, { id: 'item_4d', name: 'Pusat Primata Hari Biasa Dewasa' }, { id: 'item_4d2', name: 'Pusat Primata Hari Biasa Anak' }, { id: 'item_4e', name: 'Pusat Primata Hari Besar Dewasa' }, { id: 'item_4e2', name: 'Pusat Primata Hari Besar Anak' }, { id: 'item_4f', name: 'Kendaraan Motor' }, { id: 'item_4g', name: 'Kendaraan Gol 3 / Mobil' }] },
+    { id: 'cat_3', name: 'E-Ticketing New Gate', type: 'utama', items: [{ id: 'item_3a', name: 'Tiket Masuk Dewasa' }, { id: 'item_3b', name: 'Tiket Masuk Anak' }, { id: 'item_3c', name: 'Taman Satwa Anak' }, { id: 'item_3d', name: 'Pusat Primata Hari Biasa Dewasa' }, { id: 'item_3e', name: 'Pusat Primata Hari Biasa Anak' }, { id: 'item_3f', name: 'Pusat Primata Hari Besar Dewasa' }, { id: 'item_3g', name: 'Pusat Primata Hari Besar Anak' }, { id: 'item_3h', name: 'Kendaraan Motor' }, { id: 'item_3i', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_3j', name: 'Kendaraan Gol 2' }, { id: 'item_3k', name: 'Kendaraan Gol 1' }, { id: 'item_3l', name: 'Kendaraan Sepeda' }, { id: 'item_3m', name: 'Rombongan' }] },
+    { id: 'cat_4', name: 'Ticket Online', type: 'utama', items: [{ id: 'item_4a', name: 'Tiket Masuk Dewasa' }, { id: 'item_4b', name: 'Tiket Masuk Anak' }, { id: 'item_4c', name: 'Taman Satwa Anak' }, { id: 'item_4d', name: 'Pusat Primata Hari Biasa Dewasa' }, { id: 'item_4d2', name: 'Pusat Primata Hari Biasa Anak' }, { id: 'item_4e', name: 'Pusat Primata Hari Besar Dewasa' }, { id: 'item_4e2', name: 'Pusat Primata Hari Besar Anak' }, { id: 'item_4f', name: 'Kendaraan Motor' }, { id: 'item_4g', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_4h', name: 'Kendaraan Gol 1' }, { id: 'item_4i', name: 'Kendaraan Gol 2' }, { id: 'item_4j', name: 'Motor' }, { id: 'item_4k', name: 'Sepeda' }] },
     { id: 'cat_5', name: 'Ticket Vending Machine (TVM)', type: 'utama', items: [{ id: 'item_5a', name: 'Tiket Masuk Dewasa' }, { id: 'item_5b', name: 'Tiket Masuk Anak' }, { id: 'item_5c', name: 'Taman Satwa Anak' }] },
     { id: 'cat_6', name: 'E-Ticketing Old Gate', type: 'utama', items: [{ id: 'item_6a', name: 'Tiket Masuk Dewasa' }, { id: 'item_6b', name: 'Tiket Masuk Anak' }, { id: 'item_6c', name: 'Taman Satwa Anak' }, { id: 'item_6d', name: 'Pusat Primata Hari Biasa Dewasa' }, { id: 'item_6e', name: 'Pusat Primata Hari Biasa Anak' }, { id: 'item_6f', name: 'Pusat Primata Hari Besar Dewasa' }, { id: 'item_6g', name: 'Pusat Primata Hari Besar Anak' }, { id: 'item_6h', name: 'Kendaraan Motor' }, { id: 'item_6i', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_6j', name: 'Kendaraan Gol 2' }, { id: 'item_6k', name: 'Kendaraan Gol 1' }, { id: 'item_6l', name: 'Kendaraan Sepeda' }, { id: 'item_6m', name: 'Rombongan Dewasa' }, { id: 'item_6n', name: 'Rombongan Anak' }] }
   ]));
@@ -546,7 +546,7 @@ export default function App() {
           if (isRombongan && normSubName.includes('rombongan')) score += 15;
           if (isPrimata && (normSubName.includes('primata') || normSubName.includes('schmutzer'))) score += 10;
 
-          // BUG FIX: Gunakan Regex \b (Word Boundary) agar we tidak keliru mendeteksi huruf we dalam kata weekday
+          // BUG FIX: Gunakan Regex \b (Word Boundary) yang lebih ketat
           const isWd = /\b(wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at)\b/i.test(normApiName);
           const isWE = /\b(we|weekend|holiday|libur|besar|sabtu|minggu)\b/i.test(normApiName);
 
@@ -573,6 +573,82 @@ export default function App() {
     return { mappedCat: guessCat, mappedItem: guessItem };
   };
 
+  const process3aData = (rekonData) => {
+    const grouped3A = {};
+    const fetchedData = [];
+
+    Object.keys(rekonData).forEach(channel => {
+      const channelData = rekonData[channel];
+      Object.keys(channelData).forEach(idx => {
+        const itemData = channelData[idx];
+        const nominal = Number(itemData.nominal) || 0;
+        const qty = Number(itemData.qty) || 0;
+        
+        if (nominal > 0) {
+          const apiRawName = itemData.nama || itemData.name || `Item ${idx}`;
+          const lowerName = apiRawName.toLowerCase();
+          
+          let groupKey = `${channel}_${idx}`;
+          let groupName = `[${channel}] ${apiRawName}`;
+          
+          const isPrimata = /schmutzer|primata/i.test(lowerName);
+          const isRombongan = /romb/i.test(lowerName);
+          const isTsa = /taman satwa|tsa/i.test(lowerName);
+          
+          // 1. TAMAN SATWA ANAK (Digabung jadi satu persis seperti format STSU)
+          if (isTsa) {
+            groupKey = `${channel}_tsa_all`;
+            groupName = `[${channel}] Taman Satwa Anak (Total)`;
+          }
+          // 2. PUSAT PRIMATA (Non-Rombongan, Pisahkan WD dengan WE/Holiday secara tegas)
+          else if (isPrimata && !isRombongan) {
+            const isDewasa = /dewasa/i.test(lowerName);
+            const isAnak = /anak/i.test(lowerName) || lowerName.includes('3-12');
+            
+            // PENGKONDISIAN TEGAS MENGGUNAKAN \b WORD BOUNDARY
+            const isWd = /\b(wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at)\b/i.test(lowerName);
+            const isWeHol = /\b(we|weekend|holiday|libur|besar|sabtu|minggu)\b/i.test(lowerName);
+            
+            if (isWeHol) {
+              if (isDewasa) {
+                groupKey = `${channel}_prm_we_dws`;
+                groupName = `[${channel}] Pusat Primata Dewasa (Weekend/Hari Besar)`;
+              } else if (isAnak) {
+                groupKey = `${channel}_prm_we_ank`;
+                groupName = `[${channel}] Pusat Primata Anak (Weekend/Hari Besar)`;
+              }
+            }
+            else if (isWd) {
+              if (isDewasa) {
+                groupKey = `${channel}_prm_wd_dws`;
+                groupName = `[${channel}] Pusat Primata Dewasa (Hari Biasa)`;
+              } else if (isAnak) {
+                groupKey = `${channel}_prm_wd_ank`;
+                groupName = `[${channel}] Pusat Primata Anak (Hari Biasa)`;
+              }
+            }
+          }
+
+          if (!grouped3A[groupKey]) {
+            grouped3A[groupKey] = { id: groupKey, nameAPI: groupName, amount: 0, qty: 0 };
+          }
+          grouped3A[groupKey].amount += nominal;
+          grouped3A[groupKey].qty += qty;
+        }
+      });
+    });
+
+    Object.values(grouped3A).forEach(g => {
+      fetchedData.push({
+        id: g.id,
+        nameAPI: g.nameAPI.includes('(Qty:') || g.qty === 0 ? g.nameAPI : `${g.nameAPI} (Qty: ${g.qty})`,
+        amount: g.amount
+      });
+    });
+
+    return fetchedData;
+  };
+
   const executeFetchData = async (isOverwrite) => {
     setTransitModal(prev => ({ ...prev, step: 'loading', isOverwriting: isOverwrite, error: '' }));
     
@@ -583,24 +659,31 @@ export default function App() {
       const targetDate = transitModal.targetDate;
       const source = transitModal.source;
 
-      const stsuNames3A = {
-        "1": "Karcis Dewasa", "2": "Karcis Anak", "3": "Romb. Dewasa 25%", "4": "Romb. Anak 25%",
-        "5": "Kuda Tunggang", "6": "Unta Tunggang", "7": "Gajah Tunggang", "8": "Taman Satwa Anak",
-        "9": "Schmutzer WD Dewasa", "10": "Schmutzer WD Anak", "11": "Schmutzer Romb WD Dws", "12": "Schmutzer Romb WD Ank",
-        "13": "Schmutzer WE Dewasa", "14": "Schmutzer WE Anak", "15": "Schmutzer Romb WE Ank", "16": "Schmutzer Romb WE Dws",
-        "17": "Parkir Gol I (Bus Besar)", "18": "Parkir Gol II (Bus Kecil)", "19": "Parkir Gol III (Mobil)", "20": "Parkir Motor", "21": "Parkir Sepeda"
-      };
-
       if (source === '3a') {
         if (ip === 'demo') {
           await new Promise(r => setTimeout(r, 1200)); 
-          fetchedData = [
-            { id: 't1', nameAPI: '[MERCHANT_PAGE] Karcis Dewasa (Qty: 387)', amount: 15480000 },
-            { id: 't2', nameAPI: '[GATE] Karcis Anak (Qty: 150)', amount: 4500000 },
-            { id: 't3', nameAPI: '[TVM] Taman Satwa Anak (Total) (Qty: 800)', amount: 2000000 },
-            { id: 't4', nameAPI: '[GATE] Parkir Gol I (Bus Besar) (Qty: 5)', amount: 250000 },
-            { id: 't5', nameAPI: '[GATE] Pusat Primata Dewasa (Weekend/Hari Besar) (Qty: 20)', amount: 150000 }
-          ];
+          // MOCK DATA: Sama persis dengan kertas laporan foto Anda (Tanggal 30 April)
+          const mockRawData = {
+            "MERCHANT_PAGE": {
+              "1": {"nama": "Tiket Dewasa", "qty": 1226, "nominal": 4904000},
+              "2": {"nama": "Tiket Anak (Usia 3-12 tahun)", "qty": 244, "nominal": 732000},
+              "13": {"nama": "Pusat Primata Schmutzer (Dewasa) - Holiday", "qty": 121, "nominal": 907500},
+              "9": {"nama": "Pusat Primata Schmutzer (Dewasa) - Weekday", "qty": 141, "nominal": 846000},
+              "13_2": {"nama": "Pusat Primata Schmutzer (Dewasa) - Weekend", "qty": 55, "nominal": 412500},
+              "14": {"nama": "Pusat Primata Schmutzer (Anak Usia 3-12 tahun) - Holiday", "qty": 23, "nominal": 172500},
+              "10": {"nama": "Pusat Primata Schmutzer (Anak Usia 3-12 tahun) - Weekday", "qty": 36, "nominal": 216000},
+              "14_2": {"nama": "Pusat Primata Schmutzer (Anak Usia 3-12 tahun) - Weekend", "qty": 15, "nominal": 112500},
+              "8": {"nama": "Taman Satwa Anak (Dewasa)", "qty": 229, "nominal": 572500},
+              "8_2": {"nama": "Taman Satwa Anak (Anak Usia 3-12 tahun)", "qty": 83, "nominal": 207500},
+              "17": {"nama": "Kendaraan Gol I", "qty": 4, "nominal": 60000},
+              "18": {"nama": "Kendaraan Gol II", "qty": 1, "nominal": 12500},
+              "19": {"nama": "Kendaraan Gol III", "qty": 118, "nominal": 708000},
+              "20": {"nama": "Sepeda Motor", "qty": 201, "nominal": 603000},
+              "21": {"nama": "Sepeda", "qty": 3, "nominal": 3000}
+            }
+          };
+          fetchedData = process3aData(mockRawData);
+
         } else {
           const baseUrl = ip.startsWith('http') ? ip : `http://${ip}:5000`;
           const endpoint = `${baseUrl}/api/tarik_rekon_3a?tanggal=${targetDate}`;
@@ -610,78 +693,7 @@ export default function App() {
           if (responseJson.status !== 'success') throw new Error(responseJson.message);
           
           if (responseJson.rekon_data) {
-            // 🔥 LOGIKA 3A: Agregasi Awal (Primata & Taman Satwa Anak)
-            const grouped3A = {};
-
-            Object.keys(responseJson.rekon_data).forEach(channel => {
-              const channelData = responseJson.rekon_data[channel];
-              Object.keys(channelData).forEach(idx => {
-                const itemData = channelData[idx];
-                const nominal = Number(itemData.nominal) || 0;
-                const qty = Number(itemData.qty) || 0;
-                
-                if (nominal > 0) {
-                  const apiRawName = itemData.nama || itemData.name || stsuNames3A[idx] || `Item ${idx}`;
-                  const lowerName = apiRawName.toLowerCase();
-                  
-                  let groupKey = `${channel}_${idx}`;
-                  let groupName = `[${channel}] ${apiRawName}`;
-                  
-                  const isPrimata = /schmutzer|primata/i.test(lowerName);
-                  const isRombongan = /romb/i.test(lowerName);
-                  const isTsa = /taman satwa|tsa/i.test(lowerName);
-                  
-                  // 1. TAMAN SATWA ANAK (Digabung jadi satu persis seperti format STSU)
-                  if (isTsa) {
-                    groupKey = `${channel}_tsa_all`;
-                    groupName = `[${channel}] Taman Satwa Anak (Total)`;
-                  }
-                  // 2. PUSAT PRIMATA (Non-Rombongan, digabung sesuai format STSU)
-                  else if (isPrimata && !isRombongan) {
-                    const isDewasa = /dewasa/i.test(lowerName);
-                    const isAnak = /anak/i.test(lowerName) || lowerName.includes('3-12');
-                    
-                    // BUG FIX: Gunakan \b (Word Boundary) Murni agar "we" tidak menangkap huruf "we" di dalam kata "weekday"
-                    const isWeHol = /\b(we|weekend|holiday|libur|besar|sabtu|minggu)\b/i.test(lowerName);
-                    const isWd = /\b(wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at)\b/i.test(lowerName);
-                    
-                    if (isWeHol) {
-                      if (isDewasa) {
-                        groupKey = `${channel}_prm_we_dws`;
-                        groupName = `[${channel}] Pusat Primata Dewasa (Weekend/Hari Besar)`;
-                      } else if (isAnak) {
-                        groupKey = `${channel}_prm_we_ank`;
-                        groupName = `[${channel}] Pusat Primata Anak (Weekend/Hari Besar)`;
-                      }
-                    }
-                    else if (isWd) {
-                      if (isDewasa) {
-                        groupKey = `${channel}_prm_wd_dws`;
-                        groupName = `[${channel}] Pusat Primata Dewasa (Hari Biasa)`;
-                      } else if (isAnak) {
-                        groupKey = `${channel}_prm_wd_ank`;
-                        groupName = `[${channel}] Pusat Primata Anak (Hari Biasa)`;
-                      }
-                    }
-                  }
-
-                  if (!grouped3A[groupKey]) {
-                    grouped3A[groupKey] = { id: groupKey, nameAPI: groupName, amount: 0, qty: 0 };
-                  }
-                  grouped3A[groupKey].amount += nominal;
-                  grouped3A[groupKey].qty += qty;
-                }
-              });
-            });
-
-            // Konversi objek grouping kembali ke format fetchedData yang siap ditampikan
-            Object.values(grouped3A).forEach(g => {
-              fetchedData.push({
-                id: g.id,
-                nameAPI: g.nameAPI.includes('(Qty:') || g.qty === 0 ? g.nameAPI : `${g.nameAPI} (Qty: ${g.qty})`,
-                amount: g.amount
-              });
-            });
+            fetchedData = process3aData(responseJson.rekon_data);
           }
         }
       } 
@@ -1039,7 +1051,8 @@ export default function App() {
 
       {transitModal.isOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
-          <div className="bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 ${transitModal.step === 'mapping' ? 'max-w-3xl max-h-[85vh]' : 'max-w-md'}">
+          {/* MENGEMBALIKAN UI MODAL TRANSIT SEPERTI SEMULA: Lebar proporsional, border header bersih, scroll internal normal */}
+          <div className={`bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 ${transitModal.step === 'mapping' ? 'max-w-5xl max-h-[90vh]' : 'max-w-md'}`}>
             
             {/* TAHAP 1: KONFIRMASI TANGGAL */}
             {transitModal.step === 'confirm_date' && (
@@ -1106,27 +1119,19 @@ export default function App() {
               </div>
             )}
 
-            {/* TAHAP 5: MAPPING (Ruang Transit) */}
+            {/* TAHAP 5: MAPPING (Ruang Transit) - UI DIKEMBALIKAN KE VERSI ORIGINAL YANG BERSIH */}
             {transitModal.step === 'mapping' && (
               <>
-                <div className={`p-4 text-white flex justify-between items-center shrink-0 shadow-sm ${transitModal.source === 'iwm' ? 'bg-gradient-to-r from-purple-700 to-purple-900' : 'bg-gradient-to-r from-blue-700 to-blue-900'}`}>
+                <div className="p-4 sm:p-5 border-b border-gray-200 flex justify-between items-center bg-white shrink-0">
                   <div className="flex items-center gap-3">
-                    <Database size={24} />
-                    <div>
-                      <h3 className="font-bold text-lg leading-tight">Ruang Transit {transitModal.source === '3a' ? '3A' : 'IWM'}</h3>
-                      <p className={`text-xs ${transitModal.source === 'iwm' ? 'text-purple-200' : 'text-blue-200'}`}>Arahkan data STSU ke form laporan Anda</p>
-                    </div>
+                    <Database size={24} className={transitModal.source === 'iwm' ? 'text-purple-600' : 'text-blue-600'} />
+                    <h3 className="font-bold text-lg sm:text-xl text-gray-800">Ruang Transit {transitModal.source === '3a' ? '3A' : 'IWM'}</h3>
                   </div>
-                  <button onClick={closeTransitModal} className="text-white hover:bg-white/20 p-2 rounded-lg transition-colors">✕</button>
+                  <button onClick={closeTransitModal} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-2 rounded-lg transition-colors">✕</button>
                 </div>
                 
                 <div className="p-4 sm:p-5 bg-gray-50 flex-1 overflow-y-auto min-h-0">
                   <div className="space-y-3">
-                    <div className={`border p-3 rounded-xl text-sm font-medium flex gap-2 items-start shadow-sm bg-white ${transitModal.source === 'iwm' ? 'border-purple-200 text-purple-800' : 'border-blue-200 text-blue-800'}`}>
-                      <Sparkles size={18} className="shrink-0 mt-0.5" />
-                      <p>Bot berhasil mengekstrak data! <br/><br/><strong>Catatan:</strong> Jika tiket memiliki varian (seperti "Weekend" & "Holiday"), sistem telah <strong>menggabungkan otomatis</strong> menjadi kesatuan (Hari Besar) sesuai format cetak STSU Anda, lalu mengkalkulasi total nominalnya agar mudah di-Import.</p>
-                    </div>
-                    
                     {transitModal.data.map((item) => (
                       <div key={item.id} className="bg-white border border-gray-200 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex-1 min-w-0">
@@ -1361,7 +1366,7 @@ export default function App() {
                   </div>
                   <Database className="text-gray-400 shrink-0 hidden sm:block" size={24} />
                 </div>
-                <p className="text-xs text-gray-500 mt-2 font-medium">Isi dengan <strong className="text-gray-700">localhost</strong> jika Bot Python berjalan di PC yang sama dengan Web App ini. Atau isi dengan <strong className="text-gray-700">demo</strong> untuk mode simulasi data.</p>
+                <p className="text-xs text-gray-500 mt-2 font-medium">Isi dengan <strong className="text-gray-700">localhost</strong> jika Bot Python berjalan di PC yang sama dengan Web App ini. Atau isi dengan <strong className="text-gray-700">demo</strong> untuk mode simulasi data sesungguhnya.</p>
                 <div className="mt-3 text-[10px] text-gray-500 bg-white p-2 rounded border border-gray-200 inline-block font-mono">
                   Sistem otomatis menembak Port <strong className="text-blue-600">5000 (3A)</strong> dan Port <strong className="text-purple-600">5001 (IWM)</strong> berdasarkan port standar Bot.
                 </div>
