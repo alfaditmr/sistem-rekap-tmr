@@ -1821,7 +1821,7 @@ export default function App() {
                       <DraggableElement defaultTop="37mm" defaultLeft="110mm" className="font-bold">{reportDate}</DraggableElement>
                       <DraggableElement defaultTop="53mm" defaultLeft="75mm" className="font-bold text-center w-[80mm]">{safeString(selectedNcrGroup.name)}</DraggableElement>
                       <DraggableElement defaultTop="58mm" defaultLeft="20mm" className="w-[180mm] leading-relaxed">{safeString(ncrItemsString)}</DraggableElement>
-                      <DraggableElement defaultTop="69mm" defaultLeft="75mm">DARI : Seksi Pelayanan dan Informasi</DraggableElement>
+                      <DraggableElement defaultTop="69mm" defaultLeft="75mm">Seksi Pelayanan dan Informasi</DraggableElement>
                       <DraggableElement defaultTop="79mm" defaultLeft="75mm" className="font-bold text-lg">{formatRp(ncrTotal)}</DraggableElement>
                       <DraggableElement defaultTop="84mm" defaultLeft="20mm" className="w-[180mm] italic font-bold capitalize leading-relaxed"># {terbilang(ncrTotal)} rupiah #</DraggableElement>
                       <DraggableElement defaultTop="100mm" defaultLeft="130mm">{currentReport.signatureDate.split('-')[2]} {new Date(currentReport.signatureDate).toLocaleDateString('id-ID', {month: 'long'})} {currentReport.signatureDate.split('-')[0]}</DraggableElement>
