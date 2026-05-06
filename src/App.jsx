@@ -489,11 +489,15 @@ export default function App() {
     return "";
   };
 
-  // --- Fungsi AI Matcher Internal (Pencocokan Cerdas) ---
-  const smartMappingAI = (nameAPI, apiSource) => {
+  // --- Fungsi AI Matcher Internal (Pencocokan Cerdas dengan Kalender Fallback) ---
+  const smartMappingAI = (nameAPI, apiSource, targetDate) => {
     let guessCat = '';
     let guessItem = '';
     const lowerName = (nameAPI || '').toLowerCase();
+    
+    // CEK TANGGAL KALENDER (Untuk sinkronisasi dengan Bot Python)
+    const tgl = new Date(targetDate);
+    const isCalendarWeekend = tgl.getDay() === 0 || tgl.getDay() === 6;
 
     if (apiSource === 'iwm') {
       const cat = categories.find(c => c.name.toLowerCase().includes('old gate') || c.name.toLowerCase().includes('iwm'));
@@ -536,23 +540,38 @@ export default function App() {
           const isAnak = normApiName.includes('anak') || normApiName.includes('3-12');
           const isTSA = normApiName.includes('satwa') || normApiName.includes('tsa') || normApiName.includes('children');
           const isRombongan = normApiName.includes('rombongan') || normApiName.includes('romb');
-          const isPrimata = normApiName.includes('primata') || normApiName.includes('schmutzer');
           
           if (isDewasa && normSubName.includes('dewasa')) score += 10;
           if (isAnak && normSubName.includes('anak') && !isTSA && !normSubName.includes('satwa')) score += 10; 
           if (isTSA && (normSubName.includes('satwa') || normSubName.includes('children'))) score += 15;
           if (isRombongan && normSubName.includes('rombongan')) score += 15;
-          if (isPrimata && (normSubName.includes('primata') || normSubName.includes('schmutzer'))) score += 10;
-
-          const isWdApi = /\b(wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at)\b/i.test(normApiName);
-          const isWeApi = /\b(we|weekend|holiday|libur|besar|sabtu|minggu)\b/i.test(normApiName);
-          const isWdSub = /\b(wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at)\b/i.test(normSubName);
-          const isWeSub = /\b(we|weekend|holiday|libur|besar|sabtu|minggu)\b/i.test(normSubName);
-
-          if (isWdApi && isWdSub) score += 100;
-          if (isWeApi && isWeSub) score += 100;
-          if (isWdApi && isWeSub) score -= 100;
-          if (isWeApi && isWdSub) score -= 100;
+          
+          if (normApiName.includes('primata') || normApiName.includes('schmutzer')) {
+             if (normSubName.includes('primata') || normSubName.includes('schmutzer')) {
+                 score += 10;
+             }
+             
+             // LOGIKA CANGGIH: Sinkronisasi dengan is_holiday / is_weekday / is_weekend Python
+             const isExplicitHoliday = /we|weekend|holiday|libur|besar|sabtu|minggu/i.test(normApiName);
+             const isExplicitWeekday = /wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at/i.test(normApiName);
+             
+             let apiIsLibur = false;
+             if (isExplicitHoliday) {
+                 apiIsLibur = true;
+             } else if (isExplicitWeekday) {
+                 apiIsLibur = false;
+             } else {
+                 apiIsLibur = isCalendarWeekend; // THE FALLBACK
+             }
+             
+             const subIsLibur = /we|weekend|holiday|libur|besar|sabtu|minggu/i.test(normSubName);
+             const subIsWeekday = /wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at/i.test(normSubName);
+             
+             if (apiIsLibur && subIsLibur) score += 100;
+             else if (!apiIsLibur && subIsWeekday) score += 100;
+             else if (apiIsLibur && subIsWeekday) score -= 100;
+             else if (!apiIsLibur && subIsLibur) score -= 100;
+          }
 
           if (normApiName.includes('sepeda') && normSubName.includes('sepeda')) score += 30;
           if (normApiName.includes('motor') && normSubName.includes('motor')) score += 30;
@@ -574,28 +593,27 @@ export default function App() {
     return { mappedCat: guessCat, mappedItem: guessItem };
   };
 
-  const process3aData = (rekonData) => {
-    // KAMUS PENGAMAN UNTUK API YANG MENGIRIM KODE ITEM X ATAU NAMA KOSONG
+  const process3aData = (rekonData, targetDate) => {
     const stsuNames3A = {
       "1": "Tiket Dewasa",
       "2": "Tiket Anak (Usia 3-12 tahun)",
-      "3": "Romb. Dewasa 25%",
-      "4": "Romb. Anak 25%",
+      "3": "Rombongan Dewasa Reduksi 25%",
+      "4": "Rombongan Anak Reduksi 25%",
       "5": "Kuda Tunggang",
       "6": "Unta Tunggang",
       "7": "Gajah Tunggang",
-      "8": "Taman Satwa Anak (Dewasa)",
+      "8": "Taman Satwa Anak",
       "8_2": "Taman Satwa Anak (Anak Usia 3-12 tahun)",
       "9": "Pusat Primata Dewasa (Hari Biasa)",
       "10": "Pusat Primata Anak (Hari Biasa)",
       "11": "Schmutzer Rombongan Dewasa (Hari Biasa)",
       "12": "Schmutzer Rombongan Anak (Hari Biasa)",
-      "13": "Pusat Primata Dewasa (Hari Besar / Holiday)",
+      "13": "Pusat Primata Dewasa (Weekend/Holiday)",
       "13_2": "Pusat Primata Dewasa (Weekend)",
-      "14": "Pusat Primata Anak (Hari Besar / Holiday)",
+      "14": "Pusat Primata Anak (Weekend/Holiday)",
       "14_2": "Pusat Primata Anak (Weekend)",
-      "15": "Schmutzer Rombongan Anak (Hari Besar)",
-      "16": "Schmutzer Rombongan Dewasa (Hari Besar)",
+      "15": "Schmutzer Rombongan Anak (Weekend)",
+      "16": "Schmutzer Rombongan Dewasa (Weekend)",
       "17": "Kendaraan Gol I",
       "18": "Kendaraan Gol II",
       "19": "Kendaraan Gol III / Mobil",
@@ -605,6 +623,10 @@ export default function App() {
 
     const grouped3A = {};
     const fetchedData = [];
+    
+    // CEK TANGGAL KALENDER (Untuk sinkronisasi dengan Bot Python)
+    const tgl = new Date(targetDate);
+    const isCalendarWeekend = tgl.getDay() === 0 || tgl.getDay() === 6;
 
     Object.keys(rekonData).forEach(channel => {
       const channelData = rekonData[channel];
@@ -616,7 +638,6 @@ export default function App() {
         if (nominal > 0) {
           let apiRawName = itemData.nama || itemData.name || '';
           
-          // JIKA BOT 3A NGACO (Kirim nama kosong atau "Item 1", "Item 9" dsb), TIMPA DENGAN KAMUS!
           if (!apiRawName || /^item\s*\d+/i.test(apiRawName.trim())) {
             apiRawName = stsuNames3A[idx] || `Item ${idx}`;
           }
@@ -624,6 +645,7 @@ export default function App() {
           let groupKey = `${channel}_${idx}`;
           let groupName = `[${channel}] ${apiRawName}`;
           
+          const lowerName = apiRawName.toLowerCase();
           const idStr = String(idx);
 
           // PENGELOMPOKAN PAKSA (HARDCODE) BERDASARKAN ID 3A AGAR 100% AKURAT
@@ -648,7 +670,6 @@ export default function App() {
             groupName = `[${channel}] Pusat Primata Anak (Weekend/Hari Besar)`;
           } 
           else {
-            const lowerName = apiRawName.toLowerCase();
             const isPrimata = /schmutzer|primata/i.test(lowerName);
             const isRombongan = /romb/i.test(lowerName);
             const isTsa = /taman satwa|tsa/i.test(lowerName);
@@ -659,13 +680,24 @@ export default function App() {
             } else if (isPrimata && !isRombongan) {
               const isDewasa = /dewasa/i.test(lowerName);
               const isAnak = /anak/i.test(lowerName) || lowerName.includes('3-12');
-              const isWd = /\b(wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at)\b/i.test(lowerName);
-              const isWeHol = /\b(we|weekend|holiday|libur|besar|sabtu|minggu)\b/i.test(lowerName);
+              
+              // LOGIKA KUNCI: MENDUPLIKASI CARA PYTHON MEMBACA TIKET
+              const isExplicitHoliday = /we|weekend|holiday|libur|besar|sabtu|minggu/i.test(lowerName);
+              const isExplicitWeekday = /wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at/i.test(lowerName);
+              
+              let libur = false;
+              if (isExplicitHoliday) {
+                  libur = true;
+              } else if (isExplicitWeekday) {
+                  libur = false;
+              } else {
+                  libur = isCalendarWeekend; // FALLBACK KALENDER
+              }
 
-              if (isWeHol) {
+              if (libur) {
                 groupKey = `${channel}_prm_we_${isDewasa ? 'dws' : 'ank'}`;
                 groupName = `[${channel}] Pusat Primata ${isDewasa ? 'Dewasa' : 'Anak'} (Weekend/Hari Besar)`;
-              } else if (isWd) {
+              } else {
                 groupKey = `${channel}_prm_wd_${isDewasa ? 'dws' : 'ank'}`;
                 groupName = `[${channel}] Pusat Primata ${isDewasa ? 'Dewasa' : 'Anak'} (Hari Biasa)`;
               }
@@ -707,24 +739,25 @@ export default function App() {
           await new Promise(r => setTimeout(r, 1200)); 
           const mockRawData = {
             "MERCHANT_PAGE": {
-              "1": {"nama": "Item 1", "qty": 1226, "nominal": 4904000},
-              "2": {"nama": "Item 2", "qty": 244, "nominal": 732000},
-              "13": {"nama": "Item 13", "qty": 121, "nominal": 907500},
-              "9": {"nama": "Item 9", "qty": 141, "nominal": 846000},
-              "13_2": {"nama": "Item 13_2", "qty": 55, "nominal": 412500},
-              "14": {"nama": "Item 14", "qty": 23, "nominal": 172500},
-              "10": {"nama": "Item 10", "qty": 36, "nominal": 216000},
-              "14_2": {"nama": "Item 14_2", "qty": 15, "nominal": 112500},
-              "8": {"nama": "Item 8", "qty": 229, "nominal": 572500},
-              "8_2": {"nama": "Item 8_2", "qty": 83, "nominal": 207500},
-              "17": {"nama": "Item 17", "qty": 4, "nominal": 60000},
-              "18": {"nama": "Item 18", "qty": 1, "nominal": 12500},
-              "19": {"nama": "Item 19", "qty": 118, "nominal": 708000},
-              "20": {"nama": "Item 20", "qty": 201, "nominal": 603000},
-              "21": {"nama": "Item 21", "qty": 3, "nominal": 3000}
+              "1": {"nama": "Tiket Dewasa", "qty": 1226, "nominal": 4904000},
+              "2": {"nama": "Tiket Anak (Usia 3-12 tahun)", "qty": 244, "nominal": 732000},
+              "13": {"nama": "Pusat Primata Schmutzer (Dewasa) - Holiday", "qty": 121, "nominal": 907500},
+              "9": {"nama": "Pusat Primata Schmutzer (Dewasa) - Weekday", "qty": 141, "nominal": 846000},
+              "13_2": {"nama": "Pusat Primata Schmutzer (Dewasa) - Weekend", "qty": 55, "nominal": 412500},
+              "14": {"nama": "Pusat Primata Schmutzer (Anak Usia 3-12 tahun) - Holiday", "qty": 23, "nominal": 172500},
+              "10": {"nama": "Pusat Primata Schmutzer (Anak Usia 3-12 tahun) - Weekday", "qty": 36, "nominal": 216000},
+              "14_2": {"nama": "Pusat Primata Schmutzer (Anak Usia 3-12 tahun) - Weekend", "qty": 15, "nominal": 112500},
+              "8": {"nama": "Taman Satwa Anak", "qty": 229, "nominal": 572500},
+              "8_2": {"nama": "Taman Satwa Anak", "qty": 83, "nominal": 207500},
+              "17": {"nama": "Kendaraan Gol I", "qty": 4, "nominal": 60000},
+              "18": {"nama": "Kendaraan Gol II", "qty": 1, "nominal": 12500},
+              "19": {"nama": "Kendaraan Gol III", "qty": 118, "nominal": 708000},
+              "20": {"nama": "Sepeda Motor", "qty": 201, "nominal": 603000},
+              "21": {"nama": "Sepeda", "qty": 3, "nominal": 3000}
             }
           };
-          fetchedData = process3aData(mockRawData);
+          // PENTING: Meneruskan targetDate untuk deteksi kalender
+          fetchedData = process3aData(mockRawData, targetDate);
 
         } else {
           const baseUrl = ip.startsWith('http') ? ip : `http://${ip}:5000`;
@@ -735,7 +768,7 @@ export default function App() {
           if (responseJson.status !== 'success') throw new Error(responseJson.message);
           
           if (responseJson.rekon_data) {
-            fetchedData = process3aData(responseJson.rekon_data);
+            fetchedData = process3aData(responseJson.rekon_data, targetDate);
           }
         }
       } 
@@ -861,8 +894,9 @@ export default function App() {
         }
       }
 
+      // MAP DATA dengan targetDate agar AI Smart Mapping tau kapan harinya
       const mappedData = fetchedData.map(item => {
-        const { mappedCat, mappedItem } = smartMappingAI(item.nameAPI, source);
+        const { mappedCat, mappedItem } = smartMappingAI(item.nameAPI, source, targetDate);
         return { ...item, mappedCat, mappedItem };
       });
 
@@ -1093,7 +1127,6 @@ export default function App() {
 
       {transitModal.isOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
-          {/* MENGEMBALIKAN UI MODAL TRANSIT SEPERTI SEMULA: Lebar proporsional, border header bersih, scroll internal normal */}
           <div className={`bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 ${transitModal.step === 'mapping' ? 'max-w-5xl max-h-[90vh]' : 'max-w-md'}`}>
             
             {/* TAHAP 1: KONFIRMASI TANGGAL */}
@@ -1161,7 +1194,7 @@ export default function App() {
               </div>
             )}
 
-            {/* TAHAP 5: MAPPING (Ruang Transit) - UI DIKEMBALIKAN KE VERSI ORIGINAL YANG BERSIH */}
+            {/* TAHAP 5: MAPPING (Ruang Transit) */}
             {transitModal.step === 'mapping' && (
               <>
                 <div className="p-4 sm:p-5 border-b border-gray-200 flex justify-between items-center bg-white shrink-0">
