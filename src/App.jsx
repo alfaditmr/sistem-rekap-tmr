@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save, Database, CloudDownload, ArrowRight } from 'lucide-react';
+import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save, Database, CloudDownload, Table, FileSpreadsheet } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
@@ -183,6 +183,9 @@ export default function App() {
   const [dbReady, setDbReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState('offline'); 
   const [isGeneratingUraian, setIsGeneratingUraian] = useState(false);
+
+  // --- REPORT EXCEL STATE ---
+  const [excelReportMonth, setExcelReportMonth] = useState(() => getLocalYMD().substring(0, 7)); // Format YYYY-MM
 
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -1074,6 +1077,230 @@ export default function App() {
     } else { showConfirm("Modul pembuat PDF sedang dimuat oleh sistem. Mohon tunggu 3 detik lalu coba tekan lagi.", null); }
   };
 
+  // ==========================================
+  // 🔴 FUNGSI: GENERATE LAPORAN EXCEL (.xls) 
+  // DENGAN STANDARD BARIS EXCEL RAGUNAN & HOVER DETAIL
+  // MENGGUNAKAN KOLOM MINGGU (SATU, DUA, DST) BERDASARKAN HARI MINGGU KALENDER
+  // ==========================================
+
+  // Konfigurasi urutan baku baris Excel
+  const excelStandardRows = [
+    { id: 'dewasa', name: 'Dewasa', match: (str) => /dewasa/i.test(str) && !/rombongan/i.test(str) && !/primata|schmutzer/i.test(str) },
+    { id: 'anak', name: 'Anak', match: (str) => /anak/i.test(str) && !/rombongan/i.test(str) && !/primata|schmutzer/i.test(str) && !/satwa/i.test(str) },
+    { id: 'romb_dewasa', name: 'Rombongan Dewasa Reduksi 25 %', match: (str) => /rombongan/i.test(str) && /dewasa/i.test(str) && !/primata|schmutzer/i.test(str) },
+    { id: 'romb_anak', name: 'Rombongan Anak Reduksi 25 %', match: (str) => /rombongan/i.test(str) && /anak/i.test(str) && !/primata|schmutzer/i.test(str) },
+    { id: 'kuda', name: 'Kuda Tunggang', match: (str) => /kuda/i.test(str) },
+    { id: 'unta', name: 'Unta Tunggang', match: (str) => /unta/i.test(str) },
+    { id: 'gajah', name: 'Gajah Tunggang', match: (str) => /gajah/i.test(str) },
+    { id: 'tsa', name: 'Taman Satwa Anak', match: (str) => /taman satwa|tsa/i.test(str) },
+    { id: 'prm_dws_wd', name: 'Pusat Primata Dewasa (Hari Biasa)', match: (str) => /primata|schmutzer/i.test(str) && /dewasa/i.test(str) && /biasa/i.test(str) && !/rombongan/i.test(str) },
+    { id: 'prm_ank_wd', name: 'Pusat Primata Anak (Hari Biasa)', match: (str) => /primata|schmutzer/i.test(str) && /anak/i.test(str) && /biasa/i.test(str) && !/rombongan/i.test(str) },
+    { id: 'prm_romb_dws_wd', name: 'Schmutzer Rombongan Dewasa (Hari Biasa)', match: (str) => /primata|schmutzer/i.test(str) && /rombongan/i.test(str) && /dewasa/i.test(str) && /biasa/i.test(str) },
+    { id: 'prm_romb_ank_wd', name: 'Schmutzer Rombongan Anak (Hari Biasa)', match: (str) => /primata|schmutzer/i.test(str) && /rombongan/i.test(str) && /anak/i.test(str) && /biasa/i.test(str) },
+    { id: 'prm_dws_we', name: 'Pusat Primata Dewasa (Weekend / Holiday)', match: (str) => /primata|schmutzer/i.test(str) && /dewasa/i.test(str) && /weekend|besar|libur/i.test(str) && !/rombongan/i.test(str) },
+    { id: 'prm_ank_we', name: 'Pusat Primata Anak (Weekend / Holiday)', match: (str) => /primata|schmutzer/i.test(str) && /anak/i.test(str) && /weekend|besar|libur/i.test(str) && !/rombongan/i.test(str) },
+    { id: 'prm_romb_ank_we', name: 'Schmutzer Rombongan Anak (Weekend)', match: (str) => /primata|schmutzer/i.test(str) && /rombongan/i.test(str) && /anak/i.test(str) && /weekend|besar|libur/i.test(str) },
+    { id: 'prm_romb_dws_we', name: 'Schmutzer Rombongan Dewasa (Weekend)', match: (str) => /primata|schmutzer/i.test(str) && /rombongan/i.test(str) && /dewasa/i.test(str) && /weekend|besar|libur/i.test(str) },
+    { id: 'gol_1', name: 'Kendaraan Golongan I', match: (str) => /gol 1|gol i\b/i.test(str) },
+    { id: 'gol_2', name: 'Kendaraan Golongan II', match: (str) => /gol 2|gol ii\b/i.test(str) && !/mobil/i.test(str) },
+    { id: 'gol_3', name: 'Kendaraan Golongan III', match: (str) => /gol 3|gol iii|mobil/i.test(str) },
+    { id: 'motor', name: 'Sepeda Motor', match: (str) => /motor/i.test(str) },
+    { id: 'sepeda', name: 'Sepeda', match: (str) => /sepeda/i.test(str) && !/motor/i.test(str) },
+  ];
+
+  const generateExcelData = () => {
+    const [yearStr, monthStr] = excelReportMonth.split('-');
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    // 1. Buat Struktur Kolom Dinamis (Sisipkan kolom SATU, DUA setelah hari Minggu)
+    const weekNames = ['SATU', 'DUA', 'TIGA', 'EMPAT', 'LIMA', 'ENAM'];
+    const shortDays = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+    let weekIndex = 0;
+    const columnStructure = [];
+    
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateObj = new Date(year, month - 1, d);
+        columnStructure.push({ type: 'date', day: d, dayName: shortDays[dateObj.getDay()] });
+        if (dateObj.getDay() === 0) { // Jika hari Minggu
+            columnStructure.push({ type: 'week', name: weekNames[weekIndex] });
+            weekIndex++;
+        }
+    }
+
+    // 2. Setup Struktur Data Awal (Map)
+    const reportRowsMap = new Map();
+    
+    excelStandardRows.forEach(sr => {
+      reportRowsMap.set(sr.id, {
+        name: sr.name,
+        dailyTotals: Array.from({length: daysInMonth}, () => ({ total: 0, details: {} }))
+      });
+    });
+
+    let grandTotalPerDay = Array.from({length: daysInMonth}, () => ({ total: 0, details: {} }));
+    
+    // 3. Kumpulkan data dan kelompokkan
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const dayData = allReports[dateStr];
+      
+      if (dayData && dayData.utama && dayData.utama.activeItems && dayData.utama.formData) {
+        dayData.utama.activeItems.forEach(activeItem => {
+          const key = getActiveItemKey(activeItem.catId, activeItem.itemId, activeItem.isSusulan, activeItem.validDate, null, null);
+          const val = Number(dayData.utama.formData[key]) || 0;
+          
+          if (val > 0) {
+            const cat = categories.find(c => c.id === activeItem.catId);
+            const catName = cat ? cat.name : 'Sumber Lain';
+            
+            let itemName = '';
+            if (activeItem.itemId === 'direct') itemName = catName;
+            else {
+              const itemInfo = cat?.items?.find(i => i.id === activeItem.itemId);
+              itemName = itemInfo ? itemInfo.name : 'Item Tidak Dikenal';
+            }
+
+            let matchedRowId = null;
+            for (const sr of excelStandardRows) {
+              if (sr.match(itemName)) {
+                matchedRowId = sr.id;
+                break;
+              }
+            }
+
+            if (!matchedRowId) {
+              matchedRowId = `dyn_${itemName}`;
+              if (!reportRowsMap.has(matchedRowId)) {
+                reportRowsMap.set(matchedRowId, {
+                  name: itemName,
+                  dailyTotals: Array.from({length: daysInMonth}, () => ({ total: 0, details: {} }))
+                });
+              }
+            }
+
+            const dayIndex = day - 1;
+            const rowObj = reportRowsMap.get(matchedRowId);
+            
+            rowObj.dailyTotals[dayIndex].total += val;
+            rowObj.dailyTotals[dayIndex].details[catName] = (rowObj.dailyTotals[dayIndex].details[catName] || 0) + val;
+
+            grandTotalPerDay[dayIndex].total += val;
+            grandTotalPerDay[dayIndex].details[catName] = (grandTotalPerDay[dayIndex].details[catName] || 0) + val;
+          }
+        });
+      }
+    }
+
+    // 4. Konversi Map menjadi Array Final
+    const finalRows = Array.from(reportRowsMap.values()).filter(r => 
+      r.dailyTotals.some(d => d.total > 0) || excelStandardRows.find(sr => sr.name === r.name)
+    );
+
+    return { columnStructure, reportRows: finalRows, grandTotalPerDay };
+  };
+
+  const formatDetailsTooltip = (total, detailsObj) => {
+    if (total === 0) return "Tidak ada transaksi";
+    let str = `Total Digabungkan: Rp ${formatRp(total)}\n\nRincian Sumber:\n`;
+    Object.entries(detailsObj).forEach(([source, amount]) => {
+      str += `▸ ${source}: Rp ${formatRp(amount)}\n`;
+    });
+    return str.trim();
+  };
+
+  const handleDownloadExcel = () => {
+    const { columnStructure, reportRows, grandTotalPerDay } = generateExcelData();
+
+    // MEMBANGUN HTML STRING (.xls) UNTUK EXCEL
+    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+    <meta charset="utf-8">
+    <style>
+      table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 11px; }
+      th, td { border: 1px solid #ddd; padding: 4px; vertical-align: middle; }
+      .num { text-align: right; }
+      .header { font-weight: bold; background-color: #f3f4f6; }
+      .week-col { font-weight: bold; background-color: #fef08a; text-align: right; }
+      .grand-total { font-weight: bold; background-color: #bfdbfe; }
+      .gt-week { font-weight: bold; background-color: #93c5fd; text-align: right; }
+      .gt-month { font-weight: bold; background-color: #bbf7d0; text-align: right; }
+    </style>
+    </head>
+    <body>
+    <table>`;
+    
+    // Baris 1: Header Atas
+    html += `<tr><th class="header" style="text-align:left;">UP TAMAN MARGASATWA RAGUNAN</th>`;
+    columnStructure.forEach(col => {
+        if (col.type === 'date') {
+            html += `<th class="header" style="text-align:center;">${col.day}<br><span style="font-size:9px;font-weight:normal;">${col.dayName}</span></th>`;
+        } else {
+            html += `<th class="header" style="text-align:center;">${col.name}</th>`;
+        }
+    });
+    html += `<th class="header" style="text-align:right;">jumlah</th></tr>`;
+
+    // Baris 2: Sub Header
+    html += `<tr><th class="header" style="text-align:left; color:#6b7280;">PENDAPATAN RETRIBUSI DAERAH</th>`;
+    columnStructure.forEach(() => { html += `<th class="header"></th>`; });
+    html += `<th class="header"></th></tr>`;
+
+    // Baris Data
+    reportRows.forEach(row => {
+        let weekSum = 0;
+        let monthSum = 0;
+        html += `<tr><td>${safeString(row.name)}</td>`;
+        
+        columnStructure.forEach(col => {
+            if (col.type === 'date') {
+                let val = row.dailyTotals[col.day - 1].total;
+                weekSum += val;
+                monthSum += val;
+                html += `<td class="num">${val > 0 ? val.toFixed(1) : "0.0"}</td>`;
+            } else {
+                html += `<td class="week-col">${weekSum > 0 ? weekSum.toFixed(1) : "0.0"}</td>`;
+                weekSum = 0; // reset minggu
+            }
+        });
+        html += `<td class="gt-month">${monthSum > 0 ? monthSum.toFixed(1) : "0.0"}</td></tr>`;
+    });
+
+    // Baris Grand Total
+    let gtWeekSum = 0;
+    let gtMonthSum = 0;
+    html += `<tr><td class="grand-total">JUMLAH Rp</td>`;
+    columnStructure.forEach(col => {
+        if (col.type === 'date') {
+            let val = grandTotalPerDay[col.day - 1].total;
+            gtWeekSum += val;
+            gtMonthSum += val;
+            html += `<td class="num grand-total">${val > 0 ? val.toFixed(1) : "0.0"}</td>`;
+        } else {
+            html += `<td class="gt-week">${gtWeekSum > 0 ? gtWeekSum.toFixed(1) : "0.0"}</td>`;
+            gtWeekSum = 0; // reset minggu total
+        }
+    });
+    html += `<td class="gt-month">${gtMonthSum > 0 ? gtMonthSum.toFixed(1) : "0.0"}</td></tr>`;
+
+    html += `</table></body></html>`;
+
+    // TRIGGRER DOWNLOAD EXCEL (.xls)
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const [y, m] = excelReportMonth.split('-');
+    const monthNames = ["", "JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"];
+    
+    link.setAttribute("href", url);
+    link.setAttribute("download", `INPUT ${y}.xls - ${monthNames[parseInt(m, 10)]} ${y.substring(2)}.xls`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+
   const formatTanggalCetak = (dateStr) => { if(!dateStr) return ""; return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).replace(',', ', tanggal'); };
   const formatTanggalTtd = (dateStr) => { if(!dateStr) return ""; return new Date(dateStr).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: '2-digit' }); };
   const formatTanggalPopUp = (dateStr) => { if(!dateStr) return ""; return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }); };
@@ -1125,6 +1352,8 @@ export default function App() {
             @page { margin: 15mm; }
           `}
         }
+        /* Sticky Column for Excel Report */
+        .sticky-col { position: sticky; left: 0; background-color: white; z-index: 10; border-right: 2px solid #e5e7eb; }
       `}</style>
 
       {saveToast.show && (
@@ -1367,9 +1596,9 @@ export default function App() {
       )}
 
       <nav className="bg-green-700 text-white shadow-md sticky top-0 z-50 shrink-0 no-print">
-        <div className="max-w-5xl mx-auto px-4 flex justify-between items-center h-16">
+        <div className="max-w-6xl mx-auto px-4 flex justify-between items-center h-16">
           <div className="font-bold text-lg flex items-center gap-2 mr-4 shrink-0">
-            <Calculator size={24} /> <span className="hidden sm:inline">Sistem Rekap STSU</span>
+            <Calculator size={24} /> <span className="hidden lg:inline">Sistem Rekap STSU</span>
             <div className="ml-0 sm:ml-4 flex items-center gap-1.5 text-[10px] sm:text-xs font-medium px-2.5 py-1 bg-green-800 rounded-lg shadow-inner">
               {syncStatus === 'syncing' ? <RefreshCw className="animate-spin text-white" size={14}/> : syncStatus === 'synced' ? <Cloud size={14} className="text-blue-300"/> : <CloudOff size={14} className="text-red-300"/>}
               <span className="hidden md:inline">{syncStatus === 'syncing' ? 'Menyimpan...' : syncStatus === 'synced' ? 'Tersimpan' : 'Mode Offline'}</span>
@@ -1378,12 +1607,163 @@ export default function App() {
           <div className="flex space-x-1 sm:space-x-2 shrink-0 overflow-x-auto no-scrollbar items-center">
             <button onClick={() => { setActiveTab('dashboard'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'dashboard' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Dashboard</span></button>
             <button onClick={() => { setActiveTab('input'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'input' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Edit size={18} /> <span className="hidden md:inline">Input</span></button>
+            <button onClick={() => { setActiveTab('laporan'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'laporan' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Table size={18} /> <span className="hidden md:inline">Laporan</span></button>
             <button onClick={() => { setActiveTab('settings'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Settings size={18} /> <span className="hidden md:inline">Master</span></button>
             <button onClick={() => { setActiveTab('print'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'print' ? 'bg-green-800' : 'hover:bg-green-600'}`}><FileText size={18} /> <span className="hidden md:inline">Cetak</span></button>
             <div className="pl-2 border-l border-green-600 ml-1"><button onClick={handleLogout} className="px-2 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 hover:bg-red-600 transition-colors" title="Keluar Akun"><LogOut size={18} /></button></div>
           </div>
         </div>
       </nav>
+
+      {/* ============================================================== */}
+      {/* 🔴 TAB: LAPORAN EXCEL (NEW) */}
+      {/* ============================================================== */}
+      {activeTab === 'laporan' && (
+        <div className="max-w-6xl mx-auto px-4 py-6 no-print">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-6 text-center text-white flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="text-left">
+                <h2 className="text-2xl font-black mb-1 drop-shadow-sm flex items-center gap-2">
+                  <FileSpreadsheet size={28} /> Laporan Rekapitulasi (Excel)
+                </h2>
+                <p className="text-blue-100 text-sm opacity-90">Sistem otomatis mengelompokkan data ke format baku Excel.</p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 items-center">
+                <div className="bg-white/20 p-1.5 rounded-lg flex items-center gap-2">
+                  <Calendar size={18} className="ml-2 text-white" />
+                  <input 
+                    type="month" 
+                    value={excelReportMonth} 
+                    onChange={(e) => setExcelReportMonth(e.target.value)} 
+                    className="bg-transparent border-none text-white font-bold outline-none cursor-pointer focus:ring-0 text-sm"
+                  />
+                </div>
+                <button 
+                  onClick={handleDownloadExcel}
+                  className="bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold shadow-md transition-colors flex items-center gap-2"
+                >
+                  <Download size={18} /> Download Excel (.xls)
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-0 overflow-x-auto">
+              {(() => {
+                const { columnStructure, reportRows, grandTotalPerDay } = generateExcelData();
+                
+                return (
+                  <div className="w-full relative">
+                    <table className="w-full border-collapse text-[11px] whitespace-nowrap">
+                      <thead>
+                        <tr>
+                          <th className="sticky-col px-4 py-2 border border-gray-300 bg-gray-200 text-left min-w-[200px] z-20 top-0 font-bold text-gray-700">UP TAMAN MARGASATWA RAGUNAN</th>
+                          {columnStructure.map((col, i) => (
+                              col.type === 'date' 
+                              ? <th key={`h-${col.day}`} className="min-w-[60px] px-2 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600 text-xs">
+                                  <div>{col.day}</div>
+                                  <div className="text-[9px] font-normal mt-0.5 text-gray-500">{col.dayName}</div>
+                                </th>
+                              : <th key={`h-${col.name}`} className="min-w-[80px] px-2 py-2 border border-gray-300 bg-yellow-100 text-center font-bold text-yellow-800 text-xs">{col.name}</th>
+                          ))}
+                          <th className="px-3 py-2 border border-gray-300 bg-green-100 text-right font-black text-green-800 text-xs min-w-[100px]">jumlah</th>
+                        </tr>
+                        <tr>
+                          <th className="sticky-col px-4 py-2 border border-gray-300 bg-gray-50 text-left font-bold text-gray-500 z-20">PENDAPATAN RETRIBUSI DAERAH</th>
+                          <th colSpan={columnStructure.length + 1} className="border border-gray-300 bg-gray-50"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportRows.map((row, idx) => {
+                          let weekSum = 0;
+                          let monthSum = 0;
+                          
+                          return (
+                            <tr key={`row-${idx}`} className="hover:bg-blue-50/50">
+                              <td className="sticky-col px-4 py-1.5 border border-gray-300 text-left font-medium text-gray-800" title={row.name}>{row.name}</td>
+                              {columnStructure.map((col, colIdx) => {
+                                if (col.type === 'date') {
+                                    let val = row.dailyTotals[col.day - 1].total;
+                                    let details = row.dailyTotals[col.day - 1].details;
+                                    weekSum += val;
+                                    monthSum += val;
+                                    return (
+                                        <td 
+                                          key={`c-${idx}-${col.day}`} 
+                                          className={`px-2 py-1.5 border border-gray-300 text-right ${val > 0 ? 'text-gray-800 font-medium cursor-help hover:bg-blue-100 transition-colors' : 'text-gray-400'}`}
+                                          title={formatDetailsTooltip(val, details)}
+                                        >
+                                          {val > 0 ? formatRp(val) : "0.0"}
+                                        </td>
+                                    );
+                                } else {
+                                    let currentWeekSum = weekSum;
+                                    weekSum = 0;
+                                    return (
+                                        <td key={`cw-${idx}-${col.name}`} className="px-2 py-1.5 border border-gray-300 text-right font-bold bg-yellow-50 text-yellow-800">
+                                            {currentWeekSum > 0 ? formatRp(currentWeekSum) : "0.0"}
+                                        </td>
+                                    );
+                                }
+                              })}
+                              <td className="px-3 py-1.5 border border-gray-300 text-right font-black text-green-700 bg-green-50">{monthSum > 0 ? formatRp(monthSum) : "0.0"}</td>
+                            </tr>
+                          );
+                        })}
+                        
+                        {/* BARIS GRAND TOTAL */}
+                        <tr className="bg-blue-100">
+                          <td className="sticky-col px-4 py-3 border border-blue-300 text-left font-black text-blue-900 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)]">JUMLAH Rp</td>
+                          {(() => {
+                            let weekSum = 0;
+                            let monthSum = 0;
+                            return columnStructure.map((col) => {
+                                if (col.type === 'date') {
+                                    let val = grandTotalPerDay[col.day - 1].total;
+                                    let details = grandTotalPerDay[col.day - 1].details;
+                                    weekSum += val;
+                                    monthSum += val;
+                                    return (
+                                        <td 
+                                          key={`gt-${col.day}`} 
+                                          className="px-2 py-3 border border-blue-300 text-right font-bold text-blue-900 cursor-help hover:bg-blue-200 transition-colors"
+                                          title={formatDetailsTooltip(val, details)}
+                                        >
+                                          {val > 0 ? formatRp(val) : "0.0"}
+                                        </td>
+                                    );
+                                } else {
+                                    let currentWeekSum = weekSum;
+                                    weekSum = 0;
+                                    return (
+                                        <td key={`gtw-${col.name}`} className="px-2 py-3 border border-blue-300 text-right font-black bg-blue-200 text-blue-900">
+                                            {currentWeekSum > 0 ? formatRp(currentWeekSum) : "0.0"}
+                                        </td>
+                                    );
+                                }
+                            });
+                          })()}
+                          <td className="px-3 py-3 border border-blue-300 text-right font-black bg-green-200 text-green-900 text-xs">
+                            {(() => {
+                                let finalTotal = grandTotalPerDay.reduce((acc, curr) => acc + curr.total, 0);
+                                return finalTotal > 0 ? formatRp(finalTotal) : "0.0";
+                            })()}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
+            
+            <div className="p-4 bg-blue-50 border-t border-blue-200 text-xs text-blue-800 font-medium flex items-center justify-center gap-2">
+              <Sparkles size={16} /> Kolom (SATU, DUA) otomatis ditambahkan mengikuti Hari Minggu pada kalender bulan tersebut.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DASHBOARD & SETTINGS & INPUT & PRINT REMAINS EXACTLY THE SAME... */}
 
       {activeTab === 'dashboard' && (
         <div className="max-w-4xl mx-auto px-4 py-6 no-print">
