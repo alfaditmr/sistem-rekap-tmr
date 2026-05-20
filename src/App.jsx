@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save, Database, CloudDownload, Table, FileSpreadsheet, User } from 'lucide-react';
+import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save, Database, CloudDownload, Table, FileSpreadsheet } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
@@ -184,12 +184,8 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState('offline'); 
   const [isGeneratingUraian, setIsGeneratingUraian] = useState(false);
 
-  // --- REPORT EXCEL & REKON STATE ---
+  // --- REPORT EXCEL STATE ---
   const [excelReportMonth, setExcelReportMonth] = useState(() => getLocalYMD().substring(0, 7)); // Format YYYY-MM
-  const [selectedReportType, setSelectedReportType] = useState('rekapitulasi');
-  const [rekonOfficerName, setRekonOfficerName] = useState(''); // Default Fallback
-  
-  const reportCategories = ['E-Ticketing Old Gate', 'Ticket Online', 'Ticket Vending Machine (TVM)', 'E-Ticketing New Gate'];
 
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -205,19 +201,9 @@ export default function App() {
     const unsub = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setAuthReady(true);
-      // Auto-fill officer name with logged in user email/name gracefully
-      if (currentUser && !rekonOfficerName) {
-         let name = currentUser.displayName;
-         if (!name && currentUser.email) {
-             name = currentUser.email.split('@')[0];
-             name = name.charAt(0).toUpperCase() + name.slice(1);
-         }
-         setRekonOfficerName(name || 'Petugas Rekon');
-      }
     });
     return () => unsub();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth]);
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -372,51 +358,6 @@ export default function App() {
       const dayData = prev[reportDate] || {}; const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
       const updatedTypeData = typeof updater === 'function' ? updater(typeData) : { ...typeData, ...updater };
       return { ...prev, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
-    });
-  };
-
-  const handleUpdateRekonRow = (dateStr, isSusulan, susulanKeys, field, value) => {
-    setAllReports(prev => {
-        const dayData = prev[dateStr] || {};
-        const typeData = dayData['utama'] || { sequence: '', signatureDate: dateStr, activeItems: [], formData: {} };
-        
-        if (isSusulan && Array.isArray(susulanKeys)) {
-           const susulanMeta = typeData.susulanMeta || {};
-           const newSusulanMeta = { ...susulanMeta };
-           
-           // Apply the value to all merged keys in this susulan row
-           [].concat(susulanKeys).forEach(k => {
-               if(k) {
-                   newSusulanMeta[k] = {
-                       ...(newSusulanMeta[k] || {}),
-                       [field]: value
-                   };
-               }
-           });
-
-           return {
-               ...prev,
-               [dateStr]: {
-                   ...dayData,
-                   ['utama']: {
-                       ...typeData,
-                       susulanMeta: newSusulanMeta
-                   }
-               }
-           };
-        } else if (!isSusulan) {
-            return {
-                ...prev,
-                [dateStr]: {
-                    ...dayData,
-                    ['utama']: {
-                        ...typeData,
-                        [field]: value
-                    }
-                }
-            };
-        }
-        return prev;
     });
   };
 
@@ -1139,10 +1080,10 @@ export default function App() {
   // ==========================================
   // 🔴 FUNGSI: GENERATE LAPORAN EXCEL (.xls) 
   // DENGAN STANDARD BARIS EXCEL RAGUNAN & HOVER DETAIL
-  // MENGAMBIL DATA LANGSUNG DARI FORMDATA DATABASE
+  // MENGGUNAKAN KOLOM MINGGU (SATU, DUA, DST) BERDASARKAN HARI MINGGU KALENDER
   // ==========================================
 
-  // Konfigurasi urutan baku baris Excel (Rekapitulasi)
+  // Konfigurasi urutan baku baris Excel
   const excelStandardRows = [
     { id: 'dewasa', name: 'Dewasa', match: (str) => /dewasa/i.test(str) && !/rombongan/i.test(str) && !/primata|schmutzer/i.test(str) },
     { id: 'anak', name: 'Anak', match: (str) => /anak/i.test(str) && !/rombongan/i.test(str) && !/primata|schmutzer/i.test(str) && !/satwa/i.test(str) },
@@ -1173,21 +1114,24 @@ export default function App() {
     const month = parseInt(monthStr, 10);
     const daysInMonth = new Date(year, month, 0).getDate();
 
+    // 1. Buat Struktur Kolom Dinamis (Sisipkan kolom SATU, DUA setelah hari Minggu)
     const weekNames = ['SATU', 'DUA', 'TIGA', 'EMPAT', 'LIMA', 'ENAM'];
-    const shortDays = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sat'];
+    const shortDays = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
     let weekIndex = 0;
     const columnStructure = [];
     
     for (let d = 1; d <= daysInMonth; d++) {
         const dateObj = new Date(year, month - 1, d);
         columnStructure.push({ type: 'date', day: d, dayName: shortDays[dateObj.getDay()] });
-        if (dateObj.getDay() === 0) {
+        if (dateObj.getDay() === 0) { // Jika hari Minggu
             columnStructure.push({ type: 'week', name: weekNames[weekIndex] });
             weekIndex++;
         }
     }
 
+    // 2. Setup Struktur Data Awal (Map)
     const reportRowsMap = new Map();
+    
     excelStandardRows.forEach(sr => {
       reportRowsMap.set(sr.id, {
         name: sr.name,
@@ -1197,70 +1141,59 @@ export default function App() {
 
     let grandTotalPerDay = Array.from({length: daysInMonth}, () => ({ total: 0, details: {} }));
     
+    // 3. Kumpulkan data dan kelompokkan
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const dayAllTypes = allReports[dateStr];
+      const dayData = allReports[dateStr];
       
-      if (dayAllTypes) {
-          Object.keys(dayAllTypes).forEach(typeKey => {
-              const typeData = dayAllTypes[typeKey];
-              if (typeData && typeData.formData) {
-                  Object.keys(typeData.formData).forEach(key => {
-                      const val = Number(typeData.formData[key]) || 0;
-                      if (val > 0) {
-                          const parts = key.split('_');
-                          if (parts.length >= 3 && parts[0] === 'cat') {
-                              const catId = `${parts[0]}_${parts[1]}`;
-                              let itemId = '';
-                              if (parts[2] === 'item' && parts[3]) itemId = `${parts[2]}_${parts[3]}`;
-                              else if (parts[2] === 'direct') itemId = 'direct';
+      if (dayData && dayData.utama && dayData.utama.activeItems && dayData.utama.formData) {
+        dayData.utama.activeItems.forEach(activeItem => {
+          const key = getActiveItemKey(activeItem.catId, activeItem.itemId, activeItem.isSusulan, activeItem.validDate, null, null);
+          const val = Number(dayData.utama.formData[key]) || 0;
+          
+          if (val > 0) {
+            const cat = categories.find(c => c.id === activeItem.catId);
+            const catName = cat ? cat.name : 'Sumber Lain';
+            
+            let itemName = '';
+            if (activeItem.itemId === 'direct') itemName = catName;
+            else {
+              const itemInfo = cat?.items?.find(i => i.id === activeItem.itemId);
+              itemName = itemInfo ? itemInfo.name : 'Item Tidak Dikenal';
+            }
 
-                              if (catId && itemId) {
-                                  const cat = categories.find(c => c.id === catId);
-                                  const catName = cat ? cat.name : 'Sumber Lain';
-                                  
-                                  let itemName = '';
-                                  if (itemId === 'direct') itemName = catName;
-                                  else {
-                                      const itemInfo = cat?.items?.find(i => i.id === itemId);
-                                      itemName = itemInfo ? itemInfo.name : 'Item Tidak Dikenal';
-                                  }
-
-                                  let matchedRowId = null;
-                                  for (const sr of excelStandardRows) {
-                                      if (sr.match(itemName)) {
-                                          matchedRowId = sr.id;
-                                          break;
-                                      }
-                                  }
-
-                                  if (!matchedRowId) {
-                                      matchedRowId = `dyn_${itemName}`;
-                                      if (!reportRowsMap.has(matchedRowId)) {
-                                          reportRowsMap.set(matchedRowId, {
-                                              name: itemName,
-                                              dailyTotals: Array.from({length: daysInMonth}, () => ({ total: 0, details: {} }))
-                                          });
-                                      }
-                                  }
-
-                                  const dayIndex = day - 1;
-                                  const rowObj = reportRowsMap.get(matchedRowId);
-                                  
-                                  rowObj.dailyTotals[dayIndex].total += val;
-                                  rowObj.dailyTotals[dayIndex].details[catName] = (rowObj.dailyTotals[dayIndex].details[catName] || 0) + val;
-
-                                  grandTotalPerDay[dayIndex].total += val;
-                                  grandTotalPerDay[dayIndex].details[catName] = (grandTotalPerDay[dayIndex].details[catName] || 0) + val;
-                              }
-                          }
-                      }
-                  });
+            let matchedRowId = null;
+            for (const sr of excelStandardRows) {
+              if (sr.match(itemName)) {
+                matchedRowId = sr.id;
+                break;
               }
-          });
+            }
+
+            if (!matchedRowId) {
+              matchedRowId = `dyn_${itemName}`;
+              if (!reportRowsMap.has(matchedRowId)) {
+                reportRowsMap.set(matchedRowId, {
+                  name: itemName,
+                  dailyTotals: Array.from({length: daysInMonth}, () => ({ total: 0, details: {} }))
+                });
+              }
+            }
+
+            const dayIndex = day - 1;
+            const rowObj = reportRowsMap.get(matchedRowId);
+            
+            rowObj.dailyTotals[dayIndex].total += val;
+            rowObj.dailyTotals[dayIndex].details[catName] = (rowObj.dailyTotals[dayIndex].details[catName] || 0) + val;
+
+            grandTotalPerDay[dayIndex].total += val;
+            grandTotalPerDay[dayIndex].details[catName] = (grandTotalPerDay[dayIndex].details[catName] || 0) + val;
+          }
+        });
       }
     }
 
+    // 4. Konversi Map menjadi Array Final
     const finalRows = Array.from(reportRowsMap.values()).filter(r => 
       r.dailyTotals.some(d => d.total > 0) || excelStandardRows.find(sr => sr.name === r.name)
     );
@@ -1280,6 +1213,7 @@ export default function App() {
   const handleDownloadExcel = () => {
     const { columnStructure, reportRows, grandTotalPerDay } = generateExcelData();
 
+    // MEMBANGUN HTML STRING (.xls) UNTUK EXCEL
     let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
     <head>
     <meta charset="utf-8">
@@ -1297,6 +1231,7 @@ export default function App() {
     <body>
     <table>`;
     
+    // Baris 1: Header Atas
     html += `<tr><th class="header" style="text-align:left;">UP TAMAN MARGASATWA RAGUNAN</th>`;
     columnStructure.forEach(col => {
         if (col.type === 'date') {
@@ -1307,10 +1242,12 @@ export default function App() {
     });
     html += `<th class="header" style="text-align:right;">jumlah</th></tr>`;
 
+    // Baris 2: Sub Header
     html += `<tr><th class="header" style="text-align:left; color:#6b7280;">PENDAPATAN RETRIBUSI DAERAH</th>`;
     columnStructure.forEach(() => { html += `<th class="header"></th>`; });
     html += `<th class="header"></th></tr>`;
 
+    // Baris Data
     reportRows.forEach(row => {
         let weekSum = 0;
         let monthSum = 0;
@@ -1321,15 +1258,16 @@ export default function App() {
                 let val = row.dailyTotals[col.day - 1].total;
                 weekSum += val;
                 monthSum += val;
-                html += `<td class="num">${val > 0 ? val.toFixed(1) : ""}</td>`;
+                html += `<td class="num">${val > 0 ? val.toFixed(1) : "0.0"}</td>`;
             } else {
-                html += `<td class="week-col">${weekSum > 0 ? weekSum.toFixed(1) : ""}</td>`;
-                weekSum = 0;
+                html += `<td class="week-col">${weekSum > 0 ? weekSum.toFixed(1) : "0.0"}</td>`;
+                weekSum = 0; // reset minggu
             }
         });
-        html += `<td class="gt-month">${monthSum > 0 ? monthSum.toFixed(1) : ""}</td></tr>`;
+        html += `<td class="gt-month">${monthSum > 0 ? monthSum.toFixed(1) : "0.0"}</td></tr>`;
     });
 
+    // Baris Grand Total
     let gtWeekSum = 0;
     let gtMonthSum = 0;
     html += `<tr><td class="grand-total">JUMLAH Rp</td>`;
@@ -1338,16 +1276,17 @@ export default function App() {
             let val = grandTotalPerDay[col.day - 1].total;
             gtWeekSum += val;
             gtMonthSum += val;
-            html += `<td class="num grand-total">${val > 0 ? val.toFixed(1) : ""}</td>`;
+            html += `<td class="num grand-total">${val > 0 ? val.toFixed(1) : "0.0"}</td>`;
         } else {
-            html += `<td class="gt-week">${gtWeekSum > 0 ? gtWeekSum.toFixed(1) : ""}</td>`;
-            gtWeekSum = 0; 
+            html += `<td class="gt-week">${gtWeekSum > 0 ? gtWeekSum.toFixed(1) : "0.0"}</td>`;
+            gtWeekSum = 0; // reset minggu total
         }
     });
-    html += `<td class="gt-month">${gtMonthSum > 0 ? gtMonthSum.toFixed(1) : ""}</td></tr>`;
+    html += `<td class="gt-month">${gtMonthSum > 0 ? gtMonthSum.toFixed(1) : "0.0"}</td></tr>`;
 
     html += `</table></body></html>`;
 
+    // TRIGGRER DOWNLOAD EXCEL (.xls)
     const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -1356,249 +1295,6 @@ export default function App() {
     
     link.setAttribute("href", url);
     link.setAttribute("download", `INPUT ${y}.xls - ${monthNames[parseInt(m, 10)]} ${y.substring(2)}.xls`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // ==========================================
-  // 🔴 FUNGSI: GENERATE LAPORAN REKONSILIASI
-  // MENGAMBIL DATA LANGSUNG DARI FORMDATA DATABASE
-  // ==========================================
-  const generateRekonData = (catName) => {
-    const [yearStr, monthStr] = excelReportMonth.split('-');
-    const year = parseInt(yearStr, 10);
-    const month = parseInt(monthStr, 10);
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const shortDays = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-
-    // Pencocokan kategori cerdas (Toleransi perbedaan nama di database user)
-    let catId = null;
-    const lowerTarget = catName.toLowerCase();
-    const cat = categories.find(c => {
-        const cName = (c.name || '').toLowerCase();
-        if (lowerTarget.includes('old gate') && cName.includes('old gate')) return true;
-        if (lowerTarget.includes('online') && cName.includes('online')) return true;
-        if ((lowerTarget.includes('tvm') || lowerTarget.includes('vending') || lowerTarget.includes('vinding')) && 
-            (cName.includes('tvm') || cName.includes('vending') || cName.includes('vinding'))) return true;
-        if (lowerTarget.includes('new gate') && cName.includes('new gate')) return true;
-        return cName === lowerTarget;
-    });
-    if (cat) catId = cat.id;
-
-    const rows = [];
-    let grandTotal = 0;
-    let rowNum = 1;
-
-    for (let d = 1; d <= daysInMonth; d++) {
-        const dateObj = new Date(year, month - 1, d);
-        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        
-        const dayAllTypes = allReports[dateStr];
-        
-        let dailyNominal = 0;
-        let susulanList = [];
-        let signatureDate = '';
-        let rekonOfficer = '';
-
-        if (dayAllTypes && dayAllTypes['utama']) {
-            const typeData = dayAllTypes['utama'];
-            if (typeData && typeData.formData) {
-                signatureDate = typeData.signatureDate || '';
-                rekonOfficer = typeData.rekonOfficer || '';
-                
-                Object.keys(typeData.formData).forEach(key => {
-                    if (catId && key.startsWith(`${catId}_`)) {
-                        const val = Number(typeData.formData[key]) || 0;
-                        if (val > 0) {
-                            if (key.includes('_susulan_')) {
-                                const match = key.match(/_susulan_(\d{4}-\d{2}-\d{2})/);
-                                const validDate = match ? match[1] : '';
-                                
-                                const susulanMeta = typeData.susulanMeta?.[key] || {};
-                                const susSigDate = susulanMeta.signatureDate || validDate || getLocalYMD();
-                                const susOfficer = susulanMeta.rekonOfficer || rekonOfficerName;
-
-                                const existingSus = susulanList.find(s => s.validDate === validDate);
-                                if (existingSus) {
-                                    existingSus.val += val;
-                                    existingSus.keys.push(key);
-                                }
-                                else {
-                                    susulanList.push({ keys: [key], val, validDate, susSigDate, susOfficer });
-                                }
-                            } else {
-                                dailyNominal += val;
-                            }
-                        }
-                    }
-                });
-            }
-        }
-
-        let rawPelimpahan = '';
-        let rawOfficer = '';
-        let formattedPelimpahan = '';
-        let keterangan = "";
-        
-        if (dailyNominal > 0) {
-            rawPelimpahan = signatureDate || getLocalYMD();
-            rawOfficer = rekonOfficer || rekonOfficerName;
-            
-            const parts = rawPelimpahan.split('-');
-            if (parts.length === 3) {
-                formattedPelimpahan = `${parts[2]}-${parts[1]}-${parts[0]}`;
-                
-                // Cek dilimpahkan di bulan berikutnya
-                const sigYear = parseInt(parts[0], 10);
-                const sigMonth = parseInt(parts[1], 10);
-                if (sigYear > year || (sigYear === year && sigMonth > month)) {
-                    keterangan = "Dilimpahkan di bulan berikutnya";
-                }
-            }
-        }
-
-        if (dateObj.getDay() === 1 && dailyNominal === 0 && susulanList.length === 0) {
-            keterangan = "TMR Tutup ( Libur satwa )";
-        }
-
-        rows.push({
-            no: rowNum++,
-            hari: shortDays[dateObj.getDay()],
-            tanggal: `${String(d).padStart(2, '0')}-${String(month).padStart(2, '0')}-${year}`,
-            dateStr: dateStr,
-            isSusulan: false,
-            susulanKeys: null,
-            uraian: '',
-            nominal: dailyNominal,
-            rawPelimpahan: rawPelimpahan,
-            rawOfficer: rawOfficer,
-            pelimpahan: formattedPelimpahan,
-            keterangan: keterangan
-        });
-        grandTotal += dailyNominal;
-
-        susulanList.forEach(sus => {
-            let susPelimpahan = '';
-            let susKet = '';
-            let sRawPelimpahan = sus.susSigDate || getLocalYMD();
-            let sRawOfficer = sus.susOfficer || rekonOfficerName;
-
-            const p = sRawPelimpahan.split('-');
-            if (p.length === 3) {
-                susPelimpahan = `${p[2]}-${p[1]}-${p[0]}`;
-                const sigYear = parseInt(p[0], 10);
-                const sigMonth = parseInt(p[1], 10);
-                if (sigYear > year || (sigYear === year && sigMonth > month)) {
-                    susKet = "Dilimpahkan di bulan berikutnya";
-                }
-            }
-
-            rows.push({
-                no: rowNum++,
-                hari: '',
-                tanggal: '',
-                dateStr: dateStr,
-                isSusulan: true,
-                susulanKeys: sus.keys,
-                uraian: 'Susulan',
-                nominal: sus.val,
-                rawPelimpahan: sRawPelimpahan,
-                rawOfficer: sRawOfficer,
-                pelimpahan: susPelimpahan,
-                keterangan: susKet
-            });
-            grandTotal += sus.val;
-        });
-    }
-
-    return { rows, grandTotal, year, month };
-  };
-
-  const handleDownloadRekonExcel = () => {
-    const { rows, grandTotal, year, month } = generateRekonData(selectedReportType);
-    const monthNames = ["", "JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"];
-    const monthName = monthNames[month];
-
-    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-    <head>
-    <meta charset="utf-8">
-    <style>
-      table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
-      th, td { border: 1px solid #000000; padding: 4px; vertical-align: middle; }
-      .header-title { font-weight: bold; font-size: 14px; text-align: left; border: none; }
-      .header-sub { font-weight: bold; text-align: left; border: none; }
-      .table-header { font-weight: bold; background-color: #f3f4f6; text-align: center; }
-      .num { text-align: right; }
-    </style>
-    </head>
-    <body>
-    <table>`;
-    
-    html += `<tr><th colspan="7" class="header-title">REKONSILIASI PENDAPATAN ${selectedReportType.toUpperCase()}</th></tr>`;
-    html += `<tr><th colspan="7" class="header-sub">UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN</th></tr>`;
-    html += `<tr><th colspan="7" class="header-sub">DINAS PERTAMANAN DAN HUTAN KOTA PROVINSI DKI JAKARTA</th></tr>`;
-    html += `<tr><th colspan="7" class="header-sub">BULAN ${monthName} ${year}</th></tr>`;
-    html += `<tr><th colspan="7" style="border:none;"></th></tr>`;
-    
-    html += `<tr>
-        <th rowspan="2" class="table-header">No</th>
-        <th colspan="2" class="table-header">Transaksi</th>
-        <th rowspan="2" class="table-header">Uraian</th>
-        <th colspan="2" class="table-header">Pelimpahan</th>
-        <th rowspan="2" class="table-header">Keterangan</th>
-    </tr>`;
-    html += `<tr>
-        <th class="table-header">Hari</th>
-        <th class="table-header">Tanggal</th>
-        <th class="table-header">Nominal ( RP )</th>
-        <th class="table-header">Tanggal</th>
-    </tr>`;
-
-    rows.forEach(r => {
-        html += `<tr>
-            <td style="text-align:center;">${r.no}</td>
-            <td style="text-align:center;">${safeString(r.hari)}</td>
-            <td style="text-align:center;">${safeString(r.tanggal)}</td>
-            <td style="text-align:center;">${safeString(r.uraian)}</td>
-            <td class="num">${r.nominal > 0 ? r.nominal.toFixed(1) : ''}</td>
-            <td style="text-align:center;">${r.nominal > 0 || r.uraian === 'Susulan' ? safeString(r.pelimpahan) : ''}</td>
-            <td>${safeString(r.keterangan)}</td>
-        </tr>`;
-    });
-
-    html += `<tr>
-        <td colspan="4" style="text-align:right; font-weight:bold;">TOTAL</td>
-        <td class="num" style="font-weight:bold;">${grandTotal.toFixed(1)}</td>
-        <td colspan="2"></td>
-    </tr>`;
-
-    html += `<tr><td colspan="7" style="border:none; height: 20px;"></td></tr>`;
-    html += `<tr>
-        <td colspan="4" style="border:none;"></td>
-        <td colspan="3" style="text-align:center; border:none; font-size: 12px;">Jakarta, ${formatTanggalTtd(rekonDate)}</td>
-    </tr>`;
-    html += `<tr>
-        <td colspan="4" style="border:none;"></td>
-        <td colspan="3" style="text-align:center; border:none; font-weight:bold; font-size: 12px;">${safeString(signatures.leftRole)}</td>
-    </tr>`;
-    html += `<tr><td colspan="7" style="border:none; height: 60px;"></td></tr>`;
-    html += `<tr>
-        <td colspan="4" style="border:none;"></td>
-        <td colspan="3" style="text-align:center; border:none; font-weight:bold; font-size: 12px; text-decoration:underline;">${safeString(signatures.leftName)}</td>
-    </tr>`;
-    html += `<tr>
-        <td colspan="4" style="border:none;"></td>
-        <td colspan="3" style="text-align:center; border:none; font-size: 12px;">NIP. ${safeString(signatures.leftNip)}</td>
-    </tr>`;
-
-    html += `</table></body></html>`;
-
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `REKON ${selectedReportType.toUpperCase()} - ${monthName} ${year.toString().slice(-2)}.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1914,20 +1610,161 @@ export default function App() {
             <button onClick={() => { setActiveTab('laporan'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'laporan' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Table size={18} /> <span className="hidden md:inline">Laporan</span></button>
             <button onClick={() => { setActiveTab('settings'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Settings size={18} /> <span className="hidden md:inline">Master</span></button>
             <button onClick={() => { setActiveTab('print'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'print' ? 'bg-green-800' : 'hover:bg-green-600'}`}><FileText size={18} /> <span className="hidden md:inline">Cetak</span></button>
-            
-            <div className="pl-2 border-l border-green-600 ml-1 flex items-center gap-2">
-                <span className="text-xs font-bold bg-green-800 px-2 py-1 rounded-md capitalize hidden sm:block">
-                   Hi, {user?.email ? user.email.split('@')[0] : 'User'}
-                </span>
-                <button onClick={handleLogout} className="px-2 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 hover:bg-red-600 transition-colors" title="Keluar Akun"><LogOut size={18} /></button>
-            </div>
+            <div className="pl-2 border-l border-green-600 ml-1"><button onClick={handleLogout} className="px-2 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 hover:bg-red-600 transition-colors" title="Keluar Akun"><LogOut size={18} /></button></div>
           </div>
         </div>
       </nav>
 
       {/* ============================================================== */}
-      {/* 🔴 TAB: DASHBOARD */}
+      {/* 🔴 TAB: LAPORAN EXCEL (NEW) */}
       {/* ============================================================== */}
+      {activeTab === 'laporan' && (
+        <div className="max-w-6xl mx-auto px-4 py-6 no-print">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-6 text-center text-white flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="text-left">
+                <h2 className="text-2xl font-black mb-1 drop-shadow-sm flex items-center gap-2">
+                  <FileSpreadsheet size={28} /> Laporan Rekapitulasi (Excel)
+                </h2>
+                <p className="text-blue-100 text-sm opacity-90">Sistem otomatis mengelompokkan data ke format baku Excel.</p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 items-center">
+                <div className="bg-white/20 p-1.5 rounded-lg flex items-center gap-2">
+                  <Calendar size={18} className="ml-2 text-white" />
+                  <input 
+                    type="month" 
+                    value={excelReportMonth} 
+                    onChange={(e) => setExcelReportMonth(e.target.value)} 
+                    className="bg-transparent border-none text-white font-bold outline-none cursor-pointer focus:ring-0 text-sm"
+                  />
+                </div>
+                <button 
+                  onClick={handleDownloadExcel}
+                  className="bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold shadow-md transition-colors flex items-center gap-2"
+                >
+                  <Download size={18} /> Download Excel (.xls)
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-0 overflow-x-auto">
+              {(() => {
+                const { columnStructure, reportRows, grandTotalPerDay } = generateExcelData();
+                
+                return (
+                  <div className="w-full relative">
+                    <table className="w-full border-collapse text-[11px] whitespace-nowrap">
+                      <thead>
+                        <tr>
+                          <th className="sticky-col px-4 py-2 border border-gray-300 bg-gray-200 text-left min-w-[200px] z-20 top-0 font-bold text-gray-700">UP TAMAN MARGASATWA RAGUNAN</th>
+                          {columnStructure.map((col, i) => (
+                              col.type === 'date' 
+                              ? <th key={`h-${col.day}`} className="min-w-[60px] px-2 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600 text-xs">
+                                  <div>{col.day}</div>
+                                  <div className="text-[9px] font-normal mt-0.5 text-gray-500">{col.dayName}</div>
+                                </th>
+                              : <th key={`h-${col.name}`} className="min-w-[80px] px-2 py-2 border border-gray-300 bg-yellow-100 text-center font-bold text-yellow-800 text-xs">{col.name}</th>
+                          ))}
+                          <th className="px-3 py-2 border border-gray-300 bg-green-100 text-right font-black text-green-800 text-xs min-w-[100px]">jumlah</th>
+                        </tr>
+                        <tr>
+                          <th className="sticky-col px-4 py-2 border border-gray-300 bg-gray-50 text-left font-bold text-gray-500 z-20">PENDAPATAN RETRIBUSI DAERAH</th>
+                          <th colSpan={columnStructure.length + 1} className="border border-gray-300 bg-gray-50"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportRows.map((row, idx) => {
+                          let weekSum = 0;
+                          let monthSum = 0;
+                          
+                          return (
+                            <tr key={`row-${idx}`} className="hover:bg-blue-50/50">
+                              <td className="sticky-col px-4 py-1.5 border border-gray-300 text-left font-medium text-gray-800" title={row.name}>{row.name}</td>
+                              {columnStructure.map((col, colIdx) => {
+                                if (col.type === 'date') {
+                                    let val = row.dailyTotals[col.day - 1].total;
+                                    let details = row.dailyTotals[col.day - 1].details;
+                                    weekSum += val;
+                                    monthSum += val;
+                                    return (
+                                        <td 
+                                          key={`c-${idx}-${col.day}`} 
+                                          className={`px-2 py-1.5 border border-gray-300 text-right ${val > 0 ? 'text-gray-800 font-medium cursor-help hover:bg-blue-100 transition-colors' : 'text-gray-400'}`}
+                                          title={formatDetailsTooltip(val, details)}
+                                        >
+                                          {val > 0 ? formatRp(val) : "0.0"}
+                                        </td>
+                                    );
+                                } else {
+                                    let currentWeekSum = weekSum;
+                                    weekSum = 0;
+                                    return (
+                                        <td key={`cw-${idx}-${col.name}`} className="px-2 py-1.5 border border-gray-300 text-right font-bold bg-yellow-50 text-yellow-800">
+                                            {currentWeekSum > 0 ? formatRp(currentWeekSum) : "0.0"}
+                                        </td>
+                                    );
+                                }
+                              })}
+                              <td className="px-3 py-1.5 border border-gray-300 text-right font-black text-green-700 bg-green-50">{monthSum > 0 ? formatRp(monthSum) : "0.0"}</td>
+                            </tr>
+                          );
+                        })}
+                        
+                        {/* BARIS GRAND TOTAL */}
+                        <tr className="bg-blue-100">
+                          <td className="sticky-col px-4 py-3 border border-blue-300 text-left font-black text-blue-900 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)]">JUMLAH Rp</td>
+                          {(() => {
+                            let weekSum = 0;
+                            let monthSum = 0;
+                            return columnStructure.map((col) => {
+                                if (col.type === 'date') {
+                                    let val = grandTotalPerDay[col.day - 1].total;
+                                    let details = grandTotalPerDay[col.day - 1].details;
+                                    weekSum += val;
+                                    monthSum += val;
+                                    return (
+                                        <td 
+                                          key={`gt-${col.day}`} 
+                                          className="px-2 py-3 border border-blue-300 text-right font-bold text-blue-900 cursor-help hover:bg-blue-200 transition-colors"
+                                          title={formatDetailsTooltip(val, details)}
+                                        >
+                                          {val > 0 ? formatRp(val) : "0.0"}
+                                        </td>
+                                    );
+                                } else {
+                                    let currentWeekSum = weekSum;
+                                    weekSum = 0;
+                                    return (
+                                        <td key={`gtw-${col.name}`} className="px-2 py-3 border border-blue-300 text-right font-black bg-blue-200 text-blue-900">
+                                            {currentWeekSum > 0 ? formatRp(currentWeekSum) : "0.0"}
+                                        </td>
+                                    );
+                                }
+                            });
+                          })()}
+                          <td className="px-3 py-3 border border-blue-300 text-right font-black bg-green-200 text-green-900 text-xs">
+                            {(() => {
+                                let finalTotal = grandTotalPerDay.reduce((acc, curr) => acc + curr.total, 0);
+                                return finalTotal > 0 ? formatRp(finalTotal) : "0.0";
+                            })()}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
+            
+            <div className="p-4 bg-blue-50 border-t border-blue-200 text-xs text-blue-800 font-medium flex items-center justify-center gap-2">
+              <Sparkles size={16} /> Kolom (SATU, DUA) otomatis ditambahkan mengikuti Hari Minggu pada kalender bulan tersebut.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DASHBOARD & SETTINGS & INPUT & PRINT REMAINS EXACTLY THE SAME... */}
+
       {activeTab === 'dashboard' && (
         <div className="max-w-4xl mx-auto px-4 py-6 no-print">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
@@ -1979,9 +1816,90 @@ export default function App() {
         </div>
       )}
 
-      {/* ============================================================== */}
-      {/* 🔴 TAB: INPUT */}
-      {/* ============================================================== */}
+      {activeTab === 'settings' && (
+        <div className="max-w-4xl mx-auto px-4 py-6 no-print space-y-6">
+          
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Cloud size={20} className="text-blue-500"/> Koneksi Server Bot Integrasi</h2>
+            <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
+                <label className="text-xs font-bold text-gray-600 uppercase mb-1.5 block">IP Address / Hostname Komputer Server</label>
+                <div className="flex gap-3 items-center">
+                  <div className="flex-1">
+                    <input type="text" value={apiIpAddress} onChange={e => setApiIpAddress(e.target.value)} className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 bg-white font-mono font-bold text-blue-700" placeholder="Contoh: localhost atau 192.168.1.5" />
+                  </div>
+                  <Database className="text-gray-400 shrink-0 hidden sm:block" size={24} />
+                </div>
+                <p className="text-xs text-gray-500 mt-2 font-medium">Isi dengan <strong className="text-gray-700">localhost</strong> jika Bot Python berjalan di PC yang sama dengan Web App ini. Atau isi dengan <strong className="text-gray-700">demo</strong> untuk mode simulasi data sesungguhnya.</p>
+                <div className="mt-3 text-[10px] text-gray-500 bg-white p-2 rounded border border-gray-200 inline-block font-mono">
+                  Sistem otomatis menembak Port <strong className="text-blue-600">5000 (3A)</strong> dan Port <strong className="text-purple-600">5001 (IWM)</strong> berdasarkan port standar Bot.
+                </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Edit size={20} className="text-blue-500"/> Pejabat Penandatangan</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                <h3 className="font-semibold text-gray-700 text-sm border-b pb-2">Pihak Kiri (Penyetor)</h3>
+                <div><label className="text-xs text-gray-500 uppercase">Jabatan</label><input type="text" value={signatures.leftRole || ''} onChange={(e) => setSignatures({...signatures, leftRole: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
+                <div><label className="text-xs text-gray-500 uppercase">Nama</label><input type="text" value={signatures.leftName || ''} onChange={(e) => setSignatures({...signatures, leftName: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none font-bold focus:border-blue-500" /></div>
+                <div><label className="text-xs text-gray-500 uppercase">NIP (Khusus Print NCR)</label><input type="text" value={signatures.leftNip || ''} onChange={(e) => setSignatures({...signatures, leftNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
+              </div>
+              <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                <h3 className="font-semibold text-gray-700 text-sm border-b pb-2">Pihak Kanan (Bendahara)</h3>
+                <div><label className="text-xs text-gray-500 uppercase">Lokasi</label><input type="text" value={signatures.location || ''} onChange={(e) => setSignatures({...signatures, location: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
+                <div><label className="text-xs text-gray-500 uppercase">Jabatan</label><input type="text" value={signatures.rightRole || ''} onChange={(e) => setSignatures({...signatures, rightRole: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
+                <div><label className="text-xs text-gray-500 uppercase">Nama</label><input type="text" value={signatures.rightName || ''} onChange={(e) => setSignatures({...signatures, rightName: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none font-bold focus:border-blue-500" /></div>
+                <div><label className="text-xs text-gray-500 uppercase">NIP (Khusus Print NCR)</label><input type="text" value={signatures.rightNip || ''} onChange={(e) => setSignatures({...signatures, rightNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <div className="flex justify-between items-center mb-5"><h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Settings size={20} className="text-blue-500"/> Database Kategori</h2></div>
+            <div className="space-y-6">
+              {categories.map((cat, index) => (
+                <div key={cat.id} className="border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                  <div className={`p-3 flex flex-col md:flex-row justify-between md:items-center gap-3 border-b ${cat.type === 'utama' ? 'bg-green-50 border-green-100' : 'bg-purple-50 border-purple-100'}`}>
+                    <div className="flex-1 flex items-center gap-2">
+                      <div className="flex flex-col gap-0.5 mr-1">
+                        <button onClick={() => moveCategory(index, 'up')} disabled={index === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowUp size={14}/></button>
+                        <button onClick={() => moveCategory(index, 'down')} disabled={index === categories.length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowDown size={14}/></button>
+                      </div>
+                      <span className={`font-bold w-6 h-6 flex items-center justify-center rounded-full text-xs text-white shrink-0 ${cat.type === 'utama' ? 'bg-green-600' : 'bg-purple-600'}`}>{index + 1}</span>
+                      <input type="text" value={cat.name || ''} onChange={(e) => updateCategory(cat.id, 'name', e.target.value)} className="bg-white border border-gray-300 rounded px-2 py-1.5 w-full max-w-md font-bold text-sm outline-none" placeholder="Nama Kategori..." />
+                    </div>
+                    <div className="flex items-center gap-2 pl-10 md:pl-0">
+                      <select value={cat.type || 'utama'} onChange={(e) => updateCategory(cat.id, 'type', e.target.value)} className={`text-xs font-bold px-2 py-1.5 rounded border outline-none ${cat.type === 'utama' ? 'bg-green-100 text-green-800 border-green-300' : 'bg-purple-100 text-purple-800 border-purple-300'}`}>
+                        <option value="utama">STSU Utama (SU)</option>
+                        <option value="lain">STSU Lain-lain (SU/L)</option>
+                      </select>
+                      <button onClick={() => deleteCategory(cat.id)} className="text-red-500 p-2 hover:bg-red-100 rounded-lg bg-white border border-red-100 shadow-sm"><Trash size={18} /></button>
+                    </div>
+                  </div>
+                  <div className="p-3 bg-white space-y-2 pl-12 border-t border-gray-50">
+                    {Array.isArray(cat.items) && cat.items.length === 0 && <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 mb-2 font-medium flex items-center gap-1"><CheckCircle size={14} /> Mode Langsung Input Nominal.</div>}
+                    {Array.isArray(cat.items) && cat.items.map((item, itemIdx) => (
+                      <div key={item.id} className="flex items-center gap-2">
+                        <div className="flex flex-col gap-0.5">
+                          <button onClick={() => moveItem(cat.id, itemIdx, 'up')} disabled={itemIdx === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowUp size={14}/></button>
+                          <button onClick={() => moveItem(cat.id, itemIdx, 'down')} disabled={itemIdx === cat.items.length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowDown size={14}/></button>
+                        </div>
+                        <Tag size={14} className="text-gray-400 hidden sm:block"/>
+                        <input type="text" value={item.name || ''} onChange={(e) => updateItemName(cat.id, item.id, e.target.value)} className="bg-gray-50 border border-gray-200 rounded px-3 py-1.5 flex-1 text-sm outline-none focus:border-blue-400 focus:bg-white" placeholder="Nama Tiket..." />
+                        <button onClick={() => deleteItem(cat.id, item.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg"><Trash size={18} /></button>
+                      </div>
+                    ))}
+                    <button onClick={() => addItem(cat.id)} className="text-sm text-blue-600 font-bold flex items-center gap-1 mt-3 hover:bg-blue-50 px-2 py-1 rounded transition-colors"><Plus size={16} /> Tambah Sub-Kategori</button>
+                  </div>
+                </div>
+              ))}
+              <button onClick={addCategory} className="w-full py-4 border-2 border-dashed border-gray-300 text-gray-600 bg-gray-50 rounded-xl font-bold flex justify-center items-center gap-2 hover:bg-gray-100 transition-colors"><Plus size={20} /> Buat Kategori Baru</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'input' && (
         <div className="max-w-4xl mx-auto px-4 py-6 no-print">
           
@@ -2197,347 +2115,6 @@ export default function App() {
         </div>
       )}
 
-      {/* ============================================================== */}
-      {/* 🔴 TAB: LAPORAN (EXCEL) */}
-      {/* ============================================================== */}
-      {activeTab === 'laporan' && (
-        <div className="max-w-6xl mx-auto px-4 py-6 no-print">
-          {/* NAVIGASI LAPORAN REKONSILIASI / MASTER */}
-          <div className="flex overflow-x-auto no-scrollbar gap-2 mb-4 p-1.5 bg-white rounded-xl shadow-sm border border-gray-200">
-             <button 
-                onClick={() => setSelectedReportType('rekapitulasi')}
-                className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${selectedReportType === 'rekapitulasi' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
-             >
-                Laporan Rekapitulasi
-             </button>
-             {reportCategories.map(catName => (
-                <button 
-                   key={catName}
-                   onClick={() => setSelectedReportType(catName)}
-                   className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${selectedReportType === catName ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
-                >
-                   Rekon: {catName}
-                </button>
-             ))}
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
-            <div className={`bg-gradient-to-r ${selectedReportType === 'rekapitulasi' ? 'from-blue-600 to-blue-800' : 'from-indigo-600 to-indigo-800'} p-6 text-center text-white flex flex-col md:flex-row items-center justify-between gap-4 transition-colors`}>
-              <div className="text-left">
-                <h2 className="text-2xl font-black mb-1 drop-shadow-sm flex items-center gap-2">
-                  <FileSpreadsheet size={28} /> {selectedReportType === 'rekapitulasi' ? 'Laporan Rekapitulasi (Master)' : `Rekonsiliasi: ${selectedReportType}`}
-                </h2>
-                <p className={`${selectedReportType === 'rekapitulasi' ? 'text-blue-100' : 'text-indigo-100'} text-sm opacity-90`}>
-                  {selectedReportType === 'rekapitulasi' ? 'Sistem otomatis mengelompokkan data ke format baku Excel.' : 'Laporan Rekonsiliasi harian per sumber kategori (format Excel).'}
-                </p>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3 items-center">
-                <div className="bg-white/20 p-1.5 rounded-lg flex items-center gap-2">
-                  <Calendar size={18} className="ml-2 text-white" />
-                  <input 
-                    type="month" 
-                    value={excelReportMonth} 
-                    onChange={(e) => setExcelReportMonth(e.target.value)} 
-                    className="bg-transparent border-none text-white font-bold outline-none cursor-pointer focus:ring-0 text-sm"
-                  />
-                </div>
-                <button 
-                  onClick={selectedReportType === 'rekapitulasi' ? handleDownloadExcel : handleDownloadRekonExcel}
-                  className="bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold shadow-md transition-colors flex items-center gap-2"
-                >
-                  <Download size={18} /> Download Excel (.xls)
-                </button>
-              </div>
-            </div>
-            
-            <div className="p-0 overflow-x-auto">
-              {(() => {
-                if (selectedReportType === 'rekapitulasi') {
-                    const { columnStructure, reportRows, grandTotalPerDay } = generateExcelData();
-                    
-                    return (
-                      <div className="w-full relative">
-                        <table className="w-full border-collapse text-[11px] whitespace-nowrap">
-                          <thead>
-                            <tr>
-                              <th className="sticky-col px-4 py-2 border border-gray-300 bg-gray-200 text-left min-w-[200px] z-20 top-0 font-bold text-gray-700">UP TAMAN MARGASATWA RAGUNAN</th>
-                              {columnStructure.map((col, i) => (
-                                  col.type === 'date' 
-                                  ? <th key={`h-${col.day}`} className="min-w-[60px] px-2 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600 text-xs">
-                                      <div>{col.day}</div>
-                                      <div className="text-[9px] font-normal mt-0.5 text-gray-500">{col.dayName}</div>
-                                    </th>
-                                  : <th key={`h-${col.name}`} className="min-w-[80px] px-2 py-2 border border-gray-300 bg-yellow-100 text-center font-bold text-yellow-800 text-xs">{col.name}</th>
-                              ))}
-                              <th className="px-3 py-2 border border-gray-300 bg-green-100 text-right font-black text-green-800 text-xs min-w-[100px]">jumlah</th>
-                            </tr>
-                            <tr>
-                              <th className="sticky-col px-4 py-2 border border-gray-300 bg-gray-50 text-left font-bold text-gray-500 z-20">PENDAPATAN RETRIBUSI DAERAH</th>
-                              <th colSpan={columnStructure.length + 1} className="border border-gray-300 bg-gray-50"></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {reportRows.map((row, idx) => {
-                              let weekSum = 0;
-                              let monthSum = 0;
-                              
-                              return (
-                                <tr key={`row-${idx}`} className="hover:bg-blue-50/50">
-                                  <td className="sticky-col px-4 py-1.5 border border-gray-300 text-left font-medium text-gray-800" title={row.name}>{row.name}</td>
-                                  {columnStructure.map((col, colIdx) => {
-                                    if (col.type === 'date') {
-                                        let val = row.dailyTotals[col.day - 1].total;
-                                        let details = row.dailyTotals[col.day - 1].details;
-                                        weekSum += val;
-                                        monthSum += val;
-                                        return (
-                                            <td 
-                                              key={`c-${idx}-${col.day}`} 
-                                              className={`px-2 py-1.5 border border-gray-300 text-right ${val > 0 ? 'text-gray-800 font-medium cursor-help hover:bg-blue-100 transition-colors' : 'text-gray-400'}`}
-                                              title={formatDetailsTooltip(val, details)}
-                                            >
-                                              {val > 0 ? formatRp(val) : ""}
-                                            </td>
-                                        );
-                                    } else {
-                                        let currentWeekSum = weekSum;
-                                        weekSum = 0;
-                                        return (
-                                            <td key={`cw-${idx}-${col.name}`} className="px-2 py-1.5 border border-gray-300 text-right font-bold bg-yellow-50 text-yellow-800">
-                                                {currentWeekSum > 0 ? formatRp(currentWeekSum) : ""}
-                                            </td>
-                                        );
-                                    }
-                                  })}
-                                  <td className="px-3 py-1.5 border border-gray-300 text-right font-black text-green-700 bg-green-50">{monthSum > 0 ? formatRp(monthSum) : ""}</td>
-                                </tr>
-                              );
-                            })}
-                            
-                            {/* BARIS GRAND TOTAL */}
-                            <tr className="bg-blue-100">
-                              <td className="sticky-col px-4 py-3 border border-blue-300 text-left font-black text-blue-900 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)]">JUMLAH Rp</td>
-                              {(() => {
-                                let weekSum = 0;
-                                let monthSum = 0;
-                                return columnStructure.map((col) => {
-                                    if (col.type === 'date') {
-                                        let val = grandTotalPerDay[col.day - 1].total;
-                                        let details = grandTotalPerDay[col.day - 1].details;
-                                        weekSum += val;
-                                        monthSum += val;
-                                        return (
-                                            <td 
-                                              key={`gt-${col.day}`} 
-                                              className="px-2 py-3 border border-blue-300 text-right font-bold text-blue-900 cursor-help hover:bg-blue-200 transition-colors"
-                                              title={formatDetailsTooltip(val, details)}
-                                            >
-                                              {val > 0 ? formatRp(val) : ""}
-                                            </td>
-                                        );
-                                    } else {
-                                        let currentWeekSum = weekSum;
-                                        weekSum = 0;
-                                        return (
-                                            <td key={`gtw-${col.name}`} className="px-2 py-3 border border-blue-300 text-right font-black bg-blue-200 text-blue-900">
-                                                {currentWeekSum > 0 ? formatRp(currentWeekSum) : ""}
-                                            </td>
-                                        );
-                                    }
-                                });
-                              })()}
-                              <td className="px-3 py-3 border border-blue-300 text-right font-black bg-green-200 text-green-900 text-xs">
-                                {(() => {
-                                    let finalTotal = grandTotalPerDay.reduce((acc, curr) => acc + curr.total, 0);
-                                    return finalTotal > 0 ? formatRp(finalTotal) : "";
-                                })()}
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    );
-                } else {
-                    // PREVIEW TABEL REKONSILIASI
-                    const { rows, grandTotal } = generateRekonData(selectedReportType);
-
-                    return (
-                        <div className="w-full relative overflow-x-auto">
-                           <table className="w-full border-collapse text-[12px] whitespace-nowrap">
-                             <thead>
-                               <tr>
-                                 <th rowSpan={2} className="sticky-col px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700 z-20 top-0">No</th>
-                                 <th colSpan={2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700">Transaksi</th>
-                                 <th rowSpan={2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700">Uraian</th>
-                                 <th colSpan={2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700">Pelimpahan</th>
-                                 <th rowSpan={2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700 min-w-[200px]">Keterangan</th>
-                               </tr>
-                               <tr>
-                                 <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Hari</th>
-                                 <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Tanggal</th>
-                                 <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Nominal ( RP )</th>
-                                 <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Tanggal</th>
-                               </tr>
-                             </thead>
-                             <tbody>
-                               {rows.map((r, i) => (
-                                  <tr key={i} className="hover:bg-indigo-50/50">
-                                    <td className="sticky-col px-4 py-2 border border-gray-300 text-center font-medium text-gray-800 z-10 bg-white shadow-[inset_-1px_0_0_#e5e7eb]">{r.no}</td>
-                                    <td className="px-4 py-2 border border-gray-300 text-center text-gray-700">{r.hari}</td>
-                                    <td className="px-4 py-2 border border-gray-300 text-center text-gray-700 font-mono">{r.tanggal}</td>
-                                    <td className="px-4 py-2 border border-gray-300 text-center text-gray-700">{r.uraian}</td>
-                                    <td className="px-4 py-2 border border-gray-300 text-right font-medium text-gray-800">{r.nominal > 0 ? formatRp(r.nominal) : ''}</td>
-                                    <td className="px-2 py-1 border border-gray-300 text-center font-mono align-middle h-full">
-                                      {(r.nominal > 0 || r.uraian === 'Susulan') ? (
-                                        <div className="flex flex-col items-center justify-center gap-0.5 group">
-                                          <span className="hidden print:block">{r.pelimpahan}</span>
-                                          <div className="print:hidden flex flex-col items-center">
-                                              <input 
-                                                 type="date" 
-                                                 value={r.rawPelimpahan} 
-                                                 onChange={e => handleUpdateRekonRow(r.dateStr, r.isSusulan, r.susulanKeys, 'signatureDate', e.target.value)} 
-                                                 className="bg-transparent border border-transparent hover:border-gray-200 text-center outline-none cursor-pointer focus:ring-1 focus:ring-indigo-500 rounded px-1 py-0.5 text-xs text-gray-800 font-mono w-[115px] m-0"
-                                              />
-                                              <input 
-                                                 type="text" 
-                                                 value={r.rawOfficer} 
-                                                 onChange={e => handleUpdateRekonRow(r.dateStr, r.isSusulan, r.susulanKeys, 'rekonOfficer', e.target.value)} 
-                                                 placeholder="Petugas Rekon" 
-                                                 className="bg-transparent border-b-2 border-yellow-400 outline-none focus:border-indigo-500 rounded-none px-1 text-[10px] font-bold text-indigo-700 text-center w-[100px] placeholder-indigo-300 m-0"
-                                                 title="Nama Petugas (Hanya di sistem)"
-                                              />
-                                          </div>
-                                        </div>
-                                      ) : ''}
-                                    </td>
-                                    <td className="px-4 py-2 border border-gray-300 text-left text-gray-600 italic">{r.keterangan}</td>
-                                  </tr>
-                               ))}
-                               <tr className="bg-indigo-100">
-                                  <td colSpan={4} className="sticky-col px-4 py-3 border border-indigo-300 text-right font-black text-indigo-900 bg-indigo-100 z-10 shadow-[inset_-1px_0_0_#a5b4fc]">TOTAL</td>
-                                  <td className="px-4 py-3 border border-indigo-300 text-right font-black text-indigo-900">{formatRp(grandTotal)}</td>
-                                  <td colSpan={2} className="border border-indigo-300"></td>
-                               </tr>
-                             </tbody>
-                           </table>
-                           <div className="mt-8 flex justify-end px-8 pb-8 text-sm text-gray-800">
-                              <div className="text-center flex flex-col justify-between min-w-[250px]">
-                                <div>
-                                    <p className="mb-1">Jakarta, {formatTanggalTtd(currentReport.signatureDate)}</p>
-                                    <p className="font-bold mt-2">{safeString(signatures.leftRole)}</p>
-                                </div>
-                                <div className="mt-20">
-                                    <p className="font-bold underline">{safeString(signatures.leftName)}</p>
-                                    <p>NIP. {safeString(signatures.leftNip)}</p>
-                                </div>
-                              </div>
-                           </div>
-                        </div>
-                    );
-                }
-              })()}
-            </div>
-            
-            <div className={`p-4 ${selectedReportType === 'rekapitulasi' ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-indigo-50 border-indigo-200 text-indigo-800'} border-t text-xs font-medium flex items-center justify-center gap-2 transition-colors`}>
-              <Sparkles size={16} /> 
-              {selectedReportType === 'rekapitulasi' 
-                  ? 'Kolom (SATU, DUA) otomatis ditambahkan mengikuti Hari Minggu pada kalender bulan tersebut.'
-                  : `Tabel di atas merekap pendapatan khusus dari sumber ${selectedReportType} pada bulan terpilih.`}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================== */}
-      {/* 🔴 TAB: SETTINGS (MASTER) */}
-      {/* ============================================================== */}
-      {activeTab === 'settings' && (
-        <div className="max-w-4xl mx-auto px-4 py-6 no-print space-y-6">
-          
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Cloud size={20} className="text-blue-500"/> Koneksi Server Bot Integrasi</h2>
-            <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
-                <label className="text-xs font-bold text-gray-600 uppercase mb-1.5 block">IP Address / Hostname Komputer Server</label>
-                <div className="flex gap-3 items-center">
-                  <div className="flex-1">
-                    <input type="text" value={apiIpAddress} onChange={e => setApiIpAddress(e.target.value)} className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 bg-white font-mono font-bold text-blue-700" placeholder="Contoh: localhost atau 192.168.1.5" />
-                  </div>
-                  <Database className="text-gray-400 shrink-0 hidden sm:block" size={24} />
-                </div>
-                <p className="text-xs text-gray-500 mt-2 font-medium">Isi dengan <strong className="text-gray-700">localhost</strong> jika Bot Python berjalan di PC yang sama dengan Web App ini. Atau isi dengan <strong className="text-gray-700">demo</strong> untuk mode simulasi data sesungguhnya.</p>
-                <div className="mt-3 text-[10px] text-gray-500 bg-white p-2 rounded border border-gray-200 inline-block font-mono">
-                  Sistem otomatis menembak Port <strong className="text-blue-600">5000 (3A)</strong> dan Port <strong className="text-purple-600">5001 (IWM)</strong> berdasarkan port standar Bot.
-                </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Edit size={20} className="text-blue-500"/> Pejabat Penandatangan</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                <h3 className="font-semibold text-gray-700 text-sm border-b pb-2">Pihak Kiri (Penyetor)</h3>
-                <div><label className="text-xs text-gray-500 uppercase">Jabatan</label><input type="text" value={signatures.leftRole || ''} onChange={(e) => setSignatures({...signatures, leftRole: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
-                <div><label className="text-xs text-gray-500 uppercase">Nama</label><input type="text" value={signatures.leftName || ''} onChange={(e) => setSignatures({...signatures, leftName: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none font-bold focus:border-blue-500" /></div>
-                <div><label className="text-xs text-gray-500 uppercase">NIP (Khusus Print NCR)</label><input type="text" value={signatures.leftNip || ''} onChange={(e) => setSignatures({...signatures, leftNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
-              </div>
-              <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                <h3 className="font-semibold text-gray-700 text-sm border-b pb-2">Pihak Kanan (Bendahara)</h3>
-                <div><label className="text-xs text-gray-500 uppercase">Lokasi</label><input type="text" value={signatures.location || ''} onChange={(e) => setSignatures({...signatures, location: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
-                <div><label className="text-xs text-gray-500 uppercase">Jabatan</label><input type="text" value={signatures.rightRole || ''} onChange={(e) => setSignatures({...signatures, rightRole: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
-                <div><label className="text-xs text-gray-500 uppercase">Nama</label><input type="text" value={signatures.rightName || ''} onChange={(e) => setSignatures({...signatures, rightName: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none font-bold focus:border-blue-500" /></div>
-                <div><label className="text-xs text-gray-500 uppercase">NIP (Khusus Print NCR)</label><input type="text" value={signatures.rightNip || ''} onChange={(e) => setSignatures({...signatures, rightNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <div className="flex justify-between items-center mb-5"><h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Settings size={20} className="text-blue-500"/> Database Kategori</h2></div>
-            <div className="space-y-6">
-              {categories.map((cat, index) => (
-                <div key={cat.id} className="border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-                  <div className={`p-3 flex flex-col md:flex-row justify-between md:items-center gap-3 border-b ${cat.type === 'utama' ? 'bg-green-50 border-green-100' : 'bg-purple-50 border-purple-100'}`}>
-                    <div className="flex-1 flex items-center gap-2">
-                      <div className="flex flex-col gap-0.5 mr-1">
-                        <button onClick={() => moveCategory(index, 'up')} disabled={index === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowUp size={14}/></button>
-                        <button onClick={() => moveCategory(index, 'down')} disabled={index === categories.length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowDown size={14}/></button>
-                      </div>
-                      <span className={`font-bold w-6 h-6 flex items-center justify-center rounded-full text-xs text-white shrink-0 ${cat.type === 'utama' ? 'bg-green-600' : 'bg-purple-600'}`}>{index + 1}</span>
-                      <input type="text" value={cat.name || ''} onChange={(e) => updateCategory(cat.id, 'name', e.target.value)} className="bg-white border border-gray-300 rounded px-2 py-1.5 w-full max-w-md font-bold text-sm outline-none" placeholder="Nama Kategori..." />
-                    </div>
-                    <div className="flex items-center gap-2 pl-10 md:pl-0">
-                      <select value={cat.type || 'utama'} onChange={(e) => updateCategory(cat.id, 'type', e.target.value)} className={`text-xs font-bold px-2 py-1.5 rounded border outline-none ${cat.type === 'utama' ? 'bg-green-100 text-green-800 border-green-300' : 'bg-purple-100 text-purple-800 border-purple-300'}`}>
-                        <option value="utama">STSU Utama (SU)</option>
-                        <option value="lain">STSU Lain-lain (SU/L)</option>
-                      </select>
-                      <button onClick={() => deleteCategory(cat.id)} className="text-red-500 p-2 hover:bg-red-100 rounded-lg bg-white border border-red-100 shadow-sm"><Trash size={18} /></button>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-white space-y-2 pl-12 border-t border-gray-50">
-                    {Array.isArray(cat.items) && cat.items.length === 0 && <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 mb-2 font-medium flex items-center gap-1"><CheckCircle size={14} /> Mode Langsung Input Nominal.</div>}
-                    {Array.isArray(cat.items) && cat.items.map((item, itemIdx) => (
-                      <div key={item.id} className="flex items-center gap-2">
-                        <div className="flex flex-col gap-0.5">
-                          <button onClick={() => moveItem(cat.id, itemIdx, 'up')} disabled={itemIdx === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowUp size={14}/></button>
-                          <button onClick={() => moveItem(cat.id, itemIdx, 'down')} disabled={itemIdx === cat.items.length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowDown size={14}/></button>
-                        </div>
-                        <Tag size={14} className="text-gray-400 hidden sm:block"/>
-                        <input type="text" value={item.name || ''} onChange={(e) => updateItemName(cat.id, item.id, e.target.value)} className="bg-gray-50 border border-gray-200 rounded px-3 py-1.5 flex-1 text-sm outline-none focus:border-blue-400 focus:bg-white" placeholder="Nama Tiket..." />
-                        <button onClick={() => deleteItem(cat.id, item.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg"><Trash size={18} /></button>
-                      </div>
-                    ))}
-                    <button onClick={() => addItem(cat.id)} className="text-sm text-blue-600 font-bold flex items-center gap-1 mt-3 hover:bg-blue-50 px-2 py-1 rounded transition-colors"><Plus size={16} /> Tambah Sub-Kategori</button>
-                  </div>
-                </div>
-              ))}
-              <button onClick={addCategory} className="w-full py-4 border-2 border-dashed border-gray-300 text-gray-600 bg-gray-50 rounded-xl font-bold flex justify-center items-center gap-2 hover:bg-gray-100 transition-colors"><Plus size={20} /> Buat Kategori Baru</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================== */}
-      {/* 🔴 TAB: PRINT */}
-      {/* ============================================================== */}
       {activeTab === 'print' && (
         <div className="max-w-4xl mx-auto px-2 sm:px-4 py-6">
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4 no-print">
@@ -2663,7 +2240,6 @@ export default function App() {
           )}
         </div>
       )}
-
     </div>
   );
 }
