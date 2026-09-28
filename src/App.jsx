@@ -1321,13 +1321,13 @@ export default function App() {
                 let val = row.dailyTotals[col.day - 1].total;
                 weekSum += val;
                 monthSum += val;
-                html += `<td class="num">${val > 0 ? val.toFixed(1) : ""}</td>`;
+                html += `<td class="num">${val > 0 ? formatRp(val) : ""}</td>`;
             } else {
-                html += `<td class="week-col">${weekSum > 0 ? weekSum.toFixed(1) : ""}</td>`;
+                html += `<td class="week-col">${weekSum > 0 ? formatRp(weekSum) : ""}</td>`;
                 weekSum = 0;
             }
         });
-        html += `<td class="gt-month">${monthSum > 0 ? monthSum.toFixed(1) : ""}</td></tr>`;
+        html += `<td class="gt-month">${monthSum > 0 ? formatRp(monthSum) : ""}</td></tr>`;
     });
 
     let gtWeekSum = 0;
@@ -1338,13 +1338,13 @@ export default function App() {
             let val = grandTotalPerDay[col.day - 1].total;
             gtWeekSum += val;
             gtMonthSum += val;
-            html += `<td class="num grand-total">${val > 0 ? val.toFixed(1) : ""}</td>`;
+            html += `<td class="num grand-total">${val > 0 ? formatRp(val) : ""}</td>`;
         } else {
-            html += `<td class="gt-week">${gtWeekSum > 0 ? gtWeekSum.toFixed(1) : ""}</td>`;
+            html += `<td class="gt-week">${gtWeekSum > 0 ? formatRp(gtWeekSum) : ""}</td>`;
             gtWeekSum = 0; 
         }
     });
-    html += `<td class="gt-month">${gtMonthSum > 0 ? gtMonthSum.toFixed(1) : ""}</td></tr>`;
+    html += `<td class="gt-month">${gtMonthSum > 0 ? formatRp(gtMonthSum) : ""}</td></tr>`;
 
     html += `</table></body></html>`;
 
@@ -1561,7 +1561,7 @@ export default function App() {
             <td style="text-align:center;">${safeString(r.hari)}</td>
             <td style="text-align:center;">${safeString(r.tanggal)}</td>
             <td style="text-align:center;">${safeString(r.uraian)}</td>
-            <td class="num">${r.nominal > 0 ? r.nominal.toFixed(1) : ''}</td>
+            <td class="num">${r.nominal > 0 ? formatRp(r.nominal) : ''}</td>
             <td style="text-align:center;">${r.nominal > 0 || r.uraian === 'Susulan' ? safeString(r.pelimpahan) : ''}</td>
             <td>${safeString(r.keterangan)}</td>
         </tr>`;
@@ -1569,7 +1569,7 @@ export default function App() {
 
     html += `<tr>
         <td colspan="4" style="text-align:right; font-weight:bold;">TOTAL</td>
-        <td class="num" style="font-weight:bold;">${grandTotal.toFixed(1)}</td>
+        <td class="num" style="font-weight:bold;">${formatRp(grandTotal)}</td>
         <td colspan="2"></td>
     </tr>`;
 
