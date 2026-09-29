@@ -68,24 +68,17 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
                 
                 let possibleAmount = 0;
                 
-                // Cari angka terbesar (Uang Masuk / Kredit) di kolom lainnya
-                row.forEach((cell, idx) => {
-                    // Abaikan kolom C dan D untuk pencarian angka
-                    if (idx === 2 || idx === 3) return;
-                    if (typeof cell !== 'string') return;
-                    
-                    const cleanCell = cell.trim();
-                    if (!cleanCell) return;
-                    
+                // Kolom F (index 5) = Uang Masuk
+                const uangMasukCell = (row[5] || '').trim();
+                
+                if (uangMasukCell) {
                     // Parse angka ala Indonesia (1.300.000,00 -> 1300000.00)
-                    const numStr = cleanCell.replace(/\./g, "").replace(/,/g, ".");
+                    const numStr = uangMasukCell.replace(/\./g, "").replace(/,/g, ".");
                     const num = parseFloat(numStr);
-                    
-                    // Validasi: pastikan murni angka
-                    if (!isNaN(num) && num > 0 && /^[-+]?\d+(\.\d+)?$/.test(numStr)) {
-                        if (num > possibleAmount) possibleAmount = num;
+                    if (!isNaN(num) && num > 0) {
+                        possibleAmount = num;
                     }
-                });
+                }
                 
                 if (possibleAmount > 0) {
                     formattedRows.push({
