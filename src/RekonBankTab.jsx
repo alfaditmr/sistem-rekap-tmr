@@ -1,0 +1,252 @@
+import React, { useState } from 'react';
+import Papa from 'papaparse';
+import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, Plus, Trash, Database } from 'lucide-react';
+
+export default function RekonBankTab({ formatRp, safeString, categories, onSaveRekon }) {
+  const [bankRows, setBankRows] = useState([]);
+  const [apiData, setApiData] = useState([]);
+  const [loadingApi, setLoadingApi] = useState(false);
+  
+  // Modal State
+  const [splitModal, setSplitModal] = useState({ isOpen: false, bankRow: null, allocations: [] });
+
+  const fetchApiData = async () => {
+    setLoadingApi(true);
+    try {
+       const [fasRes, proRes] = await Promise.all([
+           fetch('https://sistem-informasi-ragunan.vercel.app/api/fasilitas').then(r => r.json()).catch(() => ({data: []})),
+           fetch('https://sistem-informasi-ragunan.vercel.app/api/promo').then(r => r.json()).catch(() => ({data: []}))
+       ]);
+       const combined = [
+           ...(fasRes.data || []).map(d => ({...d, source: 'Fasilitas'})),
+           ...(proRes.data || []).map(d => ({...d, source: 'Promo'}))
+       ];
+       setApiData(combined);
+    } catch(e) {
+       alert("Gagal menarik data dari API");
+    }
+    setLoadingApi(false);
+  };
+
+  const handleFileUpload = (e) => {
+     const file = e.target.files[0];
+     if(!file) return;
+     Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+            const formattedRows = results.data.map((row, idx) => {
+                const keys = Object.keys(row);
+                const dateKey = keys.find(k => k.toLowerCase().includes('date') || k.toLowerCase().includes('tanggal'));
+                const descKey = keys.find(k => k.toLowerCase().includes('desc') || k.toLowerCase().includes('keterangan'));
+                const amountKey = keys.find(k => k.toLowerCase().includes('amount') || k.toLowerCase().includes('nominal') || k.toLowerCase().includes('kredit'));
+                
+                let amount = amountKey ? parseFloat(row[amountKey].replace(/[^0-9.-]+/g,"")) : 0;
+                if (isNaN(amount)) amount = 0;
+
+                return {
+                    id: `bank_${idx}`,
+                    date: dateKey ? row[dateKey] : '',
+                    description: descKey ? row[descKey] : JSON.stringify(row),
+                    amount: amount,
+                    status: 'pending'
+                };
+            }).filter(r => r.amount > 0); 
+
+            setBankRows(formattedRows);
+        }
+     });
+  };
+
+  const openSplitModal = (row) => {
+      setSplitModal({
+          isOpen: true,
+          bankRow: row,
+          allocations: [{ id: Date.now(), categoryId: '', itemId: '', apiRefId: '', amount: row.amount }]
+      });
+  };
+
+  const addAllocation = () => {
+      setSplitModal(prev => ({
+          ...prev,
+          allocations: [...prev.allocations, { id: Date.now(), categoryId: '', itemId: '', apiRefId: '', amount: 0 }]
+      }));
+  };
+
+  const updateAllocation = (id, field, value) => {
+      setSplitModal(prev => ({
+          ...prev,
+          allocations: prev.allocations.map(a => a.id === id ? { ...a, [field]: value } : a)
+      }));
+  };
+
+  const removeAllocation = (id) => {
+      setSplitModal(prev => ({
+          ...prev,
+          allocations: prev.allocations.filter(a => a.id !== id)
+      }));
+  };
+
+  const saveSplit = () => {
+      const totalAllocated = splitModal.allocations.reduce((sum, a) => sum + Number(a.amount || 0), 0);
+      if (totalAllocated !== splitModal.bankRow.amount) {
+          alert(`Total alokasi (Rp ${formatRp(totalAllocated)}) tidak sama dengan nominal bank (Rp ${formatRp(splitModal.bankRow.amount)})`);
+          return;
+      }
+      
+      setBankRows(prev => prev.map(r => r.id === splitModal.bankRow.id ? { ...r, status: 'matched' } : r));
+      
+      if(onSaveRekon) {
+          onSaveRekon(splitModal.bankRow.date, splitModal.allocations, apiData);
+      }
+
+      setSplitModal({ isOpen: false, bankRow: null, allocations: [] });
+  };
+
+  const getItemsForCategory = (catId) => {
+      const cat = categories.find(c => c.id === catId);
+      return cat ? cat.items : [];
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto px-4 py-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+          <div>
+            <h2 className="text-2xl font-black text-gray-800 flex items-center gap-2">
+                <Database size={28} className="text-blue-600" /> Rekonsiliasi Bank & API
+            </h2>
+            <p className="text-gray-500 text-sm mt-1">Cocokkan mutasi bank CSV dengan bukti transfer dari web app.</p>
+          </div>
+          <div className="flex gap-2">
+             <button onClick={fetchApiData} disabled={loadingApi} className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors">
+                 <RefreshCw size={18} className={loadingApi ? 'animate-spin' : ''} /> Tarik Data Bukti API
+             </button>
+             <label className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 cursor-pointer transition-colors shadow-md">
+                 <Upload size={18} /> Upload CSV Bank
+                 <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
+             </label>
+          </div>
+      </div>
+
+      {apiData.length > 0 && (
+          <div className="mb-6 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+              <h3 className="font-bold text-indigo-800 mb-2 flex items-center gap-2"><CheckCircle size={18}/> {apiData.length} Data Bukti Transfer Tersedia (API)</h3>
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                  {apiData.map(item => (
+                      <div key={item.id} className="min-w-[200px] bg-white p-3 rounded-lg shadow-sm border border-indigo-100">
+                          <div className="text-xs font-bold text-gray-500 mb-1">{item.source} - ID: {item.id.substring(0,6)}...</div>
+                          <div className="font-bold text-indigo-700">Rp {formatRp(item.jumlahTransfer)}</div>
+                          <a href={item.buktiTransferUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline flex items-center gap-1 mt-2">
+                              <LinkIcon size={12}/> Lihat Bukti
+                          </a>
+                      </div>
+                  ))}
+              </div>
+          </div>
+      )}
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <table className="w-full text-sm text-left text-gray-700">
+              <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
+                  <tr>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Tanggal (Bank)</th>
+                      <th className="px-6 py-4">Keterangan</th>
+                      <th className="px-6 py-4 text-right">Nominal Masuk</th>
+                      <th className="px-6 py-4 text-center">Aksi</th>
+                  </tr>
+              </thead>
+              <tbody>
+                  {bankRows.length === 0 ? (
+                      <tr><td colSpan={5} className="px-6 py-10 text-center text-gray-500">Belum ada data CSV mutasi bank yang di-upload.</td></tr>
+                  ) : bankRows.map((row) => (
+                      <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="px-6 py-3">
+                              {row.status === 'matched' 
+                                ? <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-1 rounded-full flex items-center gap-1 w-max"><CheckCircle size={14}/> Matched</span>
+                                : <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-1 rounded-full w-max inline-block">Pending</span>}
+                          </td>
+                          <td className="px-6 py-3 font-medium">{row.date}</td>
+                          <td className="px-6 py-3">{row.description}</td>
+                          <td className="px-6 py-3 text-right font-bold text-gray-900">Rp {formatRp(row.amount)}</td>
+                          <td className="px-6 py-3 text-center">
+                              {row.status !== 'matched' && (
+                                  <button onClick={() => openSplitModal(row)} className="text-blue-600 hover:text-blue-800 font-bold bg-blue-50 px-3 py-1.5 rounded-lg text-xs">
+                                      Pecah / Validasi
+                                  </button>
+                              )}
+                          </td>
+                      </tr>
+                  ))}
+              </tbody>
+          </table>
+      </div>
+
+      {splitModal.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+                  <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-blue-50">
+                      <div>
+                          <h3 className="text-lg font-black text-blue-900">Alokasi & Validasi Uang Masuk</h3>
+                          <p className="text-sm text-blue-700">Tanggal: {splitModal.bankRow.date} | Ket: {splitModal.bankRow.description}</p>
+                      </div>
+                      <div className="text-right">
+                          <div className="text-xs text-blue-600 font-bold uppercase tracking-wider mb-1">Total Nominal Bank</div>
+                          <div className="text-2xl font-black text-blue-800">Rp {formatRp(splitModal.bankRow.amount)}</div>
+                      </div>
+                  </div>
+                  
+                  <div className="p-6">
+                      <div className="space-y-4">
+                          {splitModal.allocations.map((alloc, index) => (
+                              <div key={alloc.id} className="flex flex-col md:flex-row gap-3 items-end bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                  <div className="w-full md:w-1/4">
+                                      <label className="block text-xs font-bold text-gray-600 mb-1">Kategori POS</label>
+                                      <select value={alloc.categoryId} onChange={e => updateAllocation(alloc.id, 'categoryId', e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white">
+                                          <option value="">-- Pilih --</option>
+                                          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                      </select>
+                                  </div>
+                                  <div className="w-full md:w-1/4">
+                                      <label className="block text-xs font-bold text-gray-600 mb-1">Item POS</label>
+                                      <select value={alloc.itemId} onChange={e => updateAllocation(alloc.id, 'itemId', e.target.value)} disabled={!alloc.categoryId} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white">
+                                          <option value="">-- Pilih Item --</option>
+                                          {getItemsForCategory(alloc.categoryId).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                      </select>
+                                  </div>
+                                  <div className="w-full md:w-1/4">
+                                      <label className="block text-xs font-bold text-gray-600 mb-1">Hubungkan Bukti API (Opsional)</label>
+                                      <select value={alloc.apiRefId} onChange={e => updateAllocation(alloc.id, 'apiRefId', e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white text-indigo-700">
+                                          <option value="">-- Tanpa Bukti API --</option>
+                                          {apiData.map(d => <option key={d.id} value={d.id}>{d.source} - Rp {formatRp(d.jumlahTransfer)}</option>)}
+                                      </select>
+                                  </div>
+                                  <div className="w-full md:w-1/5">
+                                      <label className="block text-xs font-bold text-gray-600 mb-1">Nominal Pecahan</label>
+                                      <input type="number" value={alloc.amount} onChange={e => updateAllocation(alloc.id, 'amount', e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm font-bold text-right" />
+                                  </div>
+                                  <div className="pb-1">
+                                      <button onClick={() => removeAllocation(alloc.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash size={18}/></button>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+
+                      <button onClick={addAllocation} className="mt-4 flex items-center gap-2 text-blue-600 font-bold text-sm hover:bg-blue-50 px-4 py-2 rounded-lg transition-colors">
+                          <Plus size={16}/> Tambah Pecahan Baru
+                      </button>
+
+                      <div className="mt-8 flex justify-end gap-3 border-t border-gray-100 pt-6">
+                          <button onClick={() => setSplitModal({isOpen:false})} className="px-6 py-2.5 rounded-xl font-bold text-gray-600 hover:bg-gray-100">Batal</button>
+                          <button onClick={saveSplit} className="px-6 py-2.5 rounded-xl font-bold text-white bg-green-600 hover:bg-green-700 shadow-md flex items-center gap-2">
+                              <CheckCircle size={18}/> Simpan Alokasi
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+    </div>
+  );
+}

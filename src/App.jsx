@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save, Database, CloudDownload, Table, FileSpreadsheet, User } from 'lucide-react';
+import RekonBankTab from './RekonBankTab';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
@@ -1912,6 +1913,7 @@ export default function App() {
             <button onClick={() => { setActiveTab('dashboard'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'dashboard' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Dashboard</span></button>
             <button onClick={() => { setActiveTab('input'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'input' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Edit size={18} /> <span className="hidden md:inline">Input</span></button>
             <button onClick={() => { setActiveTab('laporan'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'laporan' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Table size={18} /> <span className="hidden md:inline">Laporan</span></button>
+            <button onClick={() => { setActiveTab('rekonBank'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'rekonBank' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Database size={18} /> <span className="hidden md:inline">Rekon Bank</span></button>
             <button onClick={() => { setActiveTab('settings'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Settings size={18} /> <span className="hidden md:inline">Master</span></button>
             <button onClick={() => { setActiveTab('print'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'print' ? 'bg-green-800' : 'hover:bg-green-600'}`}><FileText size={18} /> <span className="hidden md:inline">Cetak</span></button>
             
@@ -1928,6 +1930,19 @@ export default function App() {
       {/* ============================================================== */}
       {/* 🔴 TAB: DASHBOARD */}
       {/* ============================================================== */}
+      {activeTab === 'rekonBank' && (
+          <div className="no-print w-full bg-gray-50 min-h-screen">
+              <RekonBankTab 
+                 formatRp={formatRp} 
+                 safeString={safeString} 
+                 categories={categories}
+                 onSaveRekon={(bankDate, allocations, apis) => {
+                     alert(`Fitur Rekon Bank berhasil tersambung! Data ${allocations.length} alokasi siap disimpan ke database.`);
+                 }}
+              />
+          </div>
+      )}
+
       {activeTab === 'dashboard' && (
         <div className="max-w-4xl mx-auto px-4 py-6 no-print">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
