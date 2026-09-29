@@ -1953,43 +1953,50 @@ export default function App() {
                      // 2. Simpan Alokasi ke Laporan Firestore (via state allReports)
                      setAllReports(prev => {
                          const dayData = prev[ymd] || {};
-                         const typeData = dayData['utama'] || { sequence: '', signatureDate: ymd, activeItems: [], formData: {} };
-                         const newFormData = { ...(typeData.formData || {}) };
-                         const newActiveItems = [...(typeData.activeItems || [])];
+                         // Buat salinan dalam (deep copy) dari dayData agar tidak memutasi state secara langsung
+                         const updatedDayData = JSON.parse(JSON.stringify(dayData));
 
                          allocations.forEach(alloc => {
                              const itemKey = alloc.itemId;
                              if (!itemKey) return;
                              
-                             // A. Tambahkan nominal uang ke formData (bergabung dengan nominal yang mungkin sudah ada)
-                             const currentAmount = newFormData[itemKey] || 0;
-                             newFormData[itemKey] = currentAmount + Number(alloc.amount || 0);
+                             // Tentukan apakah masuk ke STSU Utama (Retribusi) atau STSU Lain-lain
+                             const cat = categories.find(c => c.id === alloc.categoryId);
+                             let docKey = 'utama'; // default
+                             if (cat && cat.type === 'lain') {
+                                 docKey = 'lain'; // Mengarah ke STSU Pendapatan Lain-lain dokumen pertama
+                             }
+
+                             // Pastikan struktur docKey sudah ada
+                             if (!updatedDayData[docKey]) {
+                                 updatedDayData[docKey] = { sequence: '', signatureDate: ymd, activeItems: [], formData: {} };
+                             }
+                             if (!updatedDayData[docKey].formData) updatedDayData[docKey].formData = {};
+                             if (!updatedDayData[docKey].activeItems) updatedDayData[docKey].activeItems = [];
+
+                             const typeData = updatedDayData[docKey];
+                             
+                             // A. Tambahkan nominal uang ke formData
+                             const currentAmount = typeData.formData[itemKey] || 0;
+                             typeData.formData[itemKey] = currentAmount + Number(alloc.amount || 0);
 
                              // B. Aktifkan checkbox item ini
-                             if (!newActiveItems.includes(itemKey)) {
-                                 newActiveItems.push(itemKey);
+                             if (!typeData.activeItems.includes(itemKey)) {
+                                 typeData.activeItems.push(itemKey);
                              }
                              
-                             // C. Simpan link URL bukti transfer (jika di-link dengan data API)
+                             // C. Simpan link URL bukti transfer
                              if (alloc.apiRefId) {
                                  const apiItem = apis.find(a => a.id === alloc.apiRefId);
                                  if (apiItem && apiItem.buktiTransferUrl) {
-                                     // Simpan link gambar khusus untuk pos ini (contoh: item_1a_buktiUrl)
-                                     newFormData[`${itemKey}_buktiUrl`] = apiItem.buktiTransferUrl;
+                                     typeData.formData[`${itemKey}_buktiUrl`] = apiItem.buktiTransferUrl;
                                  }
                              }
                          });
 
                          return {
                              ...prev,
-                             [ymd]: {
-                                 ...dayData,
-                                 'utama': {
-                                     ...typeData,
-                                     activeItems: newActiveItems,
-                                     formData: newFormData
-                                 }
-                             }
+                             [ymd]: updatedDayData
                          };
                      });
 
