@@ -13,11 +13,18 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
   const fetchApiFasilitas = async () => {
     setLoadingApi(true);
     try {
-       const fasRes = await fetch('https://sistem-informasi-ragunan.vercel.app/api/fasilitas').then(r => r.json()).catch(() => ({data: []}));
-       const newFasilitas = (fasRes.data || []).map(d => ({...d, source: 'Fasilitas'}));
-       setApiData(prev => [...prev.filter(d => d.source !== 'Fasilitas'), ...newFasilitas]);
+       const res = await fetch('https://sistem-informasi-ragunan.vercel.app/api/fasilitas');
+       const fasRes = await res.json();
+       
+       if (fasRes && fasRes.data && fasRes.data.length > 0) {
+           const newFasilitas = fasRes.data.map(d => ({...d, source: 'Fasilitas'}));
+           setApiData(prev => [...prev.filter(d => d.source !== 'Fasilitas'), ...newFasilitas]);
+       } else {
+           alert("Data API Fasilitas kosong (0 data).");
+       }
     } catch(e) {
-       alert("Gagal menarik data Fasilitas dari API");
+       console.error("API Fasilitas error:", e);
+       alert("Gagal menarik data Fasilitas dari API. Pastikan endpoint aktif dan bisa diakses.");
     }
     setLoadingApi(false);
   };
@@ -25,11 +32,18 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
   const fetchApiPromo = async () => {
     setLoadingApi(true);
     try {
-       const proRes = await fetch('https://sistem-informasi-ragunan.vercel.app/api/promo').then(r => r.json()).catch(() => ({data: []}));
-       const newPromo = (proRes.data || []).map(d => ({...d, source: 'Promo'}));
-       setApiData(prev => [...prev.filter(d => d.source !== 'Promo'), ...newPromo]);
+       const res = await fetch('https://sistem-informasi-ragunan.vercel.app/api/promo');
+       const proRes = await res.json();
+       
+       if (proRes && proRes.data && proRes.data.length > 0) {
+           const newPromo = proRes.data.map(d => ({...d, source: 'Promo'}));
+           setApiData(prev => [...prev.filter(d => d.source !== 'Promo'), ...newPromo]);
+       } else {
+           alert("Data API Promo kosong (0 data).");
+       }
     } catch(e) {
-       alert("Gagal menarik data Promo dari API");
+       console.error("API Promo error:", e);
+       alert("Gagal menarik data Promo dari API. Pastikan endpoint aktif dan bisa diakses.");
     }
     setLoadingApi(false);
   };
@@ -38,28 +52,62 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
      const file = e.target.files[0];
      if(!file) return;
      Papa.parse(file, {
-        header: true,
+        header: false, // Matikan header agar tidak error kalau ada baris kosong/header sampah di atas
         skipEmptyLines: true,
         complete: (results) => {
-            const formattedRows = results.data.map((row, idx) => {
-                const keys = Object.keys(row);
-                const dateKey = keys.find(k => k.toLowerCase().includes('date') || k.toLowerCase().includes('tanggal'));
-                const descKey = keys.find(k => k.toLowerCase().includes('desc') || k.toLowerCase().includes('keterangan'));
-                const amountKey = keys.find(k => k.toLowerCase().includes('amount') || k.toLowerCase().includes('nominal') || k.toLowerCase().includes('kredit'));
+            const formattedRows = [];
+            let rowIdx = 0;
+
+            results.data.forEach((row) => {
+                let possibleDate = '';
+                let possibleDesc = '';
+                let possibleAmount = 0;
                 
-                let amount = amountKey ? parseFloat(row[amountKey].replace(/[^0-9.-]+/g,"")) : 0;
-                if (isNaN(amount)) amount = 0;
+                const dateRegex = /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/;
+                
+                row.forEach(cell => {
+                    if (typeof cell !== 'string') return;
+                    const cleanCell = cell.trim();
+                    if (!cleanCell) return;
+                    
+                    if (!possibleDate && dateRegex.test(cleanCell)) {
+                        possibleDate = cleanCell;
+                        return;
+                    }
+                    
+                    // Parse angka ala Indonesia (1.300.000,00 -> 1300000.00)
+                    const numStr = cleanCell.replace(/\./g, "").replace(/,/g, ".");
+                    const num = parseFloat(numStr);
+                    
+                    // Validasi: pastikan isinya benar-benar murni angka uang (bukan teks yang mengandung sedikit angka)
+                    if (!isNaN(num) && num > 0 && /^[-+]?\d+(\.\d+)?$/.test(numStr)) {
+                        if (num > possibleAmount) possibleAmount = num;
+                    } else {
+                        // Jika bukan tanggal dan bukan angka murni, jadikan description
+                        if (!dateRegex.test(cleanCell)) {
+                            possibleDesc += (possibleDesc ? ' - ' : '') + cleanCell;
+                        }
+                    }
+                });
+                
+                if (possibleAmount > 0) {
+                    formattedRows.push({
+                        id: `bank_${rowIdx++}`,
+                        date: possibleDate || 'Tanpa Tanggal',
+                        description: possibleDesc || 'Tanpa Keterangan',
+                        amount: possibleAmount,
+                        status: 'pending'
+                    });
+                }
+            });
 
-                return {
-                    id: `bank_${idx}`,
-                    date: dateKey ? row[dateKey] : '',
-                    description: descKey ? row[descKey] : JSON.stringify(row),
-                    amount: amount,
-                    status: 'pending'
-                };
-            }).filter(r => r.amount > 0); 
-
+            if (formattedRows.length === 0) {
+                alert("Gagal membaca CSV. Pastikan file berisi mutasi dengan angka Rupiah yang benar (contoh: 1.000.000).");
+            }
+            
+            // Tambahkan ke baris yang sudah ada, jangan ditimpa semua jika mau (tapi sekarang timpa saja)
             setBankRows(formattedRows);
+            e.target.value = null; // Reset input file
         }
      });
   };
