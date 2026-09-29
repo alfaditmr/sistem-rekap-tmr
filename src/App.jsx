@@ -5,7 +5,7 @@ import RekonBankTab from './RekonBankTab';
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously } from "firebase/auth";
-import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
+import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "firebase/firestore";
 
 // ==========================================
 // 🔴 KONFIGURASI DATABASE FIREBASE USER
@@ -288,26 +288,51 @@ export default function App() {
 
   useEffect(() => {
     if (!user || !db) return;
-    const loadData = async () => {
-      setSyncStatus('syncing');
-      try {
-        const docSnap = await getDoc(getDocRef());
+    setSyncStatus('syncing');
+    
+    let isInitialLoad = true;
+    
+    const unsubscribe = onSnapshot(getDocRef(), (docSnap) => {
         if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.signatures) setSignatures(data.signatures);
-          if (data.categories) setCategories(data.categories);
-          if (data.allReports) setAllReports(data.allReports);
-          if (data.bankRows) setBankRows(data.bankRows);
+            const data = docSnap.data();
+            
+            // Update state HANYA jika data berubah (mencegah infinite loop dengan saveData)
+            setSignatures(prev => {
+                const newStr = JSON.stringify(data.signatures || {});
+                return JSON.stringify(prev) === newStr ? prev : (data.signatures || {});
+            });
+            
+            setCategories(prev => {
+                const newStr = JSON.stringify(data.categories || []);
+                return JSON.stringify(prev) === newStr ? prev : (data.categories || []);
+            });
+            
+            setAllReports(prev => {
+                const newStr = JSON.stringify(data.allReports || {});
+                return JSON.stringify(prev) === newStr ? prev : (data.allReports || {});
+            });
+            
+            setBankRows(prev => {
+                const newStr = JSON.stringify(data.bankRows || []);
+                return JSON.stringify(prev) === newStr ? prev : (data.bankRows || []);
+            });
         }
-        setDbReady(true);
+        
+        if (isInitialLoad) {
+            setDbReady(true);
+            isInitialLoad = false;
+        }
         setSyncStatus('synced');
-      } catch (e) { 
-        console.error("Load Database Error:", e);
-        setDbReady(true);
-        setSyncStatus('offline'); 
-      }
-    };
-    loadData();
+    }, (error) => {
+        console.error("Firebase Snapshot Error:", error);
+        if (isInitialLoad) {
+            setDbReady(true);
+            isInitialLoad = false;
+        }
+        setSyncStatus('offline');
+    });
+
+    return () => unsubscribe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
