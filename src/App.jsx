@@ -1937,7 +1937,63 @@ export default function App() {
                  safeString={safeString} 
                  categories={categories}
                  onSaveRekon={(bankDate, allocations, apis) => {
-                     alert(`Fitur Rekon Bank berhasil tersambung! Data ${allocations.length} alokasi siap disimpan ke database.`);
+                     // 1. Format Tanggal dari CSV ("Sep 01, 2026 06:46:23 WIB") ke "YYYY-MM-DD"
+                     let ymd = new Date().toISOString().split('T')[0];
+                     try {
+                         const cleanStr = (bankDate || '').replace(/WIB|WITA|WIT/i, '').trim();
+                         const d = new Date(cleanStr);
+                         if (!isNaN(d.getTime())) {
+                             const y = d.getFullYear();
+                             const m = String(d.getMonth() + 1).padStart(2, '0');
+                             const day = String(d.getDate()).padStart(2, '0');
+                             ymd = `${y}-${m}-${day}`;
+                         }
+                     } catch(e) {}
+
+                     // 2. Simpan Alokasi ke Laporan Firestore (via state allReports)
+                     setAllReports(prev => {
+                         const dayData = prev[ymd] || {};
+                         const typeData = dayData['utama'] || { sequence: '', signatureDate: ymd, activeItems: [], formData: {} };
+                         const newFormData = { ...(typeData.formData || {}) };
+                         const newActiveItems = [...(typeData.activeItems || [])];
+
+                         allocations.forEach(alloc => {
+                             const itemKey = alloc.itemId;
+                             if (!itemKey) return;
+                             
+                             // A. Tambahkan nominal uang ke formData (bergabung dengan nominal yang mungkin sudah ada)
+                             const currentAmount = newFormData[itemKey] || 0;
+                             newFormData[itemKey] = currentAmount + Number(alloc.amount || 0);
+
+                             // B. Aktifkan checkbox item ini
+                             if (!newActiveItems.includes(itemKey)) {
+                                 newActiveItems.push(itemKey);
+                             }
+                             
+                             // C. Simpan link URL bukti transfer (jika di-link dengan data API)
+                             if (alloc.apiRefId) {
+                                 const apiItem = apis.find(a => a.id === alloc.apiRefId);
+                                 if (apiItem && apiItem.buktiTransferUrl) {
+                                     // Simpan link gambar khusus untuk pos ini (contoh: item_1a_buktiUrl)
+                                     newFormData[`${itemKey}_buktiUrl`] = apiItem.buktiTransferUrl;
+                                 }
+                             }
+                         });
+
+                         return {
+                             ...prev,
+                             [ymd]: {
+                                 ...dayData,
+                                 'utama': {
+                                     ...typeData,
+                                     activeItems: newActiveItems,
+                                     formData: newFormData
+                                 }
+                             }
+                         };
+                     });
+
+                     showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
                  }}
               />
           </div>
