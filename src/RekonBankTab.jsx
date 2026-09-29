@@ -2,18 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
 import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, Plus, Trash, Database, Filter, Trash2 } from 'lucide-react';
 
-export default function RekonBankTab({ formatRp, safeString, categories, onSaveRekon }) {
-  const [bankRows, setBankRows] = useState(() => {
-      try {
-          const saved = localStorage.getItem('tmr_v19_bankRows');
-          return saved ? JSON.parse(saved) : [];
-      } catch(e) { return []; }
-  });
+export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeString, categories, onSaveRekon }) {
   const [selectedBankDate, setSelectedBankDate] = useState('Semua');
-
-  useEffect(() => {
-      localStorage.setItem('tmr_v19_bankRows', JSON.stringify(bankRows));
-  }, [bankRows]);
 
   const uniqueBankDates = useMemo(() => {
       // Ambil bagian tanggal saja, bank date format CSV: "Sep 01, 2026 06:46:23 WIB"

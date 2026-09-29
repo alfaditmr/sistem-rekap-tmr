@@ -184,6 +184,7 @@ export default function App() {
   const [dbReady, setDbReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState('offline'); 
   const [isGeneratingUraian, setIsGeneratingUraian] = useState(false);
+  const [bankRows, setBankRows] = useState([]);
 
   // --- REPORT EXCEL & REKON STATE ---
   const [excelReportMonth, setExcelReportMonth] = useState(() => getLocalYMD().substring(0, 7)); // Format YYYY-MM
@@ -296,8 +297,9 @@ export default function App() {
           if (data.signatures) setSignatures(data.signatures);
           if (data.categories) setCategories(data.categories);
           if (data.allReports) setAllReports(data.allReports);
+          if (data.bankRows) setBankRows(data.bankRows);
         }
-        setDbReady(true); 
+        setDbReady(true);
         setSyncStatus('synced');
       } catch (e) { 
         console.error("Load Database Error:", e);
@@ -314,7 +316,7 @@ export default function App() {
     setSyncStatus('syncing');
     const saveData = async () => {
       try { 
-        await setDoc(getDocRef(), { signatures, categories, allReports, lastUpdated: new Date().toISOString() }); 
+        await setDoc(getDocRef(), { signatures, categories, allReports, bankRows, lastUpdated: new Date().toISOString() }); 
         setSyncStatus('synced'); 
       } catch(e) { 
         console.error("Save Database Error:", e);
@@ -324,13 +326,13 @@ export default function App() {
     const timer = setTimeout(saveData, 1000);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signatures, categories, allReports, user, dbReady]);
+  }, [signatures, categories, allReports, bankRows, user, dbReady]);
 
   const handleForceSave = async () => {
     if (!user || !dbReady) return;
     setSyncStatus('syncing');
     try { 
-      await setDoc(getDocRef(), { signatures, categories, allReports, lastUpdated: new Date().toISOString() }); 
+      await setDoc(getDocRef(), { signatures, categories, allReports, bankRows, lastUpdated: new Date().toISOString() }); 
       setSyncStatus('synced'); 
       showToast('Data berhasil disimpan ke Cloud!'); 
     } catch(e) { 
@@ -1933,6 +1935,8 @@ export default function App() {
       {activeTab === 'rekonBank' && (
           <div className="no-print w-full bg-gray-50 min-h-screen">
               <RekonBankTab 
+                 bankRows={bankRows}
+                 setBankRows={setBankRows}
                  formatRp={formatRp} 
                  safeString={safeString} 
                  categories={categories}
