@@ -167,6 +167,12 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
           alert(`Total alokasi (Rp ${formatRp(totalAllocated)}) tidak sama dengan nominal bank (Rp ${formatRp(splitModal.bankRow.amount)})`);
           return;
       }
+
+      const hasEmptyItem = splitModal.allocations.some(a => !a.categoryId || !a.itemId);
+      if (hasEmptyItem) {
+          alert("Silakan pilih Kategori dan Pos/Item untuk setiap alokasi sebelum menyimpan.");
+          return;
+      }
       
       setBankRows(prev => prev.map(r => r.id === splitModal.bankRow.id ? { ...r, status: 'matched' } : r));
       
