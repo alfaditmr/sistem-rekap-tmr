@@ -6,6 +6,7 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
   const [bankRows, setBankRows] = useState([]);
   const [apiData, setApiData] = useState([]);
   const [loadingApi, setLoadingApi] = useState(false);
+  const [apiDate, setApiDate] = useState(new Date().toISOString().split('T')[0]);
   
   // Modal State
   const [splitModal, setSplitModal] = useState({ isOpen: false, bankRow: null, allocations: [] });
@@ -13,7 +14,8 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
   const fetchApiFasilitas = async () => {
     setLoadingApi(true);
     try {
-       const res = await fetch('https://sistem-informasi-ragunan.vercel.app/api/fasilitas');
+       const url = `https://sistem-informasi-ragunan.vercel.app/api/fasilitas${apiDate ? '?date=' + apiDate : ''}`;
+       const res = await fetch(url);
        const fasRes = await res.json();
        
        if (fasRes && fasRes.data && fasRes.data.length > 0) {
@@ -32,7 +34,8 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
   const fetchApiPromo = async () => {
     setLoadingApi(true);
     try {
-       const res = await fetch('https://sistem-informasi-ragunan.vercel.app/api/promo');
+       const url = `https://sistem-informasi-ragunan.vercel.app/api/promo${apiDate ? '?date=' + apiDate : ''}`;
+       const res = await fetch(url);
        const proRes = await res.json();
        
        if (proRes && proRes.data && proRes.data.length > 0) {
@@ -161,15 +164,25 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
             </h2>
             <p className="text-gray-500 text-sm mt-1">Cocokkan mutasi bank CSV dengan bukti transfer dari web app.</p>
           </div>
-          <div className="flex gap-2">
-             <div className="flex bg-indigo-50 p-1 rounded-xl shadow-sm border border-indigo-100">
-                <button onClick={fetchApiFasilitas} disabled={loadingApi} className="hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors text-sm">
-                    <RefreshCw size={14} className={loadingApi ? 'animate-spin' : ''} /> Tarik API Fasilitas
-                </button>
-                <div className="w-px bg-indigo-200 mx-1"></div>
-                <button onClick={fetchApiPromo} disabled={loadingApi} className="hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors text-sm">
-                    <RefreshCw size={14} className={loadingApi ? 'animate-spin' : ''} /> Tarik API Promo
-                </button>
+          <div className="flex gap-2 items-center">
+             <div className="flex flex-col sm:flex-row items-center gap-2 bg-indigo-50 p-1.5 rounded-xl shadow-sm border border-indigo-100">
+                <input 
+                   type="date" 
+                   value={apiDate} 
+                   onChange={e => setApiDate(e.target.value)} 
+                   className="px-2 py-1.5 rounded-lg border border-indigo-200 text-sm text-indigo-900 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                   title="Filter Tanggal API"
+                />
+                <div className="hidden sm:block w-px bg-indigo-200 h-6 mx-1"></div>
+                <div className="flex">
+                    <button onClick={fetchApiFasilitas} disabled={loadingApi} className="hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors text-sm">
+                        <RefreshCw size={14} className={loadingApi ? 'animate-spin' : ''} /> Tarik API Fasilitas
+                    </button>
+                    <div className="w-px bg-indigo-200 mx-1"></div>
+                    <button onClick={fetchApiPromo} disabled={loadingApi} className="hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors text-sm">
+                        <RefreshCw size={14} className={loadingApi ? 'animate-spin' : ''} /> Tarik API Promo
+                    </button>
+                </div>
              </div>
              <label className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 cursor-pointer transition-colors shadow-md">
                  <Upload size={18} /> Upload CSV Bank
