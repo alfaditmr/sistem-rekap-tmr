@@ -184,7 +184,16 @@ export default function App() {
   const [dbReady, setDbReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState('offline'); 
   const [isGeneratingUraian, setIsGeneratingUraian] = useState(false);
-  const [bankRows, setBankRows] = useState([]);
+  const [bankRows, setBankRows] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tmr_v19_bankRows');
+      return saved ? JSON.parse(saved) : [];
+    } catch(e) { return []; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('tmr_v19_bankRows', JSON.stringify(bankRows)); } catch(e) {}
+  }, [bankRows]);
 
   // --- REPORT EXCEL & REKON STATE ---
   const [excelReportMonth, setExcelReportMonth] = useState(() => getLocalYMD().substring(0, 7)); // Format YYYY-MM
