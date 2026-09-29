@@ -1,9 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
-import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, Plus, Trash, Database } from 'lucide-react';
+import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, Plus, Trash, Database, Filter, Trash2 } from 'lucide-react';
 
 export default function RekonBankTab({ formatRp, safeString, categories, onSaveRekon }) {
-  const [bankRows, setBankRows] = useState([]);
+  const [bankRows, setBankRows] = useState(() => {
+      try {
+          const saved = localStorage.getItem('tmr_v19_bankRows');
+          return saved ? JSON.parse(saved) : [];
+      } catch(e) { return []; }
+  });
+  const [selectedBankDate, setSelectedBankDate] = useState('Semua');
+
+  useEffect(() => {
+      localStorage.setItem('tmr_v19_bankRows', JSON.stringify(bankRows));
+  }, [bankRows]);
+
+  const uniqueBankDates = useMemo(() => {
+      // Ambil bagian tanggal saja (contoh: "Sep 01, 2026")
+      const dates = new Set(bankRows.map(r => r.date.split(' 0')[0].split(' 1')[0].split(' 2')[0].trim())); 
+      return ['Semua', ...Array.from(dates)];
+  }, [bankRows]);
+
+  const filteredBankRows = useMemo(() => {
+      if (selectedBankDate === 'Semua') return bankRows;
+      return bankRows.filter(r => r.date.includes(selectedBankDate));
+  }, [bankRows, selectedBankDate]);
   const [apiData, setApiData] = useState([]);
   const [loadingApi, setLoadingApi] = useState(false);
   const [apiDate, setApiDate] = useState(new Date().toISOString().split('T')[0]);
@@ -100,8 +121,12 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
                 alert("Gagal membaca CSV. Pastikan file berisi mutasi dengan angka Rupiah yang benar (contoh: 1.000.000).");
             }
             
-            // Tambahkan ke baris yang sudah ada, jangan ditimpa semua jika mau (tapi sekarang timpa saja)
-            setBankRows(formattedRows);
+            // Tambahkan ke baris yang sudah ada agar tidak menimpa jika upload file baru
+            setBankRows(prev => {
+                // Untuk mencegah duplikasi saat append, pastikan id unik (menggunakan timestamp)
+                const newRows = formattedRows.map((r, i) => ({ ...r, id: `bank_${Date.now()}_${i}` }));
+                return [...prev, ...newRows];
+            });
             e.target.value = null; // Reset input file
         }
      });
@@ -190,8 +215,30 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
                  <Upload size={18} /> Upload CSV Bank
                  <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
              </label>
+             <button onClick={() => { if(window.confirm('Hapus semua data CSV mutasi bank?')) setBankRows([]); }} className="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-2 rounded-lg transition-colors" title="Bersihkan Data CSV">
+                 <Trash2 size={18} />
+             </button>
           </div>
       </div>
+
+      {bankRows.length > 0 && (
+          <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-3 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+              <div className="flex items-center gap-2 text-gray-600 font-medium text-sm">
+                  <Filter size={16} /> Filter Tanggal Mutasi:
+              </div>
+              <select 
+                  value={selectedBankDate} 
+                  onChange={e => setSelectedBankDate(e.target.value)}
+                  className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block px-3 py-1.5"
+              >
+                  {uniqueBankDates.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+              <div className="text-sm text-gray-500 sm:ml-auto">
+                  Menampilkan {filteredBankRows.length} dari {bankRows.length} data mutasi
+              </div>
+          </div>
+      )}
+
 
       {apiData.length > 0 && (
           <div className="mb-6 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
@@ -222,9 +269,9 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
                   </tr>
               </thead>
               <tbody>
-                  {bankRows.length === 0 ? (
-                      <tr><td colSpan={5} className="px-6 py-10 text-center text-gray-500">Belum ada data CSV mutasi bank yang di-upload.</td></tr>
-                  ) : bankRows.map((row) => (
+                  {filteredBankRows.length === 0 ? (
+                      <tr><td colSpan={5} className="px-6 py-10 text-center text-gray-500">Belum ada data CSV mutasi bank yang di-upload atau sesuai filter.</td></tr>
+                  ) : filteredBankRows.map((row) => (
                       <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50">
                           <td className="px-6 py-3">
                               {row.status === 'matched' 
