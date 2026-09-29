@@ -59,34 +59,31 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
             let rowIdx = 0;
 
             results.data.forEach((row) => {
-                let possibleDate = '';
-                let possibleDesc = '';
+                // Abaikan baris yang tidak memiliki setidaknya 4 kolom (A, B, C, D)
+                if (!row || row.length < 4) return;
+                
+                // Kolom C (index 2) = Tanggal, Kolom D (index 3) = Keterangan
+                const possibleDate = (row[2] || '').trim();
+                const possibleDesc = (row[3] || '').trim();
+                
                 let possibleAmount = 0;
                 
-                const dateRegex = /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/;
-                
-                row.forEach(cell => {
+                // Cari angka terbesar (Uang Masuk / Kredit) di kolom lainnya
+                row.forEach((cell, idx) => {
+                    // Abaikan kolom C dan D untuk pencarian angka
+                    if (idx === 2 || idx === 3) return;
                     if (typeof cell !== 'string') return;
+                    
                     const cleanCell = cell.trim();
                     if (!cleanCell) return;
-                    
-                    if (!possibleDate && dateRegex.test(cleanCell)) {
-                        possibleDate = cleanCell;
-                        return;
-                    }
                     
                     // Parse angka ala Indonesia (1.300.000,00 -> 1300000.00)
                     const numStr = cleanCell.replace(/\./g, "").replace(/,/g, ".");
                     const num = parseFloat(numStr);
                     
-                    // Validasi: pastikan isinya benar-benar murni angka uang (bukan teks yang mengandung sedikit angka)
+                    // Validasi: pastikan murni angka
                     if (!isNaN(num) && num > 0 && /^[-+]?\d+(\.\d+)?$/.test(numStr)) {
                         if (num > possibleAmount) possibleAmount = num;
-                    } else {
-                        // Jika bukan tanggal dan bukan angka murni, jadikan description
-                        if (!dateRegex.test(cleanCell)) {
-                            possibleDesc += (possibleDesc ? ' - ' : '') + cleanCell;
-                        }
                     }
                 });
                 
