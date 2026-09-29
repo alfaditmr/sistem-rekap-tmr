@@ -2247,12 +2247,16 @@ export default function App() {
                             <button onClick={() => handleRemoveActiveItem(item)} className="text-red-400 hover:text-red-600 p-2 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm mt-0.5 shrink-0"><Trash size={18} /></button>
                             <div className="flex flex-col w-full">
                               <label className="text-gray-700 font-medium">{item.id === 'direct' ? 'Nominal Pemasukan' : safeString(item.name)}</label>
-                              {item.itemNote && (
-                                <div className="flex items-center gap-2 mt-1 group/note w-full">
-                                  <span className="text-xs text-purple-600 whitespace-pre-wrap font-medium flex-1">{safeString(item.itemNote)}</span>
-                                  <button onClick={() => openEditNote(group, item)} className="text-gray-400 hover:text-blue-600 opacity-50 group-hover/note:opacity-100 transition-opacity bg-gray-50 p-1 rounded-md shrink-0"><Edit size={14} /></button>
-                                </div>
-                              )}
+                              <div className="flex items-center gap-2 mt-1 group/note w-full">
+                                {item.itemNote ? (
+                                  <>
+                                    <span className="text-xs text-purple-600 whitespace-pre-wrap font-medium flex-1">{safeString(item.itemNote)}</span>
+                                    <button onClick={() => openEditNote(group, item)} className="text-gray-400 hover:text-blue-600 opacity-50 group-hover/note:opacity-100 transition-opacity bg-gray-50 p-1 rounded-md shrink-0" title="Edit Keterangan"><Edit size={14} /></button>
+                                  </>
+                                ) : (
+                                  <button onClick={() => openEditNote(group, item)} className="text-xs text-gray-400 hover:text-blue-600 flex items-center gap-1 transition-colors"><Edit size={12} /> Tambah Keterangan</button>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="relative w-full sm:w-1/2 md:w-2/5 shrink-0 mt-2 sm:mt-0">
@@ -2705,7 +2709,7 @@ export default function App() {
                           if (val === 0) return null;
                           return (
                             <div key={item.id} className="flex w-full max-w-[450px] mb-0.5 pl-4 sm:pl-6">
-                              <div className="flex-1 pr-2 font-normal">{safeString(item.name)}</div><span className="w-[40px] text-left">Rp.</span><span className="w-[100px] text-right">{formatRp(val)}</span>
+                              <div className="flex-1 pr-2 font-normal">{safeString(item.name)}{item.itemNote ? ` (${safeString(item.itemNote)})` : ''}</div><span className="w-[40px] text-left">Rp.</span><span className="w-[100px] text-right">{formatRp(val)}</span>
                             </div>
                           );
                         })}

@@ -16,8 +16,15 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
   }, [bankRows]);
 
   const uniqueBankDates = useMemo(() => {
-      // Ambil bagian tanggal saja (contoh: "Sep 01, 2026")
-      const dates = new Set(bankRows.map(r => r.date.split(' 0')[0].split(' 1')[0].split(' 2')[0].trim())); 
+      // Ambil bagian tanggal saja, bank date format CSV: "Sep 01, 2026 06:46:23 WIB"
+      const dates = new Set(bankRows.map(r => {
+          if (!r.date) return '';
+          const match = r.date.match(/^[A-Za-z]+\s\d{2},\s\d{4}/);
+          if (match) return match[0];
+          const parts = r.date.split(',');
+          if (parts.length > 1) return `${parts[0]}, ${parts[1].trim().split(' ')[0]}`;
+          return r.date.split(' ')[0];
+      }).filter(Boolean));
       return ['Semua', ...Array.from(dates)];
   }, [bankRows]);
 
