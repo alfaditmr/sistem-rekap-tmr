@@ -10,20 +10,26 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
   // Modal State
   const [splitModal, setSplitModal] = useState({ isOpen: false, bankRow: null, allocations: [] });
 
-  const fetchApiData = async () => {
+  const fetchApiFasilitas = async () => {
     setLoadingApi(true);
     try {
-       const [fasRes, proRes] = await Promise.all([
-           fetch('https://sistem-informasi-ragunan.vercel.app/api/fasilitas').then(r => r.json()).catch(() => ({data: []})),
-           fetch('https://sistem-informasi-ragunan.vercel.app/api/promo').then(r => r.json()).catch(() => ({data: []}))
-       ]);
-       const combined = [
-           ...(fasRes.data || []).map(d => ({...d, source: 'Fasilitas'})),
-           ...(proRes.data || []).map(d => ({...d, source: 'Promo'}))
-       ];
-       setApiData(combined);
+       const fasRes = await fetch('https://sistem-informasi-ragunan.vercel.app/api/fasilitas').then(r => r.json()).catch(() => ({data: []}));
+       const newFasilitas = (fasRes.data || []).map(d => ({...d, source: 'Fasilitas'}));
+       setApiData(prev => [...prev.filter(d => d.source !== 'Fasilitas'), ...newFasilitas]);
     } catch(e) {
-       alert("Gagal menarik data dari API");
+       alert("Gagal menarik data Fasilitas dari API");
+    }
+    setLoadingApi(false);
+  };
+
+  const fetchApiPromo = async () => {
+    setLoadingApi(true);
+    try {
+       const proRes = await fetch('https://sistem-informasi-ragunan.vercel.app/api/promo').then(r => r.json()).catch(() => ({data: []}));
+       const newPromo = (proRes.data || []).map(d => ({...d, source: 'Promo'}));
+       setApiData(prev => [...prev.filter(d => d.source !== 'Promo'), ...newPromo]);
+    } catch(e) {
+       alert("Gagal menarik data Promo dari API");
     }
     setLoadingApi(false);
   };
@@ -118,9 +124,15 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
             <p className="text-gray-500 text-sm mt-1">Cocokkan mutasi bank CSV dengan bukti transfer dari web app.</p>
           </div>
           <div className="flex gap-2">
-             <button onClick={fetchApiData} disabled={loadingApi} className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors">
-                 <RefreshCw size={18} className={loadingApi ? 'animate-spin' : ''} /> Tarik Data Bukti API
-             </button>
+             <div className="flex bg-indigo-50 p-1 rounded-xl shadow-sm border border-indigo-100">
+                <button onClick={fetchApiFasilitas} disabled={loadingApi} className="hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors text-sm">
+                    <RefreshCw size={14} className={loadingApi ? 'animate-spin' : ''} /> Tarik API Fasilitas
+                </button>
+                <div className="w-px bg-indigo-200 mx-1"></div>
+                <button onClick={fetchApiPromo} disabled={loadingApi} className="hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors text-sm">
+                    <RefreshCw size={14} className={loadingApi ? 'animate-spin' : ''} /> Tarik API Promo
+                </button>
+             </div>
              <label className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 cursor-pointer transition-colors shadow-md">
                  <Upload size={18} /> Upload CSV Bank
                  <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
