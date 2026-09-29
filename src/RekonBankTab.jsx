@@ -75,9 +75,11 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
                 const uangMasukCell = (row[5] || '').trim();
                 
                 if (uangMasukCell) {
-                    // Parse angka ala Indonesia (1.300.000,00 -> 1300000.00)
-                    const numStr = uangMasukCell.replace(/\./g, "").replace(/,/g, ".");
+                    // Format bank CSV adalah 200000.00 (Titik sebagai desimal)
+                    // Hapus koma jika kebetulan bank memakai koma untuk ribuan (misal 200,000.00)
+                    const numStr = uangMasukCell.replace(/,/g, ""); 
                     const num = parseFloat(numStr);
+                    
                     if (!isNaN(num) && num > 0) {
                         possibleAmount = num;
                     }
