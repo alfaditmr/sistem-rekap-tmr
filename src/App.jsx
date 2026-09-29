@@ -1957,14 +1957,18 @@ export default function App() {
                          const updatedDayData = JSON.parse(JSON.stringify(dayData));
 
                          allocations.forEach(alloc => {
-                             const itemKey = alloc.itemId;
-                             if (!itemKey) return;
-                             
-                             // Tentukan apakah masuk ke STSU Utama (Retribusi) atau STSU Lain-lain
                              const cat = categories.find(c => c.id === alloc.categoryId);
+                             if (!cat) return; // Kategori wajib
+                             
+                             // Jika Pos/Item tidak dipilih, kita set sebagai 'direct' (input langsung ke kategori)
+                             let theItemId = alloc.itemId;
+                             if (!theItemId || !cat.items || cat.items.length === 0) {
+                                 theItemId = 'direct';
+                             }
+
                              let docKey = 'utama'; // default
-                             if (cat && cat.type === 'lain') {
-                                 docKey = 'lain'; // Mengarah ke STSU Pendapatan Lain-lain dokumen pertama
+                             if (cat.type === 'lain') {
+                                 docKey = 'lain'; // Mengarah ke STSU Pendapatan Lain-lain
                              }
 
                              // Pastikan struktur docKey sudah ada
@@ -1976,13 +1980,42 @@ export default function App() {
 
                              const typeData = updatedDayData[docKey];
                              
+                             // Susun object newItem untuk dimasukkan ke activeItems
+                             const newItem = { catId: cat.id, itemId: theItemId };
+                             if (docKey === 'lain') {
+                                 newItem.itemDate = ymd; // Gunakan tanggal mutasi
+                                 if (alloc.description) newItem.itemNote = alloc.description.trim();
+                             }
+
+                             // Generate key persis seperti getActiveItemKey
+                             let itemKey = `${newItem.catId}_${newItem.itemId}`;
+                             if (newItem.itemDate) itemKey += `_date_${newItem.itemDate}`;
+                             if (newItem.itemNote) { 
+                                 let hash = 0; 
+                                 for (let i = 0; i < newItem.itemNote.length; i++) { 
+                                     hash = ((hash << 5) - hash) + newItem.itemNote.charCodeAt(i); 
+                                     hash = hash & hash; 
+                                 } 
+                                 itemKey += `_note_${Math.abs(hash)}`; 
+                             }
+                             
                              // A. Tambahkan nominal uang ke formData
                              const currentAmount = typeData.formData[itemKey] || 0;
                              typeData.formData[itemKey] = currentAmount + Number(alloc.amount || 0);
 
-                             // B. Aktifkan checkbox item ini
-                             if (!typeData.activeItems.includes(itemKey)) {
-                                 typeData.activeItems.push(itemKey);
+                             // B. Aktifkan checkbox item ini di activeItems (Harus berupa Object, BUKAN string)
+                             const alreadyExists = typeData.activeItems.some(i => {
+                                 let k = `${i.catId}_${i.itemId || i.id}`;
+                                 if (i.itemDate) k += `_date_${i.itemDate}`;
+                                 if (i.itemNote) {
+                                     let h = 0; for (let j=0; j<i.itemNote.length; j++) { h=((h<<5)-h)+i.itemNote.charCodeAt(j); h=h&h; }
+                                     k += `_note_${Math.abs(h)}`;
+                                 }
+                                 return k === itemKey;
+                             });
+
+                             if (!alreadyExists) {
+                                 typeData.activeItems.push(newItem);
                              }
                              
                              // C. Simpan link URL bukti transfer

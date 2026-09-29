@@ -168,9 +168,9 @@ export default function RekonBankTab({ formatRp, safeString, categories, onSaveR
           return;
       }
 
-      const hasEmptyItem = splitModal.allocations.some(a => !a.categoryId || !a.itemId);
-      if (hasEmptyItem) {
-          alert("Silakan pilih Kategori dan Pos/Item untuk setiap alokasi sebelum menyimpan.");
+      const hasEmptyCat = splitModal.allocations.some(a => !a.categoryId);
+      if (hasEmptyCat) {
+          alert("Silakan pilih setidaknya Kategori (Dropdown Pertama) untuk setiap alokasi.");
           return;
       }
       
