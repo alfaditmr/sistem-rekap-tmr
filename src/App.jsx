@@ -2095,7 +2095,7 @@ export default function App() {
                          newReports[targetDate] = dayData;
                          return newReports;
                      });
-                     setBankRows(prev => prev.map(r => r.id === bankRow.id ? { ...r, status: 'linked', linkedTo: { date: targetDate, itemKey: targetItemKey } } : r));
+                     setBankRows(prev => prev.map(r => r.id === bankRow.id ? { ...r, status: 'linked', linkedTo: { date: targetDate, groupName: targetGroupInfo.name } } : r));
                      showToast(`Berhasil memasangkan mutasi dengan pendapatan tanggal ${targetDate}!`);
                  }}
                  allReports={allReports}
