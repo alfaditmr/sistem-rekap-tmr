@@ -2073,6 +2073,28 @@ export default function App() {
 
                      showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
                  }}
+                 onLinkRekon={(bankRow, targetDate, targetType, targetItemKey, targetItemIndex) => {
+                     setAllReports(prev => {
+                         const newReports = { ...prev };
+                         const dayData = { ...(newReports[targetDate] || {}) };
+                         const typeData = { ...(dayData[targetType] || { formData: {}, activeItems: [] }) };
+                         const newActiveItems = [...typeData.activeItems];
+                         if (newActiveItems[targetItemIndex]) {
+                             newActiveItems[targetItemIndex] = { 
+                                 ...newActiveItems[targetItemIndex], 
+                                 bankMatched: true, 
+                                 bankMatchDate: bankRow.date,
+                                 bankMatchRowId: bankRow.id 
+                             };
+                         }
+                         dayData[targetType] = { ...typeData, activeItems: newActiveItems };
+                         newReports[targetDate] = dayData;
+                         return newReports;
+                     });
+                     setBankRows(prev => prev.map(r => r.id === bankRow.id ? { ...r, status: 'linked', linkedTo: { date: targetDate, itemKey: targetItemKey } } : r));
+                     showToast(`Berhasil memasangkan mutasi dengan pendapatan tanggal ${targetDate}!`);
+                 }}
+                 allReports={allReports}
               />
           </div>
       )}
@@ -2284,7 +2306,14 @@ export default function App() {
                           <div className="flex items-start gap-2 sm:w-1/2">
                             <button onClick={() => handleRemoveActiveItem(item)} className="text-red-400 hover:text-red-600 p-2 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm mt-0.5 shrink-0"><Trash size={18} /></button>
                             <div className="flex flex-col w-full">
-                              <label className="text-gray-700 font-medium">{item.id === 'direct' ? 'Nominal Pemasukan' : safeString(item.name)}</label>
+                              <label className="text-gray-700 font-medium">
+                                {item.id === 'direct' ? 'Nominal Pemasukan' : safeString(item.name)}
+                                {item.bankMatched && (
+                                  <span className="block mt-1 text-[11px] font-bold text-green-700 bg-green-100 border border-green-200 px-2 py-0.5 rounded-full w-max flex items-center gap-1 shadow-sm">
+                                    <CheckCircle size={12}/> Masuk Bank: {item.bankMatchDate}
+                                  </span>
+                                )}
+                              </label>
                               <div className="flex items-center gap-2 mt-1 group/note w-full">
                                 {item.itemNote ? (
                                   <>

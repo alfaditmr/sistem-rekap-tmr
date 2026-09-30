@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
 import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, Plus, Trash, Database, Filter, Trash2 } from 'lucide-react';
 
-export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeString, categories, onSaveRekon }) {
+export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeString, categories, onSaveRekon, allReports, onLinkRekon }) {
   const [selectedBankDate, setSelectedBankDate] = useState('Semua');
 
   const uniqueBankDates = useMemo(() => {
@@ -22,12 +22,32 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
       if (selectedBankDate === 'Semua') return bankRows;
       return bankRows.filter(r => r.date.includes(selectedBankDate));
   }, [bankRows, selectedBankDate]);
+  
+  const groupedBankRows = useMemo(() => {
+      const groups = {};
+      filteredBankRows.forEach(r => {
+          let d = r.date;
+          const match = r.date.match(/^[A-Za-z]+\s\d{2},\s\d{4}/);
+          if (match) d = match[0];
+          else {
+              const parts = r.date.split(',');
+              if (parts.length > 1) d = `${parts[0]}, ${parts[1].trim().split(' ')[0]}`;
+              else d = r.date.split(' ')[0];
+          }
+          if (!groups[d]) groups[d] = { total: 0, rows: [] };
+          groups[d].rows.push(r);
+          groups[d].total += r.amount;
+      });
+      return Object.entries(groups).sort((a,b) => new Date(b[0]) - new Date(a[0]));
+  }, [filteredBankRows]);
+
   const [apiData, setApiData] = useState([]);
   const [loadingApi, setLoadingApi] = useState(false);
   const [apiDate, setApiDate] = useState(new Date().toISOString().split('T')[0]);
   
   // Modal State
   const [splitModal, setSplitModal] = useState({ isOpen: false, bankRow: null, allocations: [] });
+  const [linkModal, setLinkModal] = useState({ isOpen: false, bankRow: null });
 
   const fetchApiFasilitas = async () => {
     setLoadingApi(true);
@@ -185,6 +205,54 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
       return cat ? cat.items : [];
   };
 
+  const unlinkedItems = useMemo(() => {
+      const items = [];
+      if (!allReports) return items;
+      Object.entries(allReports).forEach(([date, dayData]) => {
+          ['utama', 'lain'].forEach(type => {
+              if (dayData[type] && dayData[type].activeItems) {
+                  dayData[type].activeItems.forEach((item, idx) => {
+                      if (!item.bankMatched) {
+                          // Compute itemKey
+                          let itemKey = `${item.catId}_${item.itemId || item.id}`;
+                          if (item.isSusulan) itemKey += `_susulan_${item.validDate}`;
+                          if (item.itemDate) itemKey += `_date_${item.itemDate}`;
+                          if (item.itemNote) {
+                              let h = 0; for(let i=0;i<item.itemNote.length;i++){ h=((h<<5)-h)+item.itemNote.charCodeAt(i); h=h&h; }
+                              itemKey += `_note_${Math.abs(h)}`;
+                          }
+                          const nominal = dayData[type].formData[itemKey] || 0;
+                          if (nominal > 0) {
+                              items.push({
+                                  date,
+                                  type,
+                                  itemIndex: idx,
+                                  itemKey,
+                                  nominal,
+                                  catId: item.catId,
+                                  name: item.name || item.id,
+                                  note: item.itemNote
+                              });
+                          }
+                      }
+                  });
+              }
+          });
+      });
+      return items.sort((a,b) => new Date(b.date) - new Date(a.date));
+  }, [allReports]);
+
+  const openLinkModal = (row) => {
+      setLinkModal({ isOpen: true, bankRow: row });
+  };
+
+  const handleLink = (targetDate, targetType, targetItemKey, targetItemIndex) => {
+      if (onLinkRekon && linkModal.bankRow) {
+          onLinkRekon(linkModal.bankRow, targetDate, targetType, targetItemKey, targetItemIndex);
+          setLinkModal({ isOpen: false, bankRow: null });
+      }
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -260,41 +328,64 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
           </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <table className="w-full text-sm text-left text-gray-700">
-              <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
-                  <tr>
-                      <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4">Tanggal (Bank)</th>
-                      <th className="px-6 py-4">Keterangan</th>
-                      <th className="px-6 py-4 text-right">Nominal Masuk</th>
-                      <th className="px-6 py-4 text-center">Aksi</th>
-                  </tr>
-              </thead>
-              <tbody>
-                  {filteredBankRows.length === 0 ? (
-                      <tr><td colSpan={5} className="px-6 py-10 text-center text-gray-500">Belum ada data CSV mutasi bank yang di-upload atau sesuai filter.</td></tr>
-                  ) : filteredBankRows.map((row) => (
-                      <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50">
-                          <td className="px-6 py-3">
-                              {row.status === 'matched' 
-                                ? <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-1 rounded-full flex items-center gap-1 w-max"><CheckCircle size={14}/> Matched</span>
-                                : <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-1 rounded-full w-max inline-block">Pending</span>}
-                          </td>
-                          <td className="px-6 py-3 font-medium">{row.date}</td>
-                          <td className="px-6 py-3">{row.description}</td>
-                          <td className="px-6 py-3 text-right font-bold text-gray-900">Rp {formatRp(row.amount)}</td>
-                          <td className="px-6 py-3 text-center">
-                              {row.status !== 'matched' && (
-                                  <button onClick={() => openSplitModal(row)} className="text-blue-600 hover:text-blue-800 font-bold bg-blue-50 px-3 py-1.5 rounded-lg text-xs">
-                                      Pecah / Validasi
-                                  </button>
-                              )}
-                          </td>
-                      </tr>
-                  ))}
-              </tbody>
-          </table>
+      <div className="space-y-6">
+          {groupedBankRows.map(([dateGroup, data]) => (
+              <div key={dateGroup} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                      <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
+                          <Database size={18} className="text-gray-400"/> {dateGroup}
+                      </h3>
+                      <div className="text-right">
+                          <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-0.5">Total Pemasukan</div>
+                          <div className="font-black text-blue-700 text-lg">Rp {formatRp(data.total)}</div>
+                      </div>
+                  </div>
+                  <div className="p-0">
+                      {data.rows.map(row => (
+                          <div key={row.id} className="flex flex-col md:flex-row md:items-center justify-between p-5 border-b border-gray-100 hover:bg-blue-50/50 transition-colors last:border-b-0 gap-4">
+                              <div className="flex-1 min-w-0 pr-4">
+                                  <div className="flex items-center gap-2 mb-1.5">
+                                      {row.status === 'matched' || row.status === 'linked' 
+                                        ? <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-0.5 rounded-md flex items-center gap-1 w-max shadow-sm border border-green-200"><CheckCircle size={12}/> {row.status === 'linked' ? 'Linked' : 'Matched'}</span>
+                                        : <span className="bg-yellow-100 text-yellow-800 text-xs font-bold px-2 py-0.5 rounded-md w-max inline-block shadow-sm border border-yellow-200">Pending</span>}
+                                      <span className="text-xs text-gray-500 font-medium">{row.date}</span>
+                                  </div>
+                                  <div className="font-medium text-gray-900 leading-snug">{row.description}</div>
+                              </div>
+                              <div className="text-left md:text-right shrink-0 md:mr-6">
+                                  <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Nominal</div>
+                                  <div className="font-black text-gray-900 text-lg">Rp {formatRp(row.amount)}</div>
+                              </div>
+                              <div className="shrink-0 flex flex-wrap gap-2">
+                                  {row.status === 'pending' && (
+                                      <>
+                                          <button onClick={() => openLinkModal(row)} className="text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-1.5 transition-colors shadow-sm">
+                                              <LinkIcon size={16}/> Pasangkan (H-1)
+                                          </button>
+                                          <button onClick={() => openSplitModal(row)} className="text-white bg-blue-600 hover:bg-blue-700 font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-1.5 transition-colors shadow-sm">
+                                              <Plus size={16}/> Input Baru
+                                          </button>
+                                      </>
+                                  )}
+                                  {row.status === 'linked' && (
+                                      <div className="text-xs text-indigo-700 bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100 font-medium flex flex-col">
+                                          <span>Telah dipasangkan dengan:</span>
+                                          <span className="font-bold">[{row.linkedTo?.date}] item di dashboard</span>
+                                      </div>
+                                  )}
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          ))}
+          {groupedBankRows.length === 0 && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+                  <Database size={48} className="mx-auto text-gray-300 mb-4" />
+                  <h3 className="text-lg font-bold text-gray-600 mb-1">Belum Ada Data Mutasi</h3>
+                  <p className="text-gray-500 text-sm">Upload file CSV mutasi bank Anda untuk mulai melakukan rekonsiliasi.</p>
+              </div>
+          )}
       </div>
 
       {splitModal.isOpen && (
@@ -360,7 +451,65 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                   </div>
               </div>
           </div>
-      )}
+    {linkModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+                <div className="p-6 border-b border-indigo-100 flex justify-between items-center bg-indigo-50 shrink-0">
+                    <div>
+                        <h3 className="text-lg font-black text-indigo-900 flex items-center gap-2"><LinkIcon size={20}/> Pasangkan dengan Pendapatan Dashboard</h3>
+                        <p className="text-sm text-indigo-700 mt-1">Mutasi: {linkModal.bankRow.date} | {linkModal.bankRow.description}</p>
+                    </div>
+                    <div className="text-right bg-white p-2 px-4 rounded-xl shadow-sm">
+                        <div className="text-xs text-indigo-600 font-bold uppercase tracking-wider mb-0.5">Nominal Mutasi</div>
+                        <div className="text-xl font-black text-indigo-800">Rp {formatRp(linkModal.bankRow.amount)}</div>
+                    </div>
+                </div>
+                
+                <div className="p-6 overflow-y-auto bg-gray-50 flex-1">
+                    <div className="mb-4 text-sm text-gray-600 font-medium">
+                        Pilih item pendapatan dari Dashboard yang ingin dipasangkan (H-1 / H-2):
+                    </div>
+                    
+                    {unlinkedItems.length === 0 ? (
+                        <div className="text-center p-10 bg-white rounded-xl border border-dashed border-gray-300">
+                            <CheckCircle size={40} className="mx-auto text-gray-300 mb-3" />
+                            <p className="text-gray-500 font-bold">Semua data pendapatan sudah dipasangkan / belum ada data.</p>
+                            <p className="text-xs text-gray-400 mt-1">Gunakan "Input Baru" jika mutasi ini belum pernah diinput di dashboard.</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {unlinkedItems.map(item => (
+                                <button 
+                                    key={`${item.date}_${item.itemKey}`}
+                                    onClick={() => handleLink(item.date, item.type, item.itemKey, item.itemIndex)}
+                                    className="text-left bg-white p-4 rounded-xl border border-gray-200 hover:border-indigo-400 hover:shadow-md transition-all group relative overflow-hidden"
+                                >
+                                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="font-bold text-gray-800">{item.name}</div>
+                                        <div className="font-black text-indigo-700">Rp {formatRp(item.nominal)}</div>
+                                    </div>
+                                    <div className="flex gap-2 items-center text-xs text-gray-500">
+                                        <span className="bg-gray-100 px-2 py-0.5 rounded font-bold">Tgl Dashboard: {item.date}</span>
+                                        <span className="bg-gray-100 px-2 py-0.5 rounded uppercase">{item.type}</span>
+                                    </div>
+                                    {item.note && (
+                                        <div className="mt-2 text-xs text-gray-400 line-clamp-1 italic">
+                                            "{item.note}"
+                                        </div>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-4 border-t border-gray-200 bg-white flex justify-end shrink-0">
+                    <button onClick={() => setLinkModal({isOpen:false})} className="px-6 py-2 rounded-xl font-bold text-gray-600 hover:bg-gray-100 transition-colors">Batal</button>
+                </div>
+            </div>
+        </div>
+    )}
 
     </div>
   );
