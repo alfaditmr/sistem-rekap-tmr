@@ -2074,39 +2074,37 @@ export default function App() {
                      showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
                  }}
                  onLinkRekon={async (bankRow, targetDate, targetType, targetGroupInfo) => {
-                     let updatedReports;
-                     setAllReports(prev => {
-                         const newReports = { ...prev };
-                         const dayData = { ...(newReports[targetDate] || {}) };
-                         const typeData = { ...(dayData[targetType] || { formData: {}, activeItems: [] }) };
-                         const newActiveItems = [...typeData.activeItems];
-                         
-                         targetGroupInfo.itemIndices.forEach(idx => {
-                             if (newActiveItems[idx]) {
-                                 newActiveItems[idx] = { 
-                                     ...newActiveItems[idx], 
-                                     bankMatched: true, 
-                                     bankMatchDate: bankRow.date,
-                                     bankMatchRowId: bankRow.id 
-                                 };
-                             }
-                         });
-                         
-                         dayData[targetType] = { ...typeData, activeItems: newActiveItems };
-                         newReports[targetDate] = dayData;
-                         updatedReports = newReports;
-                         return newReports;
+                     // 1. Construct new reports
+                     const newReports = { ...allReports };
+                     const dayData = { ...(newReports[targetDate] || {}) };
+                     const typeData = { ...(dayData[targetType] || { formData: {}, activeItems: [] }) };
+                     const newActiveItems = [...typeData.activeItems];
+                     
+                     targetGroupInfo.itemIndices.forEach(idx => {
+                         if (newActiveItems[idx]) {
+                             newActiveItems[idx] = { 
+                                 ...newActiveItems[idx], 
+                                 bankMatched: true, 
+                                 bankMatchDate: bankRow.date,
+                                 bankMatchRowId: bankRow.id 
+                             };
+                         }
                      });
                      
-                     let updatedBankRows;
-                     setBankRows(prev => {
-                         updatedBankRows = prev.map(r => r.id === bankRow.id ? { ...r, status: 'linked', linkedTo: { date: targetDate, groupName: targetGroupInfo.name } } : r);
-                         return updatedBankRows;
-                     });
+                     dayData[targetType] = { ...typeData, activeItems: newActiveItems };
+                     newReports[targetDate] = dayData;
+                     
+                     // 2. Construct new bank rows
+                     const newBankRows = bankRows.map(r => r.id === bankRow.id ? { ...r, status: 'linked', linkedTo: { date: targetDate, groupName: targetGroupInfo.name } } : r);
 
+                     // 3. Set states
+                     setAllReports(newReports);
+                     setBankRows(newBankRows);
+
+                     // 4. Force instant save to Firebase
                      if (user && dbReady) {
                          try {
-                             await setDoc(getDocRef(), { signatures, categories, allReports: updatedReports, bankRows: updatedBankRows, lastUpdated: new Date().toISOString() });
+                             await setDoc(getDocRef(), { signatures, categories, allReports: newReports, bankRows: newBankRows, lastUpdated: new Date().toISOString() });
                          } catch (e) {
                              console.error("Instant save failed:", e);
                          }
