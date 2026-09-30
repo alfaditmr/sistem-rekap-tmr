@@ -2073,7 +2073,8 @@ export default function App() {
 
                      showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
                  }}
-                 onLinkRekon={(bankRow, targetDate, targetType, targetGroupInfo) => {
+                 onLinkRekon={async (bankRow, targetDate, targetType, targetGroupInfo) => {
+                     let updatedReports;
                      setAllReports(prev => {
                          const newReports = { ...prev };
                          const dayData = { ...(newReports[targetDate] || {}) };
@@ -2093,9 +2094,23 @@ export default function App() {
                          
                          dayData[targetType] = { ...typeData, activeItems: newActiveItems };
                          newReports[targetDate] = dayData;
+                         updatedReports = newReports;
                          return newReports;
                      });
-                     setBankRows(prev => prev.map(r => r.id === bankRow.id ? { ...r, status: 'linked', linkedTo: { date: targetDate, groupName: targetGroupInfo.name } } : r));
+                     
+                     let updatedBankRows;
+                     setBankRows(prev => {
+                         updatedBankRows = prev.map(r => r.id === bankRow.id ? { ...r, status: 'linked', linkedTo: { date: targetDate, groupName: targetGroupInfo.name } } : r);
+                         return updatedBankRows;
+                     });
+
+                     if (user && dbReady) {
+                         try {
+                             await setDoc(getDocRef(), { signatures, categories, allReports: updatedReports, bankRows: updatedBankRows, lastUpdated: new Date().toISOString() });
+                         } catch (e) {
+                             console.error("Instant save failed:", e);
+                         }
+                     }
                      showToast(`Berhasil memasangkan mutasi dengan pendapatan tanggal ${targetDate}!`);
                  }}
                  allReports={allReports}
