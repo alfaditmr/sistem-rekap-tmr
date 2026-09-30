@@ -19,6 +19,20 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
       return ['Semua', ...Array.from(dates)];
   }, [bankRows]);
 
+  const handleViewProof = (e, url) => {
+      e.preventDefault();
+      if (!url) return;
+      if (url.startsWith('data:image')) {
+          const win = window.open();
+          if (win) {
+              win.document.write(`<html><head><title>Bukti Transfer</title></head><body style="margin:0;display:flex;justify-content:center;align-items:center;background:#222;"><img src="${url}" style="max-width:100%;max-height:100vh;" /></body></html>`);
+              win.document.close();
+          }
+      } else {
+          window.open(url, '_blank');
+      }
+  };
+
   const filteredBankRows = useMemo(() => {
       if (selectedBankDate === 'Semua') return bankRows;
       return bankRows.filter(r => r.date.includes(selectedBankDate));
@@ -345,7 +359,7 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                       <div key={item.id} className="min-w-[200px] bg-white p-3 rounded-lg shadow-sm border border-indigo-100">
                           <div className="text-xs font-bold text-gray-500 mb-1">{item.source} - ID: {item.id.substring(0,6)}...</div>
                           <div className="font-bold text-indigo-700">Rp {formatRp(item.jumlahTransfer)}</div>
-                          <a href={item.buktiTransferUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline flex items-center gap-1 mt-2">
+                          <a href="#" onClick={(e) => handleViewProof(e, item.buktiTransferUrl)} className="text-xs text-blue-500 hover:underline flex items-center gap-1 mt-2">
                               <LinkIcon size={12}/> Lihat Bukti
                           </a>
                       </div>
