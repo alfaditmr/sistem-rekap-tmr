@@ -2325,11 +2325,6 @@ export default function App() {
                             <div className="flex flex-col w-full">
                               <label className="text-gray-700 font-medium">
                                 {item.id === 'direct' ? 'Nominal Pemasukan' : safeString(item.name)}
-                                {item.bankMatched && (
-                                  <span className="block mt-1 text-[11px] font-bold text-green-700 bg-green-100 border border-green-200 px-2 py-0.5 rounded-full w-max flex items-center gap-1 shadow-sm">
-                                    <CheckCircle size={12}/> Masuk Bank: {item.bankMatchDate}
-                                  </span>
-                                )}
                               </label>
                               <div className="flex items-center gap-2 mt-1 group/note w-full">
                                 {item.itemNote ? (
@@ -2355,8 +2350,16 @@ export default function App() {
                         </div>
                       );
                     })}
-                    <div className="pt-3 mt-2 border-t border-dashed border-gray-300 flex justify-between items-center text-sm font-bold text-gray-600">
-                      <span>Sub Total:</span><span className="text-gray-800 text-base">Rp {formatRp(subtotals[group.groupId])}</span>
+                    <div className="pt-3 mt-2 border-t border-dashed border-gray-300 flex justify-between items-end text-sm font-bold text-gray-600">
+                      <div className="flex flex-col gap-1.5">
+                        <span>Sub Total:</span>
+                        {group.activeItems.some(i => i.bankMatched) && (
+                          <span className="text-[11px] font-bold text-green-700 bg-green-100 border border-green-200 px-2.5 py-1 rounded-full w-max flex items-center gap-1 shadow-sm">
+                            <CheckCircle size={12}/> Masuk Bank: {group.activeItems.find(i => i.bankMatched)?.bankMatchDate}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-gray-800 text-base leading-none pb-1">Rp {formatRp(subtotals[group.groupId])}</span>
                     </div>
                   </div>
                 </div>
