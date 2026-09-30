@@ -2073,20 +2073,24 @@ export default function App() {
 
                      showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
                  }}
-                 onLinkRekon={(bankRow, targetDate, targetType, targetItemKey, targetItemIndex) => {
+                 onLinkRekon={(bankRow, targetDate, targetType, targetGroupInfo) => {
                      setAllReports(prev => {
                          const newReports = { ...prev };
                          const dayData = { ...(newReports[targetDate] || {}) };
                          const typeData = { ...(dayData[targetType] || { formData: {}, activeItems: [] }) };
                          const newActiveItems = [...typeData.activeItems];
-                         if (newActiveItems[targetItemIndex]) {
-                             newActiveItems[targetItemIndex] = { 
-                                 ...newActiveItems[targetItemIndex], 
-                                 bankMatched: true, 
-                                 bankMatchDate: bankRow.date,
-                                 bankMatchRowId: bankRow.id 
-                             };
-                         }
+                         
+                         targetGroupInfo.itemIndices.forEach(idx => {
+                             if (newActiveItems[idx]) {
+                                 newActiveItems[idx] = { 
+                                     ...newActiveItems[idx], 
+                                     bankMatched: true, 
+                                     bankMatchDate: bankRow.date,
+                                     bankMatchRowId: bankRow.id 
+                                 };
+                             }
+                         });
+                         
                          dayData[targetType] = { ...typeData, activeItems: newActiveItems };
                          newReports[targetDate] = dayData;
                          return newReports;

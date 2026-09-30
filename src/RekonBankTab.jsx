@@ -206,14 +206,17 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
   };
 
   const unlinkedItems = useMemo(() => {
-      const items = [];
-      if (!allReports) return items;
+      const groups = [];
+      if (!allReports) return groups;
+      
       Object.entries(allReports).forEach(([date, dayData]) => {
           ['utama', 'lain'].forEach(type => {
               if (dayData[type] && dayData[type].activeItems) {
+                  const typeGroups = {};
+                  
                   dayData[type].activeItems.forEach((item, idx) => {
                       if (!item.bankMatched) {
-                          // Compute itemKey
+                          // Compute itemKey to get nominal
                           let itemKey = `${item.catId}_${item.itemId || item.id}`;
                           if (item.isSusulan) itemKey += `_susulan_${item.validDate}`;
                           if (item.itemDate) itemKey += `_date_${item.itemDate}`;
@@ -222,33 +225,55 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                               itemKey += `_note_${Math.abs(h)}`;
                           }
                           const nominal = dayData[type].formData[itemKey] || 0;
+                          
                           if (nominal > 0) {
-                              items.push({
-                                  date,
-                                  type,
-                                  itemIndex: idx,
-                                  itemKey,
-                                  nominal,
-                                  catId: item.catId,
-                                  name: item.name || item.id,
-                                  note: item.itemNote
-                              });
+                              // Determine grouping key
+                              let groupKey = '';
+                              let groupName = categories.find(c => c.id === item.catId)?.name || item.catId;
+                              
+                              if (type === 'utama') {
+                                  groupKey = `${item.catId}_${item.isSusulan ? 'susulan' : 'normal'}_${item.validDate || ''}`;
+                              } else {
+                                  groupKey = `${item.catId}_${item.itemDate || ''}_${item.itemNote ? item.itemNote.trim() : ''}`;
+                              }
+                              
+                              if (!typeGroups[groupKey]) {
+                                  typeGroups[groupKey] = {
+                                      date,
+                                      type,
+                                      groupKey,
+                                      name: groupName,
+                                      isSusulan: item.isSusulan,
+                                      validDate: item.validDate,
+                                      itemDate: item.itemDate,
+                                      itemNote: item.itemNote,
+                                      nominal: 0,
+                                      itemIndices: []
+                                  };
+                              }
+                              
+                              typeGroups[groupKey].nominal += nominal;
+                              typeGroups[groupKey].itemIndices.push(idx);
                           }
                       }
+                  });
+                  
+                  Object.values(typeGroups).forEach(g => {
+                      if (g.nominal > 0) groups.push(g);
                   });
               }
           });
       });
-      return items.sort((a,b) => new Date(b.date) - new Date(a.date));
-  }, [allReports]);
+      return groups.sort((a,b) => new Date(b.date) - new Date(a.date));
+  }, [allReports, categories]);
 
   const openLinkModal = (row) => {
       setLinkModal({ isOpen: true, bankRow: row });
   };
 
-  const handleLink = (targetDate, targetType, targetItemKey, targetItemIndex) => {
+  const handleLink = (targetGroupInfo) => {
       if (onLinkRekon && linkModal.bankRow) {
-          onLinkRekon(linkModal.bankRow, targetDate, targetType, targetItemKey, targetItemIndex);
+          onLinkRekon(linkModal.bankRow, targetGroupInfo.date, targetGroupInfo.type, targetGroupInfo);
           setLinkModal({ isOpen: false, bankRow: null });
       }
   };
@@ -482,8 +507,8 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {unlinkedItems.map(item => (
                                 <button 
-                                    key={`${item.date}_${item.itemKey}`}
-                                    onClick={() => handleLink(item.date, item.type, item.itemKey, item.itemIndex)}
+                                    key={`${item.date}_${item.groupKey}`}
+                                    onClick={() => handleLink(item)}
                                     className="text-left bg-white p-4 rounded-xl border border-gray-200 hover:border-indigo-400 hover:shadow-md transition-all group relative overflow-hidden"
                                 >
                                     <div className="absolute top-0 left-0 w-1 h-full bg-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"></div>
