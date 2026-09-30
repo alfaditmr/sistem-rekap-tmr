@@ -359,7 +359,7 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                       <div key={item.id} className="min-w-[200px] bg-white p-3 rounded-lg shadow-sm border border-indigo-100">
                           <div className="text-xs font-bold text-gray-500 mb-1">{item.source} - ID: {item.id.substring(0,6)}...</div>
                           <div className="font-bold text-indigo-700">Rp {formatRp(item.jumlahTransfer)}</div>
-                          <a href="#" onClick={(e) => handleViewProof(e, item.buktiTransferUrl)} className="text-xs text-blue-500 hover:underline flex items-center gap-1 mt-2">
+                          <a href="#" onClick={(e) => handleViewProof(e, item.buktiTransferDocUrl || item.pksDriveUrl || item.buktiTransferUrl)} className="text-xs text-blue-500 hover:underline flex items-center gap-1 mt-2">
                               <LinkIcon size={12}/> Lihat Bukti
                           </a>
                       </div>
