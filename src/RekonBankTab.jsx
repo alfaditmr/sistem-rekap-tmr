@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
-import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, Plus, Trash, Database, Filter, Trash2 } from 'lucide-react';
+import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, Plus, Trash, Database, Filter, Trash2, Edit, RotateCcw } from 'lucide-react';
 
-export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeString, categories, onSaveRekon, allReports, onLinkRekon }) {
+export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeString, categories, onSaveRekon, allReports, onLinkRekon, onUpdateBankRow, onUnlinkBankRow }) {
   const [selectedBankDate, setSelectedBankDate] = useState('Semua');
+  const [editModal, setEditModal] = useState({ isOpen: false, row: null, proof: '' });
 
   const uniqueBankDates = useMemo(() => {
       // Ambil bagian tanggal saja, bank date format CSV: "Sep 01, 2026 06:46:23 WIB"
@@ -376,6 +377,11 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                                       <span className="text-xs text-gray-500 font-medium">{row.date}</span>
                                   </div>
                                   <div className="font-medium text-gray-900 leading-snug">{row.description}</div>
+                                  {row.transferProof && (
+                                      <div className="mt-1 text-[11px] text-blue-700 bg-blue-50 px-2 py-1.5 rounded-md inline-block border border-blue-100 font-medium whitespace-pre-wrap">
+                                          Keterangan: {row.transferProof}
+                                      </div>
+                                  )}
                               </div>
                               <div className="text-left md:text-right shrink-0 md:mr-6">
                                   <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Nominal</div>
@@ -397,6 +403,11 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                                           <span>Telah dipasangkan dengan:</span>
                                           <span className="font-bold">[{row.linkedTo?.date}] item di dashboard</span>
                                       </div>
+                                  )}
+                                  {(row.status === 'matched' || row.status === 'linked') && (
+                                      <button onClick={() => setEditModal({isOpen: true, row, proof: row.transferProof || ''})} className="text-gray-500 hover:text-blue-600 bg-white border border-gray-200 shadow-sm px-3 py-2 rounded-lg flex items-center justify-center transition-colors self-start" title="Edit Keterangan / Batalkan Pasangan">
+                                          <Edit size={16}/>
+                                      </button>
                                   )}
                               </div>
                           </div>
@@ -533,6 +544,48 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
 
                 <div className="p-4 border-t border-gray-200 bg-white flex justify-end shrink-0">
                     <button onClick={() => setLinkModal({isOpen:false})} className="px-6 py-2 rounded-xl font-bold text-gray-600 hover:bg-gray-100 transition-colors">Batal</button>
+                </div>
+            </div>
+        </div>
+    )}
+
+    {editModal.isOpen && editModal.row && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+                <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                    <h3 className="font-bold text-lg text-gray-800">Edit Mutasi Bank</h3>
+                </div>
+                <div className="p-6">
+                    <div className="mb-5">
+                        <label className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider">Keterangan / Nama Pentransfer / Bukti</label>
+                        <textarea 
+                            value={editModal.proof}
+                            onChange={e => setEditModal(prev => ({...prev, proof: e.target.value}))}
+                            className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                            rows={3}
+                            placeholder="Contoh: Transfer dari Zainal Abidin PT..."
+                        />
+                    </div>
+
+                    <div className="bg-red-50 border border-red-100 rounded-xl p-4 mb-2">
+                        <h4 className="text-sm font-bold text-red-800 mb-1 flex items-center gap-1.5"><RotateCcw size={16}/> Salah Pasang?</h4>
+                        <p className="text-[11px] text-red-700 font-medium mb-3">Jika mutasi ini salah dipasangkan, Anda dapat membatalkannya untuk mengembalikan mutasi ini menjadi <span className="font-bold">Pending</span>.</p>
+                        <button onClick={() => {
+                            if (confirm('Yakin ingin membatalkan status pasangan pada mutasi ini?')) {
+                                if (onUnlinkBankRow) onUnlinkBankRow(editModal.row);
+                                setEditModal({isOpen:false, row:null, proof:''});
+                            }
+                        }} className="text-xs font-bold text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg shadow-sm transition-colors w-full text-center flex items-center justify-center gap-1">
+                            <RotateCcw size={14} /> Batalkan Pasangan
+                        </button>
+                    </div>
+                </div>
+                <div className="p-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50">
+                    <button onClick={() => setEditModal({isOpen:false, row:null, proof:''})} className="px-4 py-2 font-bold text-gray-600 hover:bg-gray-200 rounded-xl text-sm transition-colors">Batal</button>
+                    <button onClick={() => {
+                        if (onUpdateBankRow) onUpdateBankRow(editModal.row.id, { transferProof: editModal.proof });
+                        setEditModal({isOpen:false, row:null, proof:''});
+                    }} className="px-5 py-2 font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl text-sm transition-colors shadow-sm">Simpan Keterangan</button>
                 </div>
             </div>
         </div>

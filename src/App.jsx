@@ -2111,6 +2111,51 @@ export default function App() {
                      }
                      showToast(`Berhasil memasangkan mutasi dengan pendapatan tanggal ${targetDate}!`);
                  }}
+                 onUpdateBankRow={async (rowId, updates) => {
+                     let updatedBankRows;
+                     setBankRows(prev => {
+                         updatedBankRows = prev.map(r => r.id === rowId ? { ...r, ...updates } : r);
+                         return updatedBankRows;
+                     });
+                     if (user && dbReady) {
+                         try { await setDoc(getDocRef(), { signatures, categories, allReports, bankRows: updatedBankRows, lastUpdated: new Date().toISOString() }); } catch(e){}
+                     }
+                 }}
+                 onUnlinkBankRow={async (bankRow) => {
+                     let updatedReports;
+                     setAllReports(prev => {
+                         const newReports = JSON.parse(JSON.stringify(prev));
+                         Object.keys(newReports).forEach(date => {
+                             ['utama', 'lain'].forEach(type => {
+                                 if (newReports[date][type] && newReports[date][type].activeItems) {
+                                     newReports[date][type].activeItems = newReports[date][type].activeItems.map(item => {
+                                         if (item.bankMatchRowId === bankRow.id) {
+                                             const newItem = { ...item };
+                                             delete newItem.bankMatched;
+                                             delete newItem.bankMatchDate;
+                                             delete newItem.bankMatchRowId;
+                                             return newItem;
+                                         }
+                                         return item;
+                                     });
+                                 }
+                             });
+                         });
+                         updatedReports = newReports;
+                         return newReports;
+                     });
+
+                     let updatedBankRows;
+                     setBankRows(prev => {
+                         updatedBankRows = prev.map(r => r.id === bankRow.id ? { ...r, status: 'pending', linkedTo: null } : r);
+                         return updatedBankRows;
+                     });
+
+                     if (user && dbReady) {
+                         try { await setDoc(getDocRef(), { signatures, categories, allReports: updatedReports, bankRows: updatedBankRows, lastUpdated: new Date().toISOString() }); } catch (e) {}
+                     }
+                     showToast('Status pasangan mutasi bank berhasil dibatalkan!');
+                 }}
                  allReports={allReports}
               />
           </div>
