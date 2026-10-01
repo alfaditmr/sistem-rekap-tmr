@@ -515,9 +515,9 @@ export default function App() {
   };
 
   const handleRemoveActiveItem = (itemToRemove) => {
-    const keyToRemove = getActiveItemKey(itemToRemove.catId, itemToRemove.itemId, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate, itemToRemove.itemNote);
+    const keyToRemove = getActiveItemKey(itemToRemove.catId, itemToRemove.itemId || itemToRemove.id, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate, itemToRemove.itemNote);
     updateCurrentReport(prev => {
-      const newActive = (prev.activeItems || []).filter(i => getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote) !== keyToRemove);
+      const newActive = (prev.activeItems || []).filter(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) !== keyToRemove);
       const newFormData = { ...(prev.formData || {}) }; delete newFormData[keyToRemove];
       return { ...prev, activeItems: newActive, formData: newFormData };
     });
