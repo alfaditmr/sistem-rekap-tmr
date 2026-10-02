@@ -4,8 +4,9 @@ import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, Plus, Trash, Database
 import MultiDateCalendar from './MultiDateCalendar';
 
 export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeString, categories, onSaveRekon, allReports, onLinkRekon, onUpdateBankRow, onUnlinkBankRow }) {
-  const [selectedBankDates, setSelectedBankDates] = useState(['Semua']);
+  const [selectedBankDates, setSelectedBankDates] = useState([]);
   const [editModal, setEditModal] = useState({ isOpen: false, row: null, proof: '' });
+  const hasInitializedDate = React.useRef(false);
 
   const uniqueBankDates = useMemo(() => {
       // Ambil bagian tanggal saja, bank date format CSV: "Sep 01, 2026 06:46:23 WIB"
@@ -19,6 +20,27 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
       }).filter(Boolean));
       return ['Semua', ...Array.from(dates)];
   }, [bankRows]);
+
+  useEffect(() => {
+      if (uniqueBankDates.length > 1 && !hasInitializedDate.current) {
+          let latest = null;
+          let latestStr = null;
+          uniqueBankDates.forEach(dStr => {
+              if (dStr === 'Semua') return;
+              const d = new Date(dStr);
+              if (!isNaN(d.getTime())) {
+                  if (!latest || d > latest) {
+                      latest = d;
+                      latestStr = dStr;
+                  }
+              }
+          });
+          if (latestStr) {
+              setSelectedBankDates([latestStr]);
+              hasInitializedDate.current = true;
+          }
+      }
+  }, [uniqueBankDates]);
 
   const handleViewProof = (e, url) => {
       e.preventDefault();

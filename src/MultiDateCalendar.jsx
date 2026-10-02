@@ -6,6 +6,8 @@ export default function MultiDateCalendar({ uniqueDates, selectedDates, onChange
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const popoverRef = useRef(null);
 
+    const [selectionStart, setSelectionStart] = useState(null);
+
     // Initialize month to the latest available date or today
     useEffect(() => {
         if (uniqueDates && uniqueDates.length > 0) {
@@ -59,7 +61,7 @@ export default function MultiDateCalendar({ uniqueDates, selectedDates, onChange
         
         // Month Header
         const header = (
-            <div className="flex justify-between items-center mb-4" key="header">
+            <div className="flex justify-between items-center mb-2" key="header">
                 <button onClick={handlePrevMonth} className="p-1 hover:bg-gray-100 rounded-lg"><ChevronLeft size={20} className="text-gray-600" /></button>
                 <div className="font-bold text-gray-800">{monthNames[month]} {year}</div>
                 <button onClick={handleNextMonth} className="p-1 hover:bg-gray-100 rounded-lg"><ChevronRight size={20} className="text-gray-600" /></button>
@@ -108,8 +110,10 @@ export default function MultiDateCalendar({ uniqueDates, selectedDates, onChange
             const isAvailable = availableDates.has(dateStr);
             const isSelected = selectedSet.has(dateStr);
             
+            // Highlight if it's the start of a selection range
+            const isSelectionStart = selectionStart && selectionStart.getFullYear() === year && selectionStart.getMonth() === month && selectionStart.getDate() === d;
+            
             // Format to match uniqueDates (e.g. Sep 01, 2026)
-            // Wait, standard short month names in JS locale EN:
             const shortMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             const formattedDateString = `${shortMonths[month]} ${String(d).padStart(2, '0')}, ${year}`;
             
@@ -122,17 +126,41 @@ export default function MultiDateCalendar({ uniqueDates, selectedDates, onChange
                     disabled={!isAvailable}
                     onClick={() => {
                         if (!isAvailable || !exactMatch) return;
-                        if (isSelected) {
-                            onChange(selectedDates.filter(sd => sd !== exactMatch));
+                        const clickedDate = new Date(year, month, d);
+                        
+                        if (!selectionStart) {
+                            // First click: start a new range (clears previous)
+                            setSelectionStart(clickedDate);
+                            onChange([exactMatch]);
                         } else {
-                            onChange([...selectedDates.filter(sd => sd !== 'Semua'), exactMatch]);
+                            // Second click: end the range
+                            const start = selectionStart < clickedDate ? selectionStart : clickedDate;
+                            const end = selectionStart < clickedDate ? clickedDate : selectionStart;
+                            
+                            const newSelected = [];
+                            uniqueDates.forEach(ud => {
+                                if (ud === 'Semua') return;
+                                const udDate = new Date(ud);
+                                if (!isNaN(udDate.getTime())) {
+                                    const udTime = new Date(udDate.getFullYear(), udDate.getMonth(), udDate.getDate()).getTime();
+                                    const startTime = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+                                    const endTime = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+                                    if (udTime >= startTime && udTime <= endTime) {
+                                        newSelected.push(ud);
+                                    }
+                                }
+                            });
+                            
+                            onChange(newSelected);
+                            setSelectionStart(null); // Reset so next click starts new range
                         }
                     }}
                     className={`
                         p-2 text-sm rounded-lg text-center transition-colors
                         ${!isAvailable ? 'text-gray-300 cursor-not-allowed' : ''}
-                        ${isAvailable && !isSelected ? 'text-gray-700 hover:bg-gray-100 font-medium cursor-pointer' : ''}
-                        ${isSelected ? 'bg-blue-600 text-white font-bold hover:bg-blue-700 cursor-pointer shadow-sm' : ''}
+                        ${isAvailable && !isSelected && !isSelectionStart ? 'text-gray-700 hover:bg-gray-100 font-medium cursor-pointer' : ''}
+                        ${isSelected || isSelectionStart ? 'bg-blue-600 text-white font-bold hover:bg-blue-700 cursor-pointer shadow-sm' : ''}
+                        ${isSelectionStart ? 'ring-2 ring-blue-300 ring-offset-1' : ''}
                     `}
                 >
                     {d}
@@ -143,6 +171,9 @@ export default function MultiDateCalendar({ uniqueDates, selectedDates, onChange
         return (
             <div className="p-4 w-[300px]">
                 {header}
+                <div className="text-center text-[10px] text-gray-500 mb-3 bg-gray-50 p-1.5 rounded border border-gray-100">
+                    {selectionStart ? 'Klik tanggal akhir untuk memilih range' : 'Klik 2 tanggal untuk memilih rentang (Range)'}
+                </div>
                 {dayHeaders}
                 <div className="grid grid-cols-7 gap-1">
                     {blanks}
