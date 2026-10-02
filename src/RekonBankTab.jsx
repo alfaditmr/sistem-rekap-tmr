@@ -86,6 +86,7 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
   // Modal State
   const [splitModal, setSplitModal] = useState({ isOpen: false, bankRow: null, allocations: [] });
   const [linkModal, setLinkModal] = useState({ isOpen: false, bankRow: null });
+  const [linkModalFilterDate, setLinkModalFilterDate] = useState('Semua');
 
   const fetchApiFasilitas = async () => {
     setLoadingApi(true);
@@ -243,11 +244,17 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
       return cat ? cat.items : [];
   };
 
+  const uniqueDashboardDates = useMemo(() => {
+      if (!allReports) return [];
+      return Object.keys(allReports).sort((a, b) => new Date(b) - new Date(a));
+  }, [allReports]);
+
   const unlinkedItems = useMemo(() => {
       const groups = [];
       if (!allReports) return groups;
       
       Object.entries(allReports).forEach(([date, dayData]) => {
+          if (linkModalFilterDate !== 'Semua' && date !== linkModalFilterDate) return;
           ['utama', 'lain'].forEach(type => {
               if (dayData[type] && dayData[type].activeItems) {
                   const typeGroups = {};
@@ -539,8 +546,20 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                 </div>
                 
                 <div className="p-6 overflow-y-auto bg-gray-50 flex-1">
-                    <div className="mb-4 text-sm text-gray-600 font-medium">
-                        Pilih item pendapatan dari Dashboard yang ingin dipasangkan (H-1 / H-2):
+                    <div className="mb-4 flex justify-between items-center bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                        <div className="text-sm text-gray-600 font-medium">
+                            Pilih item pendapatan dari Dashboard yang ingin dipasangkan (H-1 / H-2):
+                        </div>
+                        <select 
+                            value={linkModalFilterDate} 
+                            onChange={(e) => setLinkModalFilterDate(e.target.value)}
+                            className="text-sm font-bold bg-indigo-50 text-indigo-700 border-none rounded-lg px-3 py-2 outline-none cursor-pointer"
+                        >
+                            <option value="Semua">Semua Tanggal Dashboard</option>
+                            {uniqueDashboardDates.map(d => (
+                                <option key={d} value={d}>{d}</option>
+                            ))}
+                        </select>
                     </div>
                     
                     {unlinkedItems.length === 0 ? (
