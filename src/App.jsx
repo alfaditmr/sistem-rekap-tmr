@@ -1013,34 +1013,53 @@ export default function App() {
   // 🔴 FUNGSI INJEKSI & AGREGASI PENGGABUNGAN TIKET SAMA
   // ==========================================
   const confirmTransitInjection = () => {
-    updateCurrentReport(prev => {
-      let newItems = transitModal.isOverwriting ? [] : [...(prev.activeItems || [])];
-      let newFormData = transitModal.isOverwriting ? {} : { ...(prev.formData || {}) };
+    let updatedReports;
+    setAllReports(prevAll => {
+        const newReports = JSON.parse(JSON.stringify(prevAll));
+        const dayData = newReports[reportDate] || {}; 
+        const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
+        
+        let newItems = transitModal.isOverwriting ? [] : [...(typeData.activeItems || [])];
+        let newFormData = transitModal.isOverwriting ? {} : { ...(typeData.formData || {}) };
 
-      transitModal.data.forEach(t => {
-        if (t.mappedCat && t.mappedItem) {
-          
-          const finalNote = activeType === 'lain' ? (lainItemNote || '') : ''; 
-          const key = getActiveItemKey(t.mappedCat, t.mappedItem, isAddingSusulan, susulanValidDate, lainItemDate, finalNote);
-          const exists = newItems.find(i => getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote) === key);
-          
-          if (!exists) {
-            newItems.push({ 
-              catId: t.mappedCat, 
-              itemId: t.mappedItem, 
-              isSusulan: isAddingSusulan, 
-              validDate: susulanValidDate, 
-              itemDate: lainItemDate, 
-              itemNote: finalNote 
-            });
+        transitModal.data.forEach(t => {
+          if (t.mappedCat && t.mappedItem) {
+            
+            const finalNote = activeType === 'lain' ? (lainItemNote || '') : ''; 
+            const key = getActiveItemKey(t.mappedCat, t.mappedItem, isAddingSusulan, susulanValidDate, lainItemDate, finalNote);
+            const exists = newItems.find(i => getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote) === key);
+            
+            if (!exists) {
+              newItems.push({ 
+                catId: t.mappedCat, 
+                itemId: t.mappedItem, 
+                isSusulan: isAddingSusulan, 
+                validDate: susulanValidDate, 
+                itemDate: lainItemDate, 
+                itemNote: finalNote 
+              });
+            }
+            
+            // Agregasi akhir saat disuntikkan ke STSU form
+            newFormData[key] = (newFormData[key] || 0) + Number(t.amount);
           }
-          
-          // Agregasi akhir saat disuntikkan ke STSU form
-          newFormData[key] = (newFormData[key] || 0) + Number(t.amount);
-        }
-      });
-      return { ...prev, activeItems: newItems, formData: newFormData };
+        });
+        
+        typeData.activeItems = newItems;
+        typeData.formData = newFormData;
+        newReports[reportDate] = { ...dayData, [activeTypeKey]: typeData };
+        updatedReports = newReports;
+        return newReports;
     });
+
+    // 🔴 FORCE INSTANT SAVE to prevent onSnapshot race condition
+    if (user && dbReady) {
+        try {
+            setDoc(getDocRef(), { signatures, categories, allReports: updatedReports, bankRows, lastUpdated: new Date().toISOString() });
+        } catch(e) {
+            console.error("Instant save failed:", e);
+        }
+    }
     
     const is3a = transitModal.source === '3a';
     closeTransitModal();
