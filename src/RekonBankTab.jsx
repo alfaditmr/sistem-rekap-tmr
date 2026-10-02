@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
 import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, Plus, Trash, Database, Filter, Trash2, Edit, RotateCcw } from 'lucide-react';
+import MultiDateCalendar from './MultiDateCalendar';
 
 export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeString, categories, onSaveRekon, allReports, onLinkRekon, onUpdateBankRow, onUnlinkBankRow }) {
-  const [selectedBankDate, setSelectedBankDate] = useState('Semua');
+  const [selectedBankDates, setSelectedBankDates] = useState(['Semua']);
   const [editModal, setEditModal] = useState({ isOpen: false, row: null, proof: '' });
 
   const uniqueBankDates = useMemo(() => {
@@ -34,9 +35,9 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
   };
 
   const filteredBankRows = useMemo(() => {
-      if (selectedBankDate === 'Semua') return bankRows;
-      return bankRows.filter(r => r.date.includes(selectedBankDate));
-  }, [bankRows, selectedBankDate]);
+      if (selectedBankDates.length === 0 || (selectedBankDates.length === 1 && selectedBankDates[0] === 'Semua')) return bankRows;
+      return bankRows.filter(r => selectedBankDates.some(d => r.date.includes(d)));
+  }, [bankRows, selectedBankDates]);
   
   const groupedBankRows = useMemo(() => {
       const groups = {};
@@ -337,13 +338,11 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
               <div className="flex items-center gap-2 text-gray-600 font-medium text-sm">
                   <Filter size={16} /> Filter Tanggal Mutasi:
               </div>
-              <select 
-                  value={selectedBankDate} 
-                  onChange={e => setSelectedBankDate(e.target.value)}
-                  className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block px-3 py-1.5"
-              >
-                  {uniqueBankDates.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
+              <MultiDateCalendar 
+                  uniqueDates={uniqueBankDates} 
+                  selectedDates={selectedBankDates} 
+                  onChange={setSelectedBankDates} 
+              />
               <div className="text-sm text-gray-500 sm:ml-auto">
                   Menampilkan {filteredBankRows.length} dari {bankRows.length} data mutasi
               </div>
