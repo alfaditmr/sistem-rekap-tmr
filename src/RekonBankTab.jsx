@@ -210,18 +210,33 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
      });
   };
 
+  const parseYmd = (dateStr) => {
+      let ymd = new Date().toISOString().split('T')[0];
+      try {
+          const cleanStr = (dateStr || '').replace(/WIB|WITA|WIT/i, '').trim();
+          const d = new Date(cleanStr);
+          if (!isNaN(d.getTime())) {
+              const y = d.getFullYear();
+              const m = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              ymd = `${y}-${m}-${day}`;
+          }
+      } catch(e) {}
+      return ymd;
+  };
+
   const openSplitModal = (row) => {
       setSplitModal({
           isOpen: true,
           bankRow: row,
-          allocations: [{ id: Date.now(), categoryId: '', itemId: '', apiRefId: '', amount: row.amount }]
+          allocations: [{ id: Date.now(), categoryId: '', itemId: '', apiRefId: '', amount: row.amount, targetDate: parseYmd(row.date) }]
       });
   };
 
   const addAllocation = () => {
       setSplitModal(prev => ({
           ...prev,
-          allocations: [...prev.allocations, { id: Date.now(), categoryId: '', itemId: '', apiRefId: '', amount: 0 }]
+          allocations: [...prev.allocations, { id: Date.now(), categoryId: '', itemId: '', apiRefId: '', amount: 0, targetDate: parseYmd(prev.bankRow.date) }]
       }));
   };
 
@@ -523,29 +538,33 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                       <div className="space-y-4">
                           {splitModal.allocations.map((alloc, index) => (
                               <div key={alloc.id} className="flex flex-col md:flex-row gap-3 items-end bg-gray-50 p-4 rounded-xl border border-gray-200">
-                                  <div className="w-full md:w-1/4">
+                                  <div className="w-full md:flex-[0.8]">
+                                      <label className="block text-xs font-bold text-gray-600 mb-1">Tgl Dashboard</label>
+                                      <input type="date" value={alloc.targetDate} onChange={e => updateAllocation(alloc.id, 'targetDate', e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                                  </div>
+                                  <div className="w-full md:flex-1">
                                       <label className="block text-xs font-bold text-gray-600 mb-1">Kategori POS</label>
                                       <select value={alloc.categoryId} onChange={e => updateAllocation(alloc.id, 'categoryId', e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white">
                                           <option value="">-- Pilih --</option>
                                           {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                       </select>
                                   </div>
-                                  <div className="w-full md:w-1/4">
+                                  <div className="w-full md:flex-1">
                                       <label className="block text-xs font-bold text-gray-600 mb-1">Item POS</label>
                                       <select value={alloc.itemId} onChange={e => updateAllocation(alloc.id, 'itemId', e.target.value)} disabled={!alloc.categoryId} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white">
                                           <option value="">-- Pilih Item --</option>
                                           {getItemsForCategory(alloc.categoryId).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
                                       </select>
                                   </div>
-                                  <div className="w-full md:w-1/4">
-                                      <label className="block text-xs font-bold text-gray-600 mb-1">Hubungkan Bukti API (Opsional)</label>
+                                  <div className="w-full md:flex-[1.2]">
+                                      <label className="block text-xs font-bold text-gray-600 mb-1">Hubungkan Bukti API</label>
                                       <select value={alloc.apiRefId} onChange={e => updateAllocation(alloc.id, 'apiRefId', e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white text-indigo-700">
                                           <option value="">-- Tanpa Bukti API --</option>
                                           {apiData.map(d => <option key={d.id} value={d.id}>{d.source} - Rp {formatRp(d.jumlahTransfer)}</option>)}
                                       </select>
                                   </div>
-                                  <div className="w-full md:w-1/5">
-                                      <label className="block text-xs font-bold text-gray-600 mb-1">Nominal Pecahan</label>
+                                  <div className="w-full md:flex-[0.8]">
+                                      <label className="block text-xs font-bold text-gray-600 mb-1">Nominal</label>
                                       <input type="number" value={alloc.amount} onChange={e => updateAllocation(alloc.id, 'amount', e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm font-bold text-right" />
                                   </div>
                                   <div className="pb-1">

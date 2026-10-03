@@ -2006,11 +2006,14 @@ export default function App() {
 
                      // 2. Simpan Alokasi ke Laporan Firestore (via state allReports)
                      setAllReports(prev => {
-                         const dayData = prev[ymd] || {};
-                         // Buat salinan dalam (deep copy) dari dayData agar tidak memutasi state secara langsung
-                         const updatedDayData = JSON.parse(JSON.stringify(dayData));
-
+                         const newReports = { ...prev };
+                         
                          allocations.forEach(alloc => {
+                             const allocYmd = alloc.targetDate || ymd;
+                             const dayData = newReports[allocYmd] || {};
+                             // Buat salinan dalam (deep copy) dari dayData agar tidak memutasi state secara langsung
+                             const updatedDayData = JSON.parse(JSON.stringify(dayData));
+
                              const cat = categories.find(c => c.id === alloc.categoryId);
                              if (!cat) return; // Kategori wajib
                              
@@ -2027,7 +2030,7 @@ export default function App() {
 
                              // Pastikan struktur docKey sudah ada
                              if (!updatedDayData[docKey]) {
-                                 updatedDayData[docKey] = { sequence: '', signatureDate: ymd, activeItems: [], formData: {} };
+                                 updatedDayData[docKey] = { sequence: '', signatureDate: allocYmd, activeItems: [], formData: {} };
                              }
                              if (!updatedDayData[docKey].formData) updatedDayData[docKey].formData = {};
                              if (!updatedDayData[docKey].activeItems) updatedDayData[docKey].activeItems = [];
@@ -2037,7 +2040,7 @@ export default function App() {
                              // Susun object newItem untuk dimasukkan ke activeItems
                              const newItem = { catId: cat.id, itemId: theItemId };
                              if (docKey === 'lain') {
-                                 newItem.itemDate = ymd; // Gunakan tanggal mutasi
+                                 newItem.itemDate = allocYmd; // Gunakan tanggal alokasi yang dipilih
                                  if (alloc.description) newItem.itemNote = alloc.description.trim();
                              }
 
@@ -2079,12 +2082,11 @@ export default function App() {
                                      typeData.formData[`${itemKey}_buktiUrl`] = apiItem.buktiTransferUrl;
                                  }
                              }
+                             
+                             newReports[allocYmd] = updatedDayData;
                          });
 
-                         return {
-                             ...prev,
-                             [ymd]: updatedDayData
-                         };
+                         return newReports;
                      });
 
                      showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
