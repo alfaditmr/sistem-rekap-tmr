@@ -270,7 +270,7 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
       setBankRows(prev => prev.map(r => r.id === splitModal.bankRow.id ? { ...r, status: 'matched' } : r));
       
       if(onSaveRekon) {
-          onSaveRekon(splitModal.bankRow.date, splitModal.allocations, apiData);
+          onSaveRekon(splitModal.bankRow, splitModal.allocations, apiData);
       }
 
       setSplitModal({ isOpen: false, bankRow: null, allocations: [] });
@@ -477,26 +477,50 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                                           </button>
                                       </>
                                   )}
-                                  {row.status === 'linked' && (() => {
+                                  { (row.status === 'linked' || row.status === 'matched') && (() => {
                                       let dynamicName = row.linkedTo?.groupName;
-                                      if (!dynamicName && allReports && row.linkedTo?.date && allReports[row.linkedTo.date]) {
-                                          const dayData = allReports[row.linkedTo.date];
-                                          let foundCatId = null;
-                                          ['utama', 'lain'].forEach(type => {
-                                              if (dayData[type] && dayData[type].activeItems) {
-                                                  const matchedItem = dayData[type].activeItems.find(i => i.bankMatched && i.bankMatchRowId === row.id);
-                                                  if (matchedItem) foundCatId = matchedItem.catId;
-                                              }
+                                      const matchedDetails = [];
+
+                                      // Jika punya linkedTo lengkap (cara lama)
+                                      if (dynamicName && row.linkedTo?.date) {
+                                          matchedDetails.push({ date: row.linkedTo.date, name: dynamicName });
+                                      } 
+                                      // Jika dari Input Baru (matched) atau linkedTo kurang lengkap, kita cari di seluruh allReports
+                                      else if (allReports) {
+                                          Object.keys(allReports).forEach(ymd => {
+                                              ['utama', 'lain'].forEach(type => {
+                                                  if (allReports[ymd][type] && allReports[ymd][type].activeItems) {
+                                                      allReports[ymd][type].activeItems.forEach(item => {
+                                                          if (item.bankMatched && item.bankMatchRowId === row.id) {
+                                                              const cat = categories.find(c => c.id === item.catId);
+                                                              const name = cat ? cat.name : item.catId;
+                                                              matchedDetails.push({ date: item.itemDate || ymd, name });
+                                                          }
+                                                      });
+                                                  }
+                                              });
                                           });
-                                          if (foundCatId) {
-                                              const cat = categories.find(c => c.id === foundCatId);
-                                              dynamicName = cat ? cat.name : foundCatId;
-                                          }
                                       }
+                                      
+                                      // Dedup array if multiple splits go to same category on same date
+                                      const uniqueDetails = [];
+                                      const seen = new Set();
+                                      matchedDetails.forEach(d => {
+                                          const key = `${d.date}_${d.name}`;
+                                          if (!seen.has(key)) {
+                                              seen.add(key);
+                                              uniqueDetails.push(d);
+                                          }
+                                      });
+
+                                      if (uniqueDetails.length === 0) return null;
+
                                       return (
-                                          <div className="text-xs text-indigo-700 bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100 font-medium flex flex-col">
+                                          <div className="text-xs text-indigo-700 bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100 font-medium flex flex-col gap-1">
                                               <span>Telah dipasangkan dengan:</span>
-                                              <span className="font-bold">[{row.linkedTo?.date}] {dynamicName || 'item di dashboard'}</span>
+                                              {uniqueDetails.map((detail, idx) => (
+                                                  <span key={idx} className="font-bold">[{detail.date}] {detail.name}</span>
+                                              ))}
                                           </div>
                                       );
                                   })()}

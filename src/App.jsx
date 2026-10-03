@@ -2054,11 +2054,11 @@ export default function App() {
                  formatRp={formatRp} 
                  safeString={safeString} 
                  categories={categories}
-                 onSaveRekon={(bankDate, allocations, apis) => {
+                 onSaveRekon={(bankRow, allocations, apis) => {
                      // 1. Format Tanggal dari CSV ("Sep 01, 2026 06:46:23 WIB") ke "YYYY-MM-DD"
                      let ymd = new Date().toISOString().split('T')[0];
                      try {
-                         const cleanStr = (bankDate || '').replace(/WIB|WITA|WIT/i, '').trim();
+                         const cleanStr = (bankRow.date || '').replace(/WIB|WITA|WIT/i, '').trim();
                          const d = new Date(cleanStr);
                          if (!isNaN(d.getTime())) {
                              const y = d.getFullYear();
@@ -2125,7 +2125,7 @@ export default function App() {
                              typeData.formData[itemKey] = currentAmount + Number(alloc.amount || 0);
 
                              // B. Aktifkan checkbox item ini di activeItems (Harus berupa Object, BUKAN string)
-                             const alreadyExists = typeData.activeItems.some(i => {
+                             const existingIndex = typeData.activeItems.findIndex(i => {
                                  let k = `${i.catId}_${i.itemId || i.id}`;
                                  if (i.itemDate) k += `_date_${i.itemDate}`;
                                  if (i.itemNote) {
@@ -2135,8 +2135,15 @@ export default function App() {
                                  return k === itemKey;
                              });
 
-                             if (!alreadyExists) {
+                             if (existingIndex === -1) {
+                                 newItem.bankMatched = true;
+                                 newItem.bankMatchRowId = bankRow.id;
+                                 newItem.bankMatchDate = bankRow.date;
                                  typeData.activeItems.push(newItem);
+                             } else {
+                                 typeData.activeItems[existingIndex].bankMatched = true;
+                                 typeData.activeItems[existingIndex].bankMatchRowId = bankRow.id;
+                                 typeData.activeItems[existingIndex].bankMatchDate = bankRow.date;
                              }
                              
                              // C. Simpan link URL bukti transfer
