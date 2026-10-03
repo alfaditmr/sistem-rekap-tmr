@@ -2117,27 +2117,12 @@ export default function App() {
                      setAllReports(newReports);
                      setBankRows(newBankRows);
 
-                     // 4. Force instant save to Firebase
-                     if (user && dbReady) {
-                         try {
-                             await setDoc(getDocRef(), { signatures, categories, allReports: newReports, bankRows: newBankRows, lastUpdated: new Date().toISOString() });
-                         } catch (e) {
-                             console.error("Instant save failed:", e);
-                         }
-                     }
                      showToast(`Berhasil memasangkan mutasi dengan pendapatan tanggal ${targetDate}!`);
                  }}
-                 onUpdateBankRow={async (rowId, updates) => {
-                     let updatedBankRows;
-                     setBankRows(prev => {
-                         updatedBankRows = prev.map(r => r.id === rowId ? { ...r, ...updates } : r);
-                         return updatedBankRows;
-                     });
-                     if (user && dbReady) {
-                         try { await setDoc(getDocRef(), { signatures, categories, allReports, bankRows: updatedBankRows, lastUpdated: new Date().toISOString() }); } catch(e){}
-                     }
+                 onUpdateBankRow={(rowId, updates) => {
+                     setBankRows(prev => prev.map(r => r.id === rowId ? { ...r, ...updates } : r));
                  }}
-                 onUnlinkBankRow={async (bankRow) => {
+                 onUnlinkBankRow={(bankRow) => {
                      let updatedReports;
                      setAllReports(prev => {
                          const newReports = JSON.parse(JSON.stringify(prev));
@@ -2161,15 +2146,8 @@ export default function App() {
                          return newReports;
                      });
 
-                     let updatedBankRows;
-                     setBankRows(prev => {
-                         updatedBankRows = prev.map(r => r.id === bankRow.id ? { ...r, status: 'pending', linkedTo: null } : r);
-                         return updatedBankRows;
-                     });
-
-                     if (user && dbReady) {
-                         try { await setDoc(getDocRef(), { signatures, categories, allReports: updatedReports, bankRows: updatedBankRows, lastUpdated: new Date().toISOString() }); } catch (e) {}
-                     }
+                     setBankRows(prev => prev.map(r => r.id === bankRow.id ? { ...r, status: 'pending', linkedTo: null } : r));
+                     
                      showToast('Status pasangan mutasi bank berhasil dibatalkan!');
                  }}
                  allReports={allReports}

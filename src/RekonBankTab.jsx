@@ -152,13 +152,30 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                 const uangMasukCell = (row[5] || '').trim();
                 
                 if (uangMasukCell) {
-                    // Format bank CSV adalah 200000.00 (Titik sebagai desimal)
-                    // Hapus koma jika kebetulan bank memakai koma untuk ribuan (misal 200,000.00)
-                    const numStr = uangMasukCell.replace(/,/g, ""); 
-                    const num = parseFloat(numStr);
+                    let s = String(uangMasukCell).trim();
+                    let val = 0;
                     
-                    if (!isNaN(num) && num > 0) {
-                        possibleAmount = num;
+                    if (s.includes('.') && s.includes(',')) {
+                        let lastDot = s.lastIndexOf('.');
+                        let lastComma = s.lastIndexOf(',');
+                        if (lastComma > lastDot) s = s.substring(0, lastComma).replace(/[^0-9-]/g, '');
+                        else s = s.substring(0, lastDot).replace(/[^0-9-]/g, '');
+                    } else if (s.includes(',')) {
+                        let parts = s.split(',');
+                        if (parts[parts.length-1].length === 2) s = parts[0].replace(/[^0-9-]/g, '');
+                        else s = s.replace(/[^0-9-]/g, '');
+                    } else if (s.includes('.')) {
+                        let parts = s.split('.');
+                        if (parts[parts.length-1].length === 2) s = parts[0].replace(/[^0-9-]/g, '');
+                        else s = s.replace(/[^0-9-]/g, '');
+                    } else {
+                        s = s.replace(/[^0-9-]/g, '');
+                    }
+                    
+                    val = parseFloat(s) || 0;
+                    
+                    if (val > 0) {
+                        possibleAmount = val;
                     }
                 }
                 
@@ -181,7 +198,12 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
             setBankRows(prev => {
                 // Untuk mencegah duplikasi saat append, pastikan id unik (menggunakan timestamp)
                 const newRows = formattedRows.map((r, i) => ({ ...r, id: `bank_${Date.now()}_${i}` }));
-                return [...prev, ...newRows];
+                const combined = [...prev, ...newRows];
+                // Batasi maksimal 2000 baris mutasi terakhir agar tidak melebihi limit 1MB Firebase Firestore
+                if (combined.length > 2000) {
+                    return combined.slice(combined.length - 2000);
+                }
+                return combined;
             });
             e.target.value = null; // Reset input file
         }
@@ -440,12 +462,29 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                                           </button>
                                       </>
                                   )}
-                                  {row.status === 'linked' && (
-                                      <div className="text-xs text-indigo-700 bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100 font-medium flex flex-col">
-                                          <span>Telah dipasangkan dengan:</span>
-                                          <span className="font-bold">[{row.linkedTo?.date}] item di dashboard</span>
-                                      </div>
-                                  )}
+                                  {row.status === 'linked' && (() => {
+                                      let dynamicName = row.linkedTo?.groupName;
+                                      if (!dynamicName && allReports && row.linkedTo?.date && allReports[row.linkedTo.date]) {
+                                          const dayData = allReports[row.linkedTo.date];
+                                          let foundCatId = null;
+                                          ['utama', 'lain'].forEach(type => {
+                                              if (dayData[type] && dayData[type].activeItems) {
+                                                  const matchedItem = dayData[type].activeItems.find(i => i.bankMatched && i.bankMatchRowId === row.id);
+                                                  if (matchedItem) foundCatId = matchedItem.catId;
+                                              }
+                                          });
+                                          if (foundCatId) {
+                                              const cat = categories.find(c => c.id === foundCatId);
+                                              dynamicName = cat ? cat.name : foundCatId;
+                                          }
+                                      }
+                                      return (
+                                          <div className="text-xs text-indigo-700 bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100 font-medium flex flex-col">
+                                              <span>Telah dipasangkan dengan:</span>
+                                              <span className="font-bold">[{row.linkedTo?.date}] {dynamicName || 'item di dashboard'}</span>
+                                          </div>
+                                      );
+                                  })()}
                                   {(row.status === 'matched' || row.status === 'linked') && (
                                       <button onClick={() => setEditModal({isOpen: true, row, proof: row.transferProof || ''})} className="text-gray-500 hover:text-blue-600 bg-white border border-gray-200 shadow-sm px-3 py-2 rounded-lg flex items-center justify-center transition-colors self-start" title="Edit Keterangan / Batalkan Pasangan">
                                           <Edit size={16}/>
