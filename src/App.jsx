@@ -1,11 +1,11 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save, Database, CloudDownload, Table, FileSpreadsheet, User } from 'lucide-react';
 import RekonBankTab from './RekonBankTab';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously } from "firebase/auth";
-import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "firebase/firestore";
+import { getFirestore, doc, setDoc, updateDoc, getDoc, onSnapshot } from "firebase/firestore";
 
 // ==========================================
 // 🔴 KONFIGURASI DATABASE FIREBASE USER
@@ -345,18 +345,75 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  const prevReportsRef = useRef({});
+  const prevBankRowsRef = useRef([]);
+  const prevSigsRef = useRef({});
+  const prevCatsRef = useRef([]);
+
   useEffect(() => {
     if (!user || !dbReady || !db) return;
+    
+    // Cegah sinkronisasi jika tidak ada perubahan sama sekali dari iterasi sebelumnya
+    if (
+      allReports === prevReportsRef.current &&
+      bankRows === prevBankRowsRef.current &&
+      signatures === prevSigsRef.current &&
+      categories === prevCatsRef.current
+    ) {
+        return;
+    }
+
     setSyncStatus('syncing');
     const saveData = async () => {
       try { 
-        await setDoc(getDocRef(), { signatures, categories, allReports, bankRows, lastUpdated: new Date().toISOString() }); 
+        const updatePayload = { lastUpdated: new Date().toISOString() };
+        let hasChanges = false;
+        
+        if (signatures !== prevSigsRef.current) { updatePayload.signatures = signatures; hasChanges = true; }
+        if (categories !== prevCatsRef.current) { updatePayload.categories = categories; hasChanges = true; }
+        
+        if (allReports !== prevReportsRef.current) {
+             // Diff per tanggal (ymd) agar payload yang dikirim super kecil
+             Object.keys(allReports).forEach(ymd => {
+                  if (allReports[ymd] !== prevReportsRef.current[ymd]) {
+                       updatePayload[`allReports.${ymd}`] = allReports[ymd];
+                       hasChanges = true;
+                  }
+             });
+        }
+        
+        if (bankRows !== prevBankRowsRef.current) {
+             updatePayload.bankRows = bankRows; 
+             hasChanges = true;
+        }
+
+        if (hasChanges) {
+            try {
+                // Gunakan updateDoc untuk mengirim payload persial
+                await updateDoc(getDocRef(), updatePayload);
+            } catch (err) {
+                // Fallback ke setDoc jika dokumen user belum pernah ada (pengguna baru)
+                if (err.code === 'not-found') {
+                    await setDoc(getDocRef(), { signatures, categories, allReports, bankRows, lastUpdated: new Date().toISOString() });
+                } else {
+                    throw err;
+                }
+            }
+        }
+        
+        // Update refs
+        prevReportsRef.current = allReports;
+        prevBankRowsRef.current = bankRows;
+        prevSigsRef.current = signatures;
+        prevCatsRef.current = categories;
+
         setSyncStatus('synced'); 
       } catch(e) { 
         console.error("Save Database Error:", e);
         setSyncStatus('offline'); 
       }
     };
+    
     const timer = setTimeout(saveData, 1000);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -366,7 +423,14 @@ export default function App() {
     if (!user || !dbReady) return;
     setSyncStatus('syncing');
     try { 
+      // Force save tetap menggunakan setDoc keseluruhan untuk memastikan integritas
       await setDoc(getDocRef(), { signatures, categories, allReports, bankRows, lastUpdated: new Date().toISOString() }); 
+      
+      prevReportsRef.current = allReports;
+      prevBankRowsRef.current = bankRows;
+      prevSigsRef.current = signatures;
+      prevCatsRef.current = categories;
+      
       setSyncStatus('synced'); 
       showToast('Data berhasil disimpan ke Cloud!'); 
     } catch(e) { 
