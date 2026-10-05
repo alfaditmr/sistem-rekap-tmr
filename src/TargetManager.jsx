@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Sparkles, Save, Info } from 'lucide-react';
+import { Sparkles, Save, Info, Trash2 } from 'lucide-react';
 
 // Basic heuristic algorithm simulating AI for target breakdown
 const generateAIBreakdown = (globalTarget, yearStr, categories) => {
@@ -140,6 +140,16 @@ export default function TargetManager({ categories, targets, setTargets, formatR
         }, 800); // simulate thinking
     };
 
+    const handleReset = () => {
+        if (window.confirm(`Anda yakin ingin menghapus semua target pendapatan untuk tahun ${year}?`)) {
+            setTargets(prev => {
+                const newData = { ...prev };
+                delete newData[year];
+                return newData;
+            });
+        }
+    };
+
     const updateTarget = (catId, itemId, month, value) => {
         const numValue = parseFloat(value.replace(/[^0-9]/g, '')) || 0;
         const key = `${catId}_${itemId}`;
@@ -204,7 +214,15 @@ export default function TargetManager({ categories, targets, setTargets, formatR
                     </select>
                 </div>
 
-                <div className="shrink-0 md:mt-5">
+                <div className="shrink-0 md:mt-5 flex gap-2">
+                    <button 
+                        onClick={handleReset}
+                        className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold py-2 px-3 rounded-lg flex items-center gap-2 transition-colors text-sm shadow-sm"
+                        title={`Hapus target tahun ${year}`}
+                    >
+                        <Trash2 size={16} />
+                        Reset
+                    </button>
                     <button 
                         onClick={handleAutoGenerate}
                         disabled={isGenerating || !globalTargetInput}
