@@ -158,6 +158,7 @@ const callGeminiAPI = async (prompt, systemInstruction) => {
 export default function App() {
   const [activeTab, setActiveTab] = useState('input');
   const [topLevelRoute, setTopLevelRoute] = useState('home');
+  const [dashboardTab, setDashboardTab] = useState('kalender');
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null });
   const [resetDialog, setResetDialog] = useState({ isOpen: false, password: '', error: '', isVerifying: false });
   const [pdfLoading, setPdfLoading] = useState(false);
