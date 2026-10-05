@@ -2034,7 +2034,7 @@ export default function App() {
       {topLevelRoute === 'home' && (
              <div className="min-h-[90vh] flex flex-col items-center justify-center p-4">
                  <h1 className="text-5xl font-black text-gray-800 mb-2 text-center drop-shadow-sm">Master Menu Admin</h1>
-                 <p className="text-gray-500 mb-12 text-center font-medium">Sistem Informasi Manajemen Fasilitas TMR</p>
+                 <p className="text-gray-500 mb-12 text-center font-medium">Sistem Informasi Manajemen Pendapatan Taman Margasatwa Ragunan</p>
 
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-5xl">
                      <button onClick={() => setTopLevelRoute('target')} className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-200 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 flex flex-col items-center text-center gap-6 group overflow-hidden">
@@ -2538,256 +2538,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ============================================================== */}
-      {/* 🔴 TAB: LAPORAN (EXCEL) */}
-      {/* ============================================================== */}
-      {activeTab === 'laporan' && (
-        <div className="max-w-6xl mx-auto px-4 py-6 no-print">
-          {/* NAVIGASI LAPORAN REKONSILIASI / MASTER */}
-          <div className="flex overflow-x-auto no-scrollbar gap-2 mb-4 p-1.5 bg-white rounded-xl shadow-sm border border-gray-200">
-             <button 
-                onClick={() => setSelectedReportType('rekapitulasi')}
-                className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${selectedReportType === 'rekapitulasi' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
-             >
-                Laporan Rekapitulasi
-             </button>
-             {reportCategories.map(catName => (
-                <button 
-                   key={catName}
-                   onClick={() => setSelectedReportType(catName)}
-                   className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${selectedReportType === catName ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
-                >
-                   Rekon: {catName}
-                </button>
-             ))}
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
-            <div className={`bg-gradient-to-r ${selectedReportType === 'rekapitulasi' ? 'from-blue-600 to-blue-800' : 'from-indigo-600 to-indigo-800'} p-6 text-center text-white flex flex-col md:flex-row items-center justify-between gap-4 transition-colors`}>
-              <div className="text-left">
-                <h2 className="text-2xl font-black mb-1 drop-shadow-sm flex items-center gap-2">
-                  <FileSpreadsheet size={28} /> {selectedReportType === 'rekapitulasi' ? 'Laporan Rekapitulasi (Master)' : `Rekonsiliasi: ${selectedReportType}`}
-                </h2>
-                <p className={`${selectedReportType === 'rekapitulasi' ? 'text-blue-100' : 'text-indigo-100'} text-sm opacity-90`}>
-                  {selectedReportType === 'rekapitulasi' ? 'Sistem otomatis mengelompokkan data ke format baku Excel.' : 'Laporan Rekonsiliasi harian per sumber kategori (format Excel).'}
-                </p>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3 items-center">
-                <div className="bg-white/20 p-1.5 rounded-lg flex items-center gap-2">
-                  <Calendar size={18} className="ml-2 text-white" />
-                  <input 
-                    type="month" 
-                    value={excelReportMonth} 
-                    onChange={(e) => setExcelReportMonth(e.target.value)} 
-                    className="bg-transparent border-none text-white font-bold outline-none cursor-pointer focus:ring-0 text-sm"
-                  />
-                </div>
-                <button 
-                  onClick={selectedReportType === 'rekapitulasi' ? handleDownloadExcel : handleDownloadRekonExcel}
-                  className="bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold shadow-md transition-colors flex items-center gap-2"
-                >
-                  <Download size={18} /> Download Excel (.xls)
-                </button>
-              </div>
-            </div>
-            
-            <div className="p-0 overflow-x-auto">
-              {(() => {
-                if (selectedReportType === 'rekapitulasi') {
-                    const { columnStructure, reportRows, grandTotalPerDay } = generateExcelData();
-                    
-                    return (
-                      <div className="w-full relative">
-                        <table className="w-full border-collapse text-[11px] whitespace-nowrap">
-                          <thead>
-                            <tr>
-                              <th className="sticky-col px-4 py-2 border border-gray-300 bg-gray-200 text-left min-w-[200px] z-20 top-0 font-bold text-gray-700">UP TAMAN MARGASATWA RAGUNAN</th>
-                              {columnStructure.map((col, i) => (
-                                  col.type === 'date' 
-                                  ? <th key={`h-${col.day}`} className="min-w-[60px] px-2 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600 text-xs">
-                                      <div>{col.day}</div>
-                                      <div className="text-[9px] font-normal mt-0.5 text-gray-500">{col.dayName}</div>
-                                    </th>
-                                  : <th key={`h-${col.name}`} className="min-w-[80px] px-2 py-2 border border-gray-300 bg-yellow-100 text-center font-bold text-yellow-800 text-xs">{col.name}</th>
-                              ))}
-                              <th className="px-3 py-2 border border-gray-300 bg-green-100 text-right font-black text-green-800 text-xs min-w-[100px]">jumlah</th>
-                            </tr>
-                            <tr>
-                              <th className="sticky-col px-4 py-2 border border-gray-300 bg-gray-50 text-left font-bold text-gray-500 z-20">PENDAPATAN RETRIBUSI DAERAH</th>
-                              <th colSpan={columnStructure.length + 1} className="border border-gray-300 bg-gray-50"></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {reportRows.map((row, idx) => {
-                              let weekSum = 0;
-                              let monthSum = 0;
-                              
-                              return (
-                                <tr key={`row-${idx}`} className="hover:bg-blue-50/50">
-                                  <td className="sticky-col px-4 py-1.5 border border-gray-300 text-left font-medium text-gray-800" title={row.name}>{row.name}</td>
-                                  {columnStructure.map((col, colIdx) => {
-                                    if (col.type === 'date') {
-                                        let val = row.dailyTotals[col.day - 1].total;
-                                        let details = row.dailyTotals[col.day - 1].details;
-                                        weekSum += val;
-                                        monthSum += val;
-                                        return (
-                                            <td 
-                                              key={`c-${idx}-${col.day}`} 
-                                              className={`px-2 py-1.5 border border-gray-300 text-right ${val > 0 ? 'text-gray-800 font-medium cursor-help hover:bg-blue-100 transition-colors' : 'text-gray-400'}`}
-                                              title={formatDetailsTooltip(val, details)}
-                                            >
-                                              {val > 0 ? formatRp(val) : ""}
-                                            </td>
-                                        );
-                                    } else {
-                                        let currentWeekSum = weekSum;
-                                        weekSum = 0;
-                                        return (
-                                            <td key={`cw-${idx}-${col.name}`} className="px-2 py-1.5 border border-gray-300 text-right font-bold bg-yellow-50 text-yellow-800">
-                                                {currentWeekSum > 0 ? formatRp(currentWeekSum) : ""}
-                                            </td>
-                                        );
-                                    }
-                                  })}
-                                  <td className="px-3 py-1.5 border border-gray-300 text-right font-black text-green-700 bg-green-50">{monthSum > 0 ? formatRp(monthSum) : ""}</td>
-                                </tr>
-                              );
-                            })}
-                            
-                            {/* BARIS GRAND TOTAL */}
-                            <tr className="bg-blue-100">
-                              <td className="sticky-col px-4 py-3 border border-blue-300 text-left font-black text-blue-900 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)]">JUMLAH Rp</td>
-                              {(() => {
-                                let weekSum = 0;
-                                let monthSum = 0;
-                                return columnStructure.map((col) => {
-                                    if (col.type === 'date') {
-                                        let val = grandTotalPerDay[col.day - 1].total;
-                                        let details = grandTotalPerDay[col.day - 1].details;
-                                        weekSum += val;
-                                        monthSum += val;
-                                        return (
-                                            <td 
-                                              key={`gt-${col.day}`} 
-                                              className="px-2 py-3 border border-blue-300 text-right font-bold text-blue-900 cursor-help hover:bg-blue-200 transition-colors"
-                                              title={formatDetailsTooltip(val, details)}
-                                            >
-                                              {val > 0 ? formatRp(val) : ""}
-                                            </td>
-                                        );
-                                    } else {
-                                        let currentWeekSum = weekSum;
-                                        weekSum = 0;
-                                        return (
-                                            <td key={`gtw-${col.name}`} className="px-2 py-3 border border-blue-300 text-right font-black bg-blue-200 text-blue-900">
-                                                {currentWeekSum > 0 ? formatRp(currentWeekSum) : ""}
-                                            </td>
-                                        );
-                                    }
-                                });
-                              })()}
-                              <td className="px-3 py-3 border border-blue-300 text-right font-black bg-green-200 text-green-900 text-xs">
-                                {(() => {
-                                    let finalTotal = grandTotalPerDay.reduce((acc, curr) => acc + curr.total, 0);
-                                    return finalTotal > 0 ? formatRp(finalTotal) : "";
-                                })()}
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    );
-                } else {
-                    // PREVIEW TABEL REKONSILIASI
-                    const { rows, grandTotal } = generateRekonData(selectedReportType);
-
-                    return (
-                        <div className="w-full relative overflow-x-auto">
-                           <table className="w-full border-collapse text-[12px] whitespace-nowrap">
-                             <thead>
-                               <tr>
-                                 <th rowSpan={2} className="sticky-col px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700 z-20 top-0">No</th>
-                                 <th colSpan={2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700">Transaksi</th>
-                                 <th rowSpan={2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700">Uraian</th>
-                                 <th colSpan={2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700">Pelimpahan</th>
-                                 <th rowSpan={2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700 min-w-[200px]">Keterangan</th>
-                               </tr>
-                               <tr>
-                                 <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Hari</th>
-                                 <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Tanggal</th>
-                                 <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Nominal ( RP )</th>
-                                 <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Tanggal</th>
-                               </tr>
-                             </thead>
-                             <tbody>
-                               {rows.map((r, i) => (
-                                  <tr key={i} className="hover:bg-indigo-50/50">
-                                    <td className="sticky-col px-4 py-2 border border-gray-300 text-center font-medium text-gray-800 z-10 bg-white shadow-[inset_-1px_0_0_#e5e7eb]">{r.no}</td>
-                                    <td className="px-4 py-2 border border-gray-300 text-center text-gray-700">{r.hari}</td>
-                                    <td className="px-4 py-2 border border-gray-300 text-center text-gray-700 font-mono">{r.tanggal}</td>
-                                    <td className="px-4 py-2 border border-gray-300 text-center text-gray-700">{r.uraian}</td>
-                                    <td className="px-4 py-2 border border-gray-300 text-right font-medium text-gray-800">{r.nominal > 0 ? formatRp(r.nominal) : ''}</td>
-                                    <td className="px-2 py-1 border border-gray-300 text-center font-mono align-middle h-full">
-                                      {(r.nominal > 0 || r.uraian === 'Susulan') ? (
-                                        <div className="flex flex-col items-center justify-center gap-0.5 group">
-                                          <span className="hidden print:block">{r.pelimpahan}</span>
-                                          <div className="print:hidden flex flex-col items-center">
-                                              <input 
-                                                 type="date" 
-                                                 value={r.rawPelimpahan} 
-                                                 onChange={e => handleUpdateRekonRow(r.dateStr, r.isSusulan, r.susulanKeys, 'signatureDate', e.target.value)} 
-                                                 className="bg-transparent border border-transparent hover:border-gray-200 text-center outline-none cursor-pointer focus:ring-1 focus:ring-indigo-500 rounded px-1 py-0.5 text-xs text-gray-800 font-mono w-[115px] m-0"
-                                              />
-                                              <input 
-                                                 type="text" 
-                                                 value={r.rawOfficer} 
-                                                 onChange={e => handleUpdateRekonRow(r.dateStr, r.isSusulan, r.susulanKeys, 'rekonOfficer', e.target.value)} 
-                                                 placeholder="Petugas Rekon" 
-                                                 className="bg-transparent border-b-2 border-yellow-400 outline-none focus:border-indigo-500 rounded-none px-1 text-[10px] font-bold text-indigo-700 text-center w-[100px] placeholder-indigo-300 m-0"
-                                                 title="Nama Petugas (Hanya di sistem)"
-                                              />
-                                          </div>
-                                        </div>
-                                      ) : ''}
-                                    </td>
-                                    <td className="px-4 py-2 border border-gray-300 text-left text-gray-600 italic">{r.keterangan}</td>
-                                  </tr>
-                               ))}
-                               <tr className="bg-indigo-100">
-                                  <td colSpan={4} className="sticky-col px-4 py-3 border border-indigo-300 text-right font-black text-indigo-900 bg-indigo-100 z-10 shadow-[inset_-1px_0_0_#a5b4fc]">TOTAL</td>
-                                  <td className="px-4 py-3 border border-indigo-300 text-right font-black text-indigo-900">{formatRp(grandTotal)}</td>
-                                  <td colSpan={2} className="border border-indigo-300"></td>
-                               </tr>
-                             </tbody>
-                           </table>
-                           <div className="mt-8 flex justify-end px-8 pb-8 text-sm text-gray-800">
-                              <div className="text-center flex flex-col justify-between min-w-[250px]">
-                                <div>
-                                    <p className="mb-1">Jakarta, {formatTanggalTtd(currentReport.signatureDate)}</p>
-                                    <p className="font-bold mt-2">{safeString(signatures.leftRole)}</p>
-                                </div>
-                                <div className="mt-20">
-                                    <p className="font-bold underline">{safeString(signatures.leftName)}</p>
-                                    <p>NIP. {safeString(signatures.leftNip)}</p>
-                                </div>
-                              </div>
-                           </div>
-                        </div>
-                    );
-                }
-              })()}
-            </div>
-            
-            <div className={`p-4 ${selectedReportType === 'rekapitulasi' ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-indigo-50 border-indigo-200 text-indigo-800'} border-t text-xs font-medium flex items-center justify-center gap-2 transition-colors`}>
-              <Sparkles size={16} /> 
-              {selectedReportType === 'rekapitulasi' 
-                  ? 'Kolom (SATU, DUA) otomatis ditambahkan mengikuti Hari Minggu pada kalender bulan tersebut.'
-                  : `Tabel di atas merekap pendapatan khusus dari sumber ${selectedReportType} pada bulan terpilih.`}
-            </div>
-          </div>
-        </div>
-      )}
+      
 
       {/* ============================================================== */}
       {/* 🔴 TAB: SETTINGS (MASTER) */}
@@ -2798,7 +2549,7 @@ export default function App() {
           {activeMasterMenu === 'menu' && (
             <div className="flex flex-col items-center mt-10">
                <h1 className="text-3xl font-black text-gray-800 mb-2">Master Menu Admin</h1>
-               <p className="text-gray-500 mb-10">Sistem Informasi Manajemen Fasilitas TMR</p>
+               <p className="text-gray-500 mb-10">Sistem Informasi Manajemen Pendapatan Taman Margasatwa Ragunan</p>
                
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-2xl">
                   
@@ -3057,7 +2808,25 @@ export default function App() {
       )}
 
       {topLevelRoute === 'dashboard' && (
-        <div className="max-w-4xl mx-auto px-4 py-6 no-print w-full animate-in fade-in slide-in-from-bottom-4">
+  <div className="max-w-6xl mx-auto px-4 py-6 no-print w-full animate-in fade-in slide-in-from-bottom-4">
+     
+     <div className="flex overflow-x-auto no-scrollbar gap-2 mb-6 p-1.5 bg-white rounded-xl shadow-sm border border-gray-200 w-max mx-auto">
+       <button 
+          onClick={() => setDashboardTab('kalender')}
+          className={`px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${dashboardTab === 'kalender' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+       >
+          <Calendar className="inline-block mr-2" size={18} /> Kalender Status
+       </button>
+       <button 
+          onClick={() => setDashboardTab('rekap')}
+          className={`px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${dashboardTab === 'rekap' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+       >
+          <FileSpreadsheet className="inline-block mr-2" size={18} /> Rekapitulasi & Rekon
+       </button>
+     </div>
+
+{dashboardTab === 'kalender' && (
+<div className="mt-4">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-6 text-center text-white">
               <h2 className="text-2xl font-black mb-1 drop-shadow-sm">Pusat Laporan & Analitik</h2>
@@ -3104,8 +2873,261 @@ export default function App() {
               </div>
             </div>
           </div>
+</div>
+)}
+
+{/* 🔴 TAB: LAPORAN (EXCEL) */}
+      {/* ============================================================== */}
+      {dashboardTab === 'rekap' && (
+        <div className="mt-4">
+          {/* NAVIGASI LAPORAN REKONSILIASI / MASTER */}
+          <div className="flex overflow-x-auto no-scrollbar gap-2 mb-4 p-1.5 bg-white rounded-xl shadow-sm border border-gray-200">
+             <button 
+                onClick={() => setSelectedReportType('rekapitulasi')}
+                className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${selectedReportType === 'rekapitulasi' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+             >
+                Laporan Rekapitulasi
+             </button>
+             {reportCategories.map(catName => (
+                <button 
+                   key={catName}
+                   onClick={() => setSelectedReportType(catName)}
+                   className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${selectedReportType === catName ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                   Rekon: {catName}
+                </button>
+             ))}
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+            <div className={`bg-gradient-to-r ${selectedReportType === 'rekapitulasi' ? 'from-blue-600 to-blue-800' : 'from-indigo-600 to-indigo-800'} p-6 text-center text-white flex flex-col md:flex-row items-center justify-between gap-4 transition-colors`}>
+              <div className="text-left">
+                <h2 className="text-2xl font-black mb-1 drop-shadow-sm flex items-center gap-2">
+                  <FileSpreadsheet size={28} /> {selectedReportType === 'rekapitulasi' ? 'Laporan Rekapitulasi (Master)' : `Rekonsiliasi: ${selectedReportType}`}
+                </h2>
+                <p className={`${selectedReportType === 'rekapitulasi' ? 'text-blue-100' : 'text-indigo-100'} text-sm opacity-90`}>
+                  {selectedReportType === 'rekapitulasi' ? 'Sistem otomatis mengelompokkan data ke format baku Excel.' : 'Laporan Rekonsiliasi harian per sumber kategori (format Excel).'}
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 items-center">
+                <div className="bg-white/20 p-1.5 rounded-lg flex items-center gap-2">
+                  <Calendar size={18} className="ml-2 text-white" />
+                  <input 
+                    type="month" 
+                    value={excelReportMonth} 
+                    onChange={(e) => setExcelReportMonth(e.target.value)} 
+                    className="bg-transparent border-none text-white font-bold outline-none cursor-pointer focus:ring-0 text-sm"
+                  />
+                </div>
+                <button 
+                  onClick={selectedReportType === 'rekapitulasi' ? handleDownloadExcel : handleDownloadRekonExcel}
+                  className="bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold shadow-md transition-colors flex items-center gap-2"
+                >
+                  <Download size={18} /> Download Excel (.xls)
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-0 overflow-x-auto">
+              {(() => {
+                if (selectedReportType === 'rekapitulasi') {
+                    const { columnStructure, reportRows, grandTotalPerDay } = generateExcelData();
+                    
+                    return (
+                      <div className="w-full relative">
+                        <table className="w-full border-collapse text-[11px] whitespace-nowrap">
+                          <thead>
+                            <tr>
+                              <th className="sticky-col px-4 py-2 border border-gray-300 bg-gray-200 text-left min-w-[200px] z-20 top-0 font-bold text-gray-700">UP TAMAN MARGASATWA RAGUNAN</th>
+                              {columnStructure.map((col, i) => (
+                                  col.type === 'date' 
+                                  ? <th key={`h-${col.day}`} className="min-w-[60px] px-2 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600 text-xs">
+                                      <div>{col.day}</div>
+                                      <div className="text-[9px] font-normal mt-0.5 text-gray-500">{col.dayName}</div>
+                                    </th>
+                                  : <th key={`h-${col.name}`} className="min-w-[80px] px-2 py-2 border border-gray-300 bg-yellow-100 text-center font-bold text-yellow-800 text-xs">{col.name}</th>
+                              ))}
+                              <th className="px-3 py-2 border border-gray-300 bg-green-100 text-right font-black text-green-800 text-xs min-w-[100px]">jumlah</th>
+                            </tr>
+                            <tr>
+                              <th className="sticky-col px-4 py-2 border border-gray-300 bg-gray-50 text-left font-bold text-gray-500 z-20">PENDAPATAN RETRIBUSI DAERAH</th>
+                              <th colSpan={columnStructure.length + 1} className="border border-gray-300 bg-gray-50"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {reportRows.map((row, idx) => {
+                              let weekSum = 0;
+                              let monthSum = 0;
+                              
+                              return (
+                                <tr key={`row-${idx}`} className="hover:bg-blue-50/50">
+                                  <td className="sticky-col px-4 py-1.5 border border-gray-300 text-left font-medium text-gray-800" title={row.name}>{row.name}</td>
+                                  {columnStructure.map((col, colIdx) => {
+                                    if (col.type === 'date') {
+                                        let val = row.dailyTotals[col.day - 1].total;
+                                        let details = row.dailyTotals[col.day - 1].details;
+                                        weekSum += val;
+                                        monthSum += val;
+                                        return (
+                                            <td 
+                                              key={`c-${idx}-${col.day}`} 
+                                              className={`px-2 py-1.5 border border-gray-300 text-right ${val > 0 ? 'text-gray-800 font-medium cursor-help hover:bg-blue-100 transition-colors' : 'text-gray-400'}`}
+                                              title={formatDetailsTooltip(val, details)}
+                                            >
+                                              {val > 0 ? formatRp(val) : ""}
+                                            </td>
+                                        );
+                                    } else {
+                                        let currentWeekSum = weekSum;
+                                        weekSum = 0;
+                                        return (
+                                            <td key={`cw-${idx}-${col.name}`} className="px-2 py-1.5 border border-gray-300 text-right font-bold bg-yellow-50 text-yellow-800">
+                                                {currentWeekSum > 0 ? formatRp(currentWeekSum) : ""}
+                                            </td>
+                                        );
+                                    }
+                                  })}
+                                  <td className="px-3 py-1.5 border border-gray-300 text-right font-black text-green-700 bg-green-50">{monthSum > 0 ? formatRp(monthSum) : ""}</td>
+                                </tr>
+                              );
+                            })}
+                            
+                            {/* BARIS GRAND TOTAL */}
+                            <tr className="bg-blue-100">
+                              <td className="sticky-col px-4 py-3 border border-blue-300 text-left font-black text-blue-900 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)]">JUMLAH Rp</td>
+                              {(() => {
+                                let weekSum = 0;
+                                let monthSum = 0;
+                                return columnStructure.map((col) => {
+                                    if (col.type === 'date') {
+                                        let val = grandTotalPerDay[col.day - 1].total;
+                                        let details = grandTotalPerDay[col.day - 1].details;
+                                        weekSum += val;
+                                        monthSum += val;
+                                        return (
+                                            <td 
+                                              key={`gt-${col.day}`} 
+                                              className="px-2 py-3 border border-blue-300 text-right font-bold text-blue-900 cursor-help hover:bg-blue-200 transition-colors"
+                                              title={formatDetailsTooltip(val, details)}
+                                            >
+                                              {val > 0 ? formatRp(val) : ""}
+                                            </td>
+                                        );
+                                    } else {
+                                        let currentWeekSum = weekSum;
+                                        weekSum = 0;
+                                        return (
+                                            <td key={`gtw-${col.name}`} className="px-2 py-3 border border-blue-300 text-right font-black bg-blue-200 text-blue-900">
+                                                {currentWeekSum > 0 ? formatRp(currentWeekSum) : ""}
+                                            </td>
+                                        );
+                                    }
+                                });
+                              })()}
+                              <td className="px-3 py-3 border border-blue-300 text-right font-black bg-green-200 text-green-900 text-xs">
+                                {(() => {
+                                    let finalTotal = grandTotalPerDay.reduce((acc, curr) => acc + curr.total, 0);
+                                    return finalTotal > 0 ? formatRp(finalTotal) : "";
+                                })()}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                } else {
+                    // PREVIEW TABEL REKONSILIASI
+                    const { rows, grandTotal } = generateRekonData(selectedReportType);
+
+                    return (
+                        <div className="w-full relative overflow-x-auto">
+                           <table className="w-full border-collapse text-[12px] whitespace-nowrap">
+                             <thead>
+                               <tr>
+                                 <th rowSpan={2} className="sticky-col px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700 z-20 top-0">No</th>
+                                 <th colSpan={2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700">Transaksi</th>
+                                 <th rowSpan={2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700">Uraian</th>
+                                 <th colSpan={2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700">Pelimpahan</th>
+                                 <th rowSpan={2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700 min-w-[200px]">Keterangan</th>
+                               </tr>
+                               <tr>
+                                 <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Hari</th>
+                                 <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Tanggal</th>
+                                 <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Nominal ( RP )</th>
+                                 <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Tanggal</th>
+                               </tr>
+                             </thead>
+                             <tbody>
+                               {rows.map((r, i) => (
+                                  <tr key={i} className="hover:bg-indigo-50/50">
+                                    <td className="sticky-col px-4 py-2 border border-gray-300 text-center font-medium text-gray-800 z-10 bg-white shadow-[inset_-1px_0_0_#e5e7eb]">{r.no}</td>
+                                    <td className="px-4 py-2 border border-gray-300 text-center text-gray-700">{r.hari}</td>
+                                    <td className="px-4 py-2 border border-gray-300 text-center text-gray-700 font-mono">{r.tanggal}</td>
+                                    <td className="px-4 py-2 border border-gray-300 text-center text-gray-700">{r.uraian}</td>
+                                    <td className="px-4 py-2 border border-gray-300 text-right font-medium text-gray-800">{r.nominal > 0 ? formatRp(r.nominal) : ''}</td>
+                                    <td className="px-2 py-1 border border-gray-300 text-center font-mono align-middle h-full">
+                                      {(r.nominal > 0 || r.uraian === 'Susulan') ? (
+                                        <div className="flex flex-col items-center justify-center gap-0.5 group">
+                                          <span className="hidden print:block">{r.pelimpahan}</span>
+                                          <div className="print:hidden flex flex-col items-center">
+                                              <input 
+                                                 type="date" 
+                                                 value={r.rawPelimpahan} 
+                                                 onChange={e => handleUpdateRekonRow(r.dateStr, r.isSusulan, r.susulanKeys, 'signatureDate', e.target.value)} 
+                                                 className="bg-transparent border border-transparent hover:border-gray-200 text-center outline-none cursor-pointer focus:ring-1 focus:ring-indigo-500 rounded px-1 py-0.5 text-xs text-gray-800 font-mono w-[115px] m-0"
+                                              />
+                                              <input 
+                                                 type="text" 
+                                                 value={r.rawOfficer} 
+                                                 onChange={e => handleUpdateRekonRow(r.dateStr, r.isSusulan, r.susulanKeys, 'rekonOfficer', e.target.value)} 
+                                                 placeholder="Petugas Rekon" 
+                                                 className="bg-transparent border-b-2 border-yellow-400 outline-none focus:border-indigo-500 rounded-none px-1 text-[10px] font-bold text-indigo-700 text-center w-[100px] placeholder-indigo-300 m-0"
+                                                 title="Nama Petugas (Hanya di sistem)"
+                                              />
+                                          </div>
+                                        </div>
+                                      ) : ''}
+                                    </td>
+                                    <td className="px-4 py-2 border border-gray-300 text-left text-gray-600 italic">{r.keterangan}</td>
+                                  </tr>
+                               ))}
+                               <tr className="bg-indigo-100">
+                                  <td colSpan={4} className="sticky-col px-4 py-3 border border-indigo-300 text-right font-black text-indigo-900 bg-indigo-100 z-10 shadow-[inset_-1px_0_0_#a5b4fc]">TOTAL</td>
+                                  <td className="px-4 py-3 border border-indigo-300 text-right font-black text-indigo-900">{formatRp(grandTotal)}</td>
+                                  <td colSpan={2} className="border border-indigo-300"></td>
+                               </tr>
+                             </tbody>
+                           </table>
+                           <div className="mt-8 flex justify-end px-8 pb-8 text-sm text-gray-800">
+                              <div className="text-center flex flex-col justify-between min-w-[250px]">
+                                <div>
+                                    <p className="mb-1">Jakarta, {formatTanggalTtd(currentReport.signatureDate)}</p>
+                                    <p className="font-bold mt-2">{safeString(signatures.leftRole)}</p>
+                                </div>
+                                <div className="mt-20">
+                                    <p className="font-bold underline">{safeString(signatures.leftName)}</p>
+                                    <p>NIP. {safeString(signatures.leftNip)}</p>
+                                </div>
+                              </div>
+                           </div>
+                        </div>
+                    );
+                }
+              })()}
+            </div>
+            
+            <div className={`p-4 ${selectedReportType === 'rekapitulasi' ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-indigo-50 border-indigo-200 text-indigo-800'} border-t text-xs font-medium flex items-center justify-center gap-2 transition-colors`}>
+              <Sparkles size={16} /> 
+              {selectedReportType === 'rekapitulasi' 
+                  ? 'Kolom (SATU, DUA) otomatis ditambahkan mengikuti Hari Minggu pada kalender bulan tersebut.'
+                  : `Tabel di atas merekap pendapatan khusus dari sumber ${selectedReportType} pada bulan terpilih.`}
+            </div>
+          </div>
         </div>
       )}
+
+  </div>
+)}
 
       </div>
       )}
