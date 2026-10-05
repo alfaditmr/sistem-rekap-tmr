@@ -156,7 +156,8 @@ const callGeminiAPI = async (prompt, systemInstruction) => {
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('input');
+  const [topLevelRoute, setTopLevelRoute] = useState('home');
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null });
   const [resetDialog, setResetDialog] = useState({ isOpen: false, password: '', error: '', isVerifying: false });
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -2030,7 +2031,70 @@ export default function App() {
         </div>
       )}
 
-      <nav className="bg-green-700 text-white shadow-md sticky top-0 z-50 shrink-0 no-print">
+      {topLevelRoute === 'home' && (
+             <div className="min-h-[90vh] flex flex-col items-center justify-center p-4">
+                 <h1 className="text-5xl font-black text-gray-800 mb-2 text-center drop-shadow-sm">Master Menu Admin</h1>
+                 <p className="text-gray-500 mb-12 text-center font-medium">Sistem Informasi Manajemen Fasilitas TMR</p>
+
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-5xl">
+                     <button onClick={() => setTopLevelRoute('target')} className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-200 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 flex flex-col items-center text-center gap-6 group overflow-hidden">
+                         <div className="w-24 h-24 rounded-3xl bg-amber-50 text-amber-500 flex items-center justify-center group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-white transition-all duration-300 shadow-inner"><Sparkles size={48}/></div>
+                         <div>
+                             <h3 className="font-black text-gray-800 text-2xl mb-2">Target Pendapatan</h3>
+                             <p className="text-sm text-gray-500">Manajemen master target pendapatan & pembagian cerdas AI otomatis.</p>
+                         </div>
+                     </button>
+                     
+                     <button onClick={() => setTopLevelRoute('operasional')} className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-200 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 flex flex-col items-center text-center gap-6 group overflow-hidden">
+                         <div className="w-24 h-24 rounded-3xl bg-green-50 text-green-500 flex items-center justify-center group-hover:scale-110 group-hover:bg-green-500 group-hover:text-white transition-all duration-300 shadow-inner"><Edit size={48}/></div>
+                         <div>
+                             <h3 className="font-black text-gray-800 text-2xl mb-2">Input Harian</h3>
+                             <p className="text-sm text-gray-500">Sistem input transaksi STSU, pencetakan resi NCR, & sinkronisasi bot mutasi.</p>
+                         </div>
+                     </button>
+
+                     <button onClick={() => setTopLevelRoute('dashboard')} className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-200 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 flex flex-col items-center text-center gap-6 group overflow-hidden">
+                         <div className="w-24 h-24 rounded-3xl bg-blue-50 text-blue-500 flex items-center justify-center group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all duration-300 shadow-inner"><FileText size={48}/></div>
+                         <div>
+                             <h3 className="font-black text-gray-800 text-2xl mb-2">Pusat Laporan</h3>
+                             <p className="text-sm text-gray-500">Visualisasi pencapaian, rekapitulasi performa, dan dashboard analitik data.</p>
+                         </div>
+                     </button>
+                 </div>
+                 
+                 <div className="mt-16 text-center text-xs text-gray-400 font-medium">
+                    <p>Logged in as: {user?.email}</p>
+                    <button onClick={handleLogout} className="mt-4 text-red-500 hover:text-red-700 flex items-center justify-center gap-1 mx-auto bg-red-50 px-3 py-1.5 rounded-full"><LogOut size={14}/> Keluar Aplikasi</button>
+                 </div>
+             </div>
+      )}
+
+      {topLevelRoute !== 'home' && (
+         <div className="w-full flex flex-col min-h-screen">
+            {/* Top Bar for Back Navigation */}
+            <div className="bg-white border-b border-gray-200 px-4 py-3 flex justify-between items-center sticky top-0 z-[60] no-print shadow-sm">
+               <button onClick={() => setTopLevelRoute('home')} className="flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-green-700 bg-gray-50 hover:bg-green-50 border border-gray-200 hover:border-green-200 px-4 py-2 rounded-lg transition-colors">
+                  <ChevronLeft size={18}/> Kembali ke Menu Utama
+               </button>
+               <div className="font-black text-gray-800 hidden sm:flex items-center gap-2 text-lg">
+                  {topLevelRoute === 'operasional' ? <><Edit className="text-green-600" size={24}/> Operasional Harian</> : topLevelRoute === 'target' ? <><Sparkles className="text-amber-500" size={24}/> Target Pendapatan</> : <><FileText className="text-blue-500" size={24}/> Pusat Laporan</>}
+               </div>
+            </div>
+
+            {topLevelRoute === 'target' && (
+              <div className="max-w-4xl mx-auto px-4 py-6 w-full animate-in fade-in slide-in-from-bottom-4">
+                <TargetManager 
+                  categories={categories} 
+                  targets={targets} 
+                  setTargets={setTargets} 
+                  formatRp={formatRp} 
+                />
+              </div>
+            )}
+
+            {topLevelRoute === 'operasional' && (
+               <>
+      <nav className="bg-green-700 text-white shadow-md sticky top-[60px] z-50 shrink-0 no-print">
         <div className="max-w-6xl mx-auto px-4 flex justify-between items-center h-16">
           <div className="font-bold text-lg flex items-center gap-2 mr-4 shrink-0">
             <Calculator size={24} /> <span className="hidden lg:inline">Sistem Rekap STSU</span>
@@ -2040,7 +2104,6 @@ export default function App() {
             </div>
           </div>
           <div className="flex space-x-1 sm:space-x-2 shrink-0 overflow-x-auto no-scrollbar items-center">
-            <button onClick={() => { setActiveTab('dashboard'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'dashboard' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Dashboard</span></button>
             <button onClick={() => { setActiveTab('input'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'input' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Edit size={18} /> <span className="hidden md:inline">Input</span></button>
             <button onClick={() => { setActiveTab('laporan'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'laporan' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Table size={18} /> <span className="hidden md:inline">Laporan</span></button>
             <button onClick={() => { setActiveTab('rekonBank'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'rekonBank' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Database size={18} /> <span className="hidden md:inline">Rekon Bank</span></button>
@@ -2242,11 +2305,11 @@ export default function App() {
           </div>
       )}
 
-      {activeTab === 'dashboard' && (
+      {topLevelRoute === 'dashboard' && (
         <div className="max-w-4xl mx-auto px-4 py-6 no-print">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="bg-gradient-to-r from-green-600 to-green-800 p-6 text-center text-white">
-              <h2 className="text-2xl font-black mb-1 drop-shadow-sm">Dashboard Rekapitulasi</h2>
+              <h2 className="text-2xl font-black mb-1 drop-shadow-sm">Pusat Laporan & Analitik</h2>
               <p className="text-green-100 text-sm opacity-90">Pantau kelengkapan STSU Pendapatan dan STSU Lain-lain.</p>
             </div>
             <div className="p-4 sm:p-6">
@@ -2266,7 +2329,7 @@ export default function App() {
                   return (
                     <button 
                       key={d.day} 
-                      onClick={() => { handleDateChange(d.dateStr); setActiveTab('input'); }}
+                      onClick={() => { handleDateChange(d.dateStr); setActiveTab('input'); setTopLevelRoute('operasional'); }}
                       className={`relative h-28 sm:h-36 rounded-lg sm:rounded-xl flex flex-col justify-start items-center pt-1.5 sm:pt-2 border transition-all overflow-hidden ${(d.hasUtama || d.hasLain) ? 'bg-blue-50/30 hover:bg-blue-50 border-blue-200 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'} ${isActive ? 'ring-2 ring-blue-500 transform scale-105 z-10 bg-blue-50' : ''}`}
                     >
                       <span className={`text-sm sm:text-lg font-bold ${isToday ? 'text-blue-600 bg-blue-100 px-2 rounded-full' : 'text-gray-700'}`}>{d.day}</span>
@@ -2787,14 +2850,7 @@ export default function App() {
                <h1 className="text-3xl font-black text-gray-800 mb-2">Master Menu Admin</h1>
                <p className="text-gray-500 mb-10">Sistem Informasi Manajemen Fasilitas TMR</p>
                
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl">
-                  <button onClick={() => setActiveMasterMenu('target')} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4 group">
-                     <div className="w-16 h-16 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform"><Sparkles size={32}/></div>
-                     <div>
-                        <h3 className="font-bold text-gray-800 text-lg mb-1">Target Pendapatan</h3>
-                        <p className="text-xs text-gray-500">Kelola target tahunan dan distribusi AI otomatis.</p>
-                     </div>
-                  </button>
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-2xl">
                   
                   <button onClick={() => setActiveMasterMenu('kategori')} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4 group">
                      <div className="w-16 h-16 rounded-2xl bg-green-100 text-green-600 flex items-center justify-center group-hover:scale-110 transition-transform"><Database size={32}/></div>
@@ -2869,18 +2925,6 @@ export default function App() {
             </div>
           )}
           
-          {activeMasterMenu === 'target' && (
-            <div className="mt-[-24px]">
-              <TargetManager 
-                  categories={categories} 
-                  targets={targets} 
-                  setTargets={setTargets} 
-                  formatRp={formatRp} 
-              />
-            </div>
-          )}
-
-
           {activeMasterMenu === 'kategori' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
               <div className="flex justify-between items-center mb-5"><h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Settings size={20} className="text-blue-500"/> Database Kategori</h2></div>
@@ -3055,6 +3099,8 @@ export default function App() {
               })()}
             </div>
           )}
+        </div>
+      )}
         </div>
       )}
 
