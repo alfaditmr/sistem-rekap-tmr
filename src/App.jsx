@@ -266,6 +266,7 @@ export default function App() {
   const [targets, setTargets] = useState(() => getInitialState('tmr_v19_targets', {}));
   const [allReports, setAllReports] = useState(() => getInitialState('tmr_v19_allReports', {}));
   const [apiIpAddress, setApiIpAddress] = useState(() => getInitialState('tmr_v19_api_ip', 'localhost'));
+  const [activeMasterMenu, setActiveMasterMenu] = useState('menu');
 
   const [reportDate, setReportDate] = useState(getLocalYMD());
   const [activeType, setActiveType] = useState('utama'); 
@@ -2781,8 +2782,56 @@ export default function App() {
       {activeTab === 'settings' && (
         <div className="max-w-4xl mx-auto px-4 py-6 no-print space-y-6">
           
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Cloud size={20} className="text-blue-500"/> Koneksi Server Bot Integrasi</h2>
+          {activeMasterMenu === 'menu' && (
+            <div className="flex flex-col items-center mt-10">
+               <h1 className="text-3xl font-black text-gray-800 mb-2">Master Menu Admin</h1>
+               <p className="text-gray-500 mb-10">Sistem Informasi Manajemen Fasilitas TMR</p>
+               
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl">
+                  <button onClick={() => setActiveMasterMenu('target')} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4 group">
+                     <div className="w-16 h-16 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform"><Sparkles size={32}/></div>
+                     <div>
+                        <h3 className="font-bold text-gray-800 text-lg mb-1">Target Pendapatan</h3>
+                        <p className="text-xs text-gray-500">Kelola target tahunan dan distribusi AI otomatis.</p>
+                     </div>
+                  </button>
+                  
+                  <button onClick={() => setActiveMasterMenu('kategori')} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4 group">
+                     <div className="w-16 h-16 rounded-2xl bg-green-100 text-green-600 flex items-center justify-center group-hover:scale-110 transition-transform"><Database size={32}/></div>
+                     <div>
+                        <h3 className="font-bold text-gray-800 text-lg mb-1">Database Kategori</h3>
+                        <p className="text-xs text-gray-500">Kelola master data pos STSU utama & lain-lain.</p>
+                     </div>
+                  </button>
+
+                  <button onClick={() => setActiveMasterMenu('pejabat')} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4 group">
+                     <div className="w-16 h-16 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform"><Edit size={32}/></div>
+                     <div>
+                        <h3 className="font-bold text-gray-800 text-lg mb-1">Pejabat Penandatangan</h3>
+                        <p className="text-xs text-gray-500">Atur pejabat pencetak resi NCR dan laporan.</p>
+                     </div>
+                  </button>
+                  
+                  <button onClick={() => setActiveMasterMenu('koneksi')} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4 group">
+                     <div className="w-16 h-16 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform"><Cloud size={32}/></div>
+                     <div>
+                        <h3 className="font-bold text-gray-800 text-lg mb-1">Koneksi Server</h3>
+                        <p className="text-xs text-gray-500">Konfigurasi alamat IP Address Bot Integrasi.</p>
+                     </div>
+                  </button>
+               </div>
+            </div>
+          )}
+
+          {activeMasterMenu !== 'menu' && (
+            <div>
+              <button onClick={() => setActiveMasterMenu('menu')} className="mb-6 text-gray-600 hover:text-gray-900 font-bold flex items-center gap-2 text-sm bg-white px-4 py-2 rounded-lg border border-gray-300 shadow-sm transition-colors hover:bg-gray-50 w-max">
+                 <ChevronLeft size={16}/> Kembali ke Menu Master
+              </button>
+
+              {activeMasterMenu === 'koneksi' && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                  <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Cloud size={20} className="text-blue-500"/> Koneksi Server Bot Integrasi</h2>
             <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
                 <label className="text-xs font-bold text-gray-600 uppercase mb-1.5 block">IP Address / Hostname Komputer Server</label>
                 <div className="flex gap-3 items-center">
@@ -2795,12 +2844,14 @@ export default function App() {
                 <div className="mt-3 text-[10px] text-gray-500 bg-white p-2 rounded border border-gray-200 inline-block font-mono">
                   Sistem otomatis menembak Port <strong className="text-blue-600">5000 (3A)</strong> dan Port <strong className="text-purple-600">5001 (IWM)</strong> berdasarkan port standar Bot.
                 </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Edit size={20} className="text-blue-500"/> Pejabat Penandatangan</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {activeMasterMenu === 'pejabat' && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                  <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Edit size={20} className="text-blue-500"/> Pejabat Penandatangan</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
                 <h3 className="font-semibold text-gray-700 text-sm border-b pb-2">Pihak Kiri (Penyetor)</h3>
                 <div><label className="text-xs text-gray-500 uppercase">Jabatan</label><input type="text" value={signatures.leftRole || ''} onChange={(e) => setSignatures({...signatures, leftRole: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
@@ -2814,19 +2865,25 @@ export default function App() {
                 <div><label className="text-xs text-gray-500 uppercase">Nama</label><input type="text" value={signatures.rightName || ''} onChange={(e) => setSignatures({...signatures, rightName: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none font-bold focus:border-blue-500" /></div>
                 <div><label className="text-xs text-gray-500 uppercase">NIP (Khusus Print NCR)</label><input type="text" value={signatures.rightNip || ''} onChange={(e) => setSignatures({...signatures, rightNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
               </div>
+              </div>
             </div>
-          </div>
+          )}
           
-          <TargetManager 
-              categories={categories} 
-              targets={targets} 
-              setTargets={setTargets} 
-              formatRp={formatRp} 
-          />
+          {activeMasterMenu === 'target' && (
+            <div className="mt-[-24px]">
+              <TargetManager 
+                  categories={categories} 
+                  targets={targets} 
+                  setTargets={setTargets} 
+                  formatRp={formatRp} 
+              />
+            </div>
+          )}
 
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <div className="flex justify-between items-center mb-5"><h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Settings size={20} className="text-blue-500"/> Database Kategori</h2></div>
+          {activeMasterMenu === 'kategori' && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+              <div className="flex justify-between items-center mb-5"><h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Settings size={20} className="text-blue-500"/> Database Kategori</h2></div>
             <div className="space-y-6">
               {categories.map((cat, index) => (
                 <div key={cat.id} className="border border-gray-200 rounded-lg overflow-hidden shadow-sm">
@@ -2867,6 +2924,8 @@ export default function App() {
               <button onClick={addCategory} className="w-full py-4 border-2 border-dashed border-gray-300 text-gray-600 bg-gray-50 rounded-xl font-bold flex justify-center items-center gap-2 hover:bg-gray-100 transition-colors"><Plus size={20} /> Buat Kategori Baru</button>
             </div>
           </div>
+          )}
+        </div>
         </div>
       )}
 
