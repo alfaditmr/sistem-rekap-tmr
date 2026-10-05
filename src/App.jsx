@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Settings, Edit, Printer, Plus, Trash, FileText, Calculator, CheckCircle, AlertCircle, Calendar, ChevronLeft, ChevronRight, Tag, Cloud, CloudOff, RefreshCw, ArrowUp, ArrowDown, Download, LogOut, Lock, Sparkles, Save, Database, CloudDownload, Table, FileSpreadsheet, User } from 'lucide-react';
 import RekonBankTab from './RekonBankTab';
+import TargetManager from './TargetManager';
 
 // --- IMPORT FIREBASE ---
 import { initializeApp } from "firebase/app";
@@ -262,6 +263,7 @@ export default function App() {
     { id: 'cat_6', name: 'E-Ticketing Old Gate', type: 'utama', items: [{ id: 'item_6a', name: 'Tiket Masuk Dewasa' }, { id: 'item_6b', name: 'Tiket Masuk Anak' }, { id: 'item_6c', name: 'Taman Satwa Anak' }, { id: 'item_6d', name: 'Pusat Primata Hari Biasa Dewasa' }, { id: 'item_6e', name: 'Pusat Primata Hari Biasa Anak' }, { id: 'item_6f', name: 'Pusat Primata Hari Besar Dewasa' }, { id: 'item_6g', name: 'Pusat Primata Hari Besar Anak' }, { id: 'item_6h', name: 'Kendaraan Motor' }, { id: 'item_6i', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_6j', name: 'Kendaraan Gol 2' }, { id: 'item_6k', name: 'Kendaraan Gol 1' }, { id: 'item_6l', name: 'Kendaraan Sepeda' }, { id: 'item_6m', name: 'Rombongan Dewasa' }, { id: 'item_6n', name: 'Rombongan Anak' }] }
   ]));
 
+  const [targets, setTargets] = useState(() => getInitialState('tmr_v19_targets', {}));
   const [allReports, setAllReports] = useState(() => getInitialState('tmr_v19_allReports', {}));
   const [apiIpAddress, setApiIpAddress] = useState(() => getInitialState('tmr_v19_api_ip', 'localhost'));
 
@@ -290,6 +292,7 @@ export default function App() {
 
   useEffect(() => { safeSetLocalStorage('tmr_v19_signatures', signatures); }, [signatures]);
   useEffect(() => { safeSetLocalStorage('tmr_v19_categories', categories); }, [categories]);
+  useEffect(() => { safeSetLocalStorage('tmr_v19_targets', targets); }, [targets]);
   useEffect(() => { safeSetLocalStorage('tmr_v19_allReports', allReports); }, [allReports]);
   useEffect(() => { safeSetLocalStorage('tmr_v19_api_ip', apiIpAddress); }, [apiIpAddress]);
 
@@ -314,6 +317,11 @@ export default function App() {
             setCategories(prev => {
                 const newStr = JSON.stringify(data.categories || []);
                 return JSON.stringify(prev) === newStr ? prev : (data.categories || []);
+            });
+            
+            setTargets(prev => {
+                const newStr = JSON.stringify(data.targets || {});
+                return JSON.stringify(prev) === newStr ? prev : (data.targets || {});
             });
             
             setAllReports(prev => {
@@ -349,6 +357,7 @@ export default function App() {
   const prevBankRowsRef = useRef([]);
   const prevSigsRef = useRef({});
   const prevCatsRef = useRef([]);
+  const prevTargetsRef = useRef({});
 
   useEffect(() => {
     if (!user || !dbReady || !db) return;
@@ -358,7 +367,8 @@ export default function App() {
       allReports === prevReportsRef.current &&
       bankRows === prevBankRowsRef.current &&
       signatures === prevSigsRef.current &&
-      categories === prevCatsRef.current
+      categories === prevCatsRef.current &&
+      targets === prevTargetsRef.current
     ) {
         return;
     }
@@ -371,6 +381,7 @@ export default function App() {
         
         if (signatures !== prevSigsRef.current) { updatePayload.signatures = signatures; hasChanges = true; }
         if (categories !== prevCatsRef.current) { updatePayload.categories = categories; hasChanges = true; }
+        if (targets !== prevTargetsRef.current) { updatePayload.targets = targets; hasChanges = true; }
         
         if (allReports !== prevReportsRef.current) {
              // Diff per tanggal (ymd) agar payload yang dikirim super kecil
@@ -394,7 +405,7 @@ export default function App() {
             } catch (err) {
                 // Fallback ke setDoc jika dokumen user belum pernah ada (pengguna baru)
                 if (err.code === 'not-found') {
-                    await setDoc(getDocRef(), { signatures, categories, allReports, bankRows, lastUpdated: new Date().toISOString() });
+                    await setDoc(getDocRef(), { signatures, categories, targets, allReports, bankRows, lastUpdated: new Date().toISOString() });
                 } else {
                     throw err;
                 }
@@ -406,6 +417,7 @@ export default function App() {
         prevBankRowsRef.current = bankRows;
         prevSigsRef.current = signatures;
         prevCatsRef.current = categories;
+        prevTargetsRef.current = targets;
 
         setSyncStatus('synced'); 
       } catch(e) { 
@@ -417,19 +429,20 @@ export default function App() {
     const timer = setTimeout(saveData, 1000);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signatures, categories, allReports, bankRows, user, dbReady]);
+  }, [signatures, categories, targets, allReports, bankRows, user, dbReady]);
 
   const handleForceSave = async () => {
     if (!user || !dbReady) return;
     setSyncStatus('syncing');
     try { 
       // Force save tetap menggunakan setDoc keseluruhan untuk memastikan integritas
-      await setDoc(getDocRef(), { signatures, categories, allReports, bankRows, lastUpdated: new Date().toISOString() }); 
+      await setDoc(getDocRef(), { signatures, categories, targets, allReports, bankRows, lastUpdated: new Date().toISOString() }); 
       
       prevReportsRef.current = allReports;
       prevBankRowsRef.current = bankRows;
       prevSigsRef.current = signatures;
       prevCatsRef.current = categories;
+      prevTargetsRef.current = targets;
       
       setSyncStatus('synced'); 
       showToast('Data berhasil disimpan ke Cloud!'); 
@@ -2803,6 +2816,14 @@ export default function App() {
               </div>
             </div>
           </div>
+          
+          <TargetManager 
+              categories={categories} 
+              targets={targets} 
+              setTargets={setTargets} 
+              formatRp={formatRp} 
+          />
+
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
             <div className="flex justify-between items-center mb-5"><h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Settings size={20} className="text-blue-500"/> Database Kategori</h2></div>
