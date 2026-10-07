@@ -158,7 +158,6 @@ const callGeminiAPI = async (prompt, systemInstruction) => {
 export default function App() {
   const [activeTab, setActiveTab] = useState('input');
   const [topLevelRoute, setTopLevelRoute] = useState('home');
-  const [dashboardTab, setDashboardTab] = useState('rekap');
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null });
   const [resetDialog, setResetDialog] = useState({ isOpen: false, password: '', error: '', isVerifying: false });
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -429,7 +428,7 @@ export default function App() {
       }
     };
     
-    const timer = setTimeout(saveData, 250);
+    const timer = setTimeout(saveData, 1000);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signatures, categories, targets, allReports, bankRows, user, dbReady]);
@@ -452,27 +451,6 @@ export default function App() {
     } catch(e) { 
       console.error("Force Save Error:", e);
       setSyncStatus('offline'); 
-    }
-  };
-
-  const saveToFirebaseDirectly = async (newAllReports, newBankRows) => {
-    if (!user || !dbReady) return;
-    setSyncStatus('syncing');
-    try {
-      await setDoc(getDocRef(), { 
-          signatures, 
-          categories, 
-          targets, 
-          allReports: newAllReports || allReports, 
-          bankRows: newBankRows || bankRows, 
-          lastUpdated: new Date().toISOString() 
-      });
-      if (newAllReports) prevReportsRef.current = newAllReports;
-      if (newBankRows) prevBankRowsRef.current = newBankRows;
-      setSyncStatus('synced');
-    } catch (e) {
-      console.error("Instant Save Error:", e);
-      setSyncStatus('offline');
     }
   };
 
@@ -615,25 +593,13 @@ export default function App() {
     setTimeout(() => { if (typeof document !== 'undefined') { const inputElement = document.getElementById(`input_${inputKey}`); if (inputElement) inputElement.focus(); } }, 100);
   };
 
-  const handleRemoveActiveItem = (itemToRemove, providedKey) => {
-    if (itemToRemove.bankMatched) {
-        alert("Peringatan: Item ini terpasang dengan Mutasi Bank! Silakan batalkan pasangan mutasi bank terlebih dahulu di tab 'Rekon Bank' jika Anda ingin menghapusnya.");
-        return;
-    }
-    const keyToRemove = providedKey || getActiveItemKey(itemToRemove.catId, itemToRemove.itemId || itemToRemove.id, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate, itemToRemove.itemNote);
-    
-    const dayData = allReports[reportDate] || {}; 
-    const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
-    const newActive = (typeData.activeItems || []).filter(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) !== keyToRemove);
-    const newFormData = { ...(typeData.formData || {}) }; 
-    delete newFormData[keyToRemove];
-    
-    const updatedTypeData = { ...typeData, activeItems: newActive, formData: newFormData };
-    const newReports = { ...allReports, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
-    
-    setAllReports(newReports);
-    saveToFirebaseDirectly(newReports, null);
-    showToast('Item berhasil dihapus!');
+  const handleRemoveActiveItem = (itemToRemove) => {
+    const keyToRemove = getActiveItemKey(itemToRemove.catId, itemToRemove.itemId || itemToRemove.id, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate, itemToRemove.itemNote);
+    updateCurrentReport(prev => {
+      const newActive = (prev.activeItems || []).filter(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) !== keyToRemove);
+      const newFormData = { ...(prev.formData || {}) }; delete newFormData[keyToRemove];
+      return { ...prev, activeItems: newActive, formData: newFormData };
+    });
   };
 
   const handleInputChange = (inputKey, value) => {
@@ -2138,8 +2104,8 @@ export default function App() {
             </div>
           </div>
           <div className="flex space-x-1 sm:space-x-2 shrink-0 overflow-x-auto no-scrollbar items-center">
-                        <button onClick={() => { setActiveTab('kalender'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'kalender' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Kalender</span></button>
-<button onClick={() => { setActiveTab('input'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'input' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Edit size={18} /> <span className="hidden md:inline">Input</span></button>
+            <button onClick={() => { setActiveTab('input'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'input' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Edit size={18} /> <span className="hidden md:inline">Input</span></button>
+            <button onClick={() => { setActiveTab('laporan'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'laporan' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Table size={18} /> <span className="hidden md:inline">Laporan</span></button>
             <button onClick={() => { setActiveTab('rekonBank'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'rekonBank' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Database size={18} /> <span className="hidden md:inline">Rekon Bank</span></button>
             <button onClick={() => { setActiveTab('settings'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Settings size={18} /> <span className="hidden md:inline">Master</span></button>
             <button onClick={() => { setActiveTab('print'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'print' ? 'bg-green-800' : 'hover:bg-green-600'}`}><FileText size={18} /> <span className="hidden md:inline">Cetak</span></button>
@@ -2157,57 +2123,6 @@ export default function App() {
       {/* ============================================================== */}
       {/* 🔴 TAB: DASHBOARD */}
       {/* ============================================================== */}
-      {activeTab === 'kalender' && (
-<div className="max-w-6xl mx-auto px-4 py-6 mt-4">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-6 text-center text-white">
-              <h2 className="text-2xl font-black mb-1 drop-shadow-sm">Kalender Status STSU</h2>
-              <p className="text-blue-100 text-sm opacity-90">Pantau kelengkapan STSU Pendapatan dan STSU Lain-lain.</p>
-            </div>
-            <div className="p-4 sm:p-6">
-              <div className="flex justify-between items-center mb-6 bg-gray-50 p-2 rounded-xl border border-gray-100">
-                <button onClick={prevMonth} className="p-2 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-gray-100"><ChevronLeft size={20} className="text-gray-600"/></button>
-                <h3 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{calendarMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}</h3>
-                <button onClick={nextMonth} className="p-2 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-gray-100"><ChevronRight size={20} className="text-gray-600"/></button>
-              </div>
-              <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 text-center">
-                {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map(day => (<div key={day} className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">{day}</div>))}
-              </div>
-              <div className="grid grid-cols-7 gap-1 sm:gap-2">
-                {blanks.map(b => <div key={`blank-${b}`} className="h-28 sm:h-36 bg-gray-50/50 rounded-lg sm:rounded-xl"></div>)}
-                {days.map(d => {
-                  const isToday = d.dateStr === getLocalYMD();
-                  const isActive = d.dateStr === reportDate;
-                  return (
-                    <button 
-                      key={d.day} 
-                      onClick={() => { handleDateChange(d.dateStr); setActiveTab('input'); setTopLevelRoute('operasional'); }}
-                      className={`relative h-28 sm:h-36 rounded-lg sm:rounded-xl flex flex-col justify-start items-center pt-1.5 sm:pt-2 border transition-all overflow-hidden ${(d.hasUtama || d.hasLain) ? 'bg-blue-50/30 hover:bg-blue-50 border-blue-200 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'} ${isActive ? 'ring-2 ring-blue-500 transform scale-105 z-10 bg-blue-50' : ''}`}
-                    >
-                      <span className={`text-sm sm:text-lg font-bold ${isToday ? 'text-blue-600 bg-blue-100 px-2 rounded-full' : 'text-gray-700'}`}>{d.day}</span>
-                      <div className="mt-1 w-full px-1 flex flex-col gap-1 items-center overflow-y-auto no-scrollbar pb-1">
-                        {d.hasUtama && (
-                          <div className="w-full bg-green-50 border border-green-200 rounded shadow-sm flex flex-col overflow-hidden shrink-0">
-                            <div className="bg-green-500 text-white flex justify-between items-center px-1.5 py-0.5"><span className="text-[9px] font-bold">SU</span>{d.utamaSequence && d.utamaSequence !== '...' && <span className="text-[9px] font-bold">{safeString(d.utamaSequence)}</span>}</div>
-                            <div className="text-[9px] sm:text-[10px] font-black text-green-800 text-right px-1.5 py-0.5 truncate" title={`Rp ${formatRp(d.utamaTotal)}`}>Rp {formatRp(d.utamaTotal)}</div>
-                          </div>
-                        )}
-                        {d.lainDocs.map((lainDoc, index) => (
-                          <div key={index} className="w-full bg-purple-50 border border-purple-200 rounded shadow-sm flex flex-col overflow-hidden shrink-0">
-                            <div className="bg-purple-500 text-white flex justify-between items-center px-1.5 py-0.5"><span className="text-[9px] font-bold">SU/L</span>{lainDoc.sequence && lainDoc.sequence !== '...' && <span className="text-[9px] font-bold">{safeString(lainDoc.sequence)}</span>}</div>
-                            <div className="text-[9px] sm:text-[10px] font-black text-purple-800 text-right px-1.5 py-0.5 truncate" title={`Rp ${formatRp(lainDoc.total)}`}>Rp {formatRp(lainDoc.total)}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-</div>
-)}
-
       {activeTab === 'rekonBank' && (
           <div className="no-print w-full bg-gray-50 min-h-screen">
               <RekonBankTab 
@@ -2217,7 +2132,7 @@ export default function App() {
                  safeString={safeString} 
                  categories={categories}
                  onSaveRekon={(bankRow, allocations, apis) => {
-                     // 1. Format Tanggal
+                     // 1. Format Tanggal dari CSV ("Sep 01, 2026 06:46:23 WIB") ke "YYYY-MM-DD"
                      let ymd = new Date().toISOString().split('T')[0];
                      try {
                          const cleanStr = (bankRow.date || '').replace(/WIB|WITA|WIT/i, '').trim();
@@ -2230,50 +2145,47 @@ export default function App() {
                          }
                      } catch(e) {}
 
-                     // Compute target summary for bankRows
-                     let targetSummary = allocations.map(a => {
-                         let n = '';
-                         if (a.categoryId) {
-                             const cat = categories.find(c => c.id === a.categoryId);
-                             if (cat) n += cat.name;
-                         }
-                         return `${n} (Rp ${formatRp(a.amount)})`;
-                     }).join(', ');
-
-                     try {
-                         const newReports = JSON.parse(JSON.stringify(allReports));
+                     // 2. Simpan Alokasi ke Laporan Firestore (via state allReports)
+                     setAllReports(prev => {
+                         const newReports = { ...prev };
                          
                          allocations.forEach(alloc => {
                              const allocYmd = alloc.targetDate || ymd;
                              const dayData = newReports[allocYmd] || {};
-                             
+                             // Buat salinan dalam (deep copy) dari dayData agar tidak memutasi state secara langsung
+                             const updatedDayData = JSON.parse(JSON.stringify(dayData));
+
                              const cat = categories.find(c => c.id === alloc.categoryId);
                              if (!cat) return; // Kategori wajib
                              
+                             // Jika Pos/Item tidak dipilih, kita set sebagai 'direct' (input langsung ke kategori)
                              let theItemId = alloc.itemId;
                              if (!theItemId || !cat.items || cat.items.length === 0) {
                                  theItemId = 'direct';
                              }
 
-                             let docKey = 'utama'; 
+                             let docKey = 'utama'; // default
                              if (cat.type === 'lain') {
-                                 docKey = 'lain'; 
+                                 docKey = 'lain'; // Mengarah ke STSU Pendapatan Lain-lain
                              }
 
-                             if (!dayData[docKey]) {
-                                 dayData[docKey] = { sequence: '', signatureDate: allocYmd, activeItems: [], formData: {} };
+                             // Pastikan struktur docKey sudah ada
+                             if (!updatedDayData[docKey]) {
+                                 updatedDayData[docKey] = { sequence: '', signatureDate: allocYmd, activeItems: [], formData: {} };
                              }
-                             if (!dayData[docKey].formData) dayData[docKey].formData = {};
-                             if (!Array.isArray(dayData[docKey].activeItems)) dayData[docKey].activeItems = [];
+                             if (!updatedDayData[docKey].formData) updatedDayData[docKey].formData = {};
+                             if (!updatedDayData[docKey].activeItems) updatedDayData[docKey].activeItems = [];
 
-                             const typeData = dayData[docKey];
+                             const typeData = updatedDayData[docKey];
                              
+                             // Susun object newItem untuk dimasukkan ke activeItems
                              const newItem = { catId: cat.id, itemId: theItemId };
                              if (docKey === 'lain') {
-                                 newItem.itemDate = allocYmd; 
+                                 newItem.itemDate = allocYmd; // Gunakan tanggal alokasi yang dipilih
                                  if (alloc.description) newItem.itemNote = alloc.description.trim();
                              }
 
+                             // Generate key persis seperti getActiveItemKey
                              let itemKey = `${newItem.catId}_${newItem.itemId}`;
                              if (newItem.itemDate) itemKey += `_date_${newItem.itemDate}`;
                              if (newItem.itemNote) { 
@@ -2285,14 +2197,15 @@ export default function App() {
                                  itemKey += `_note_${Math.abs(hash)}`; 
                              }
                              
+                             // A. Tambahkan nominal uang ke formData
                              const currentAmount = typeData.formData[itemKey] || 0;
                              typeData.formData[itemKey] = currentAmount + Number(alloc.amount || 0);
 
+                             // B. Aktifkan checkbox item ini di activeItems (Harus berupa Object, BUKAN string)
                              const existingIndex = typeData.activeItems.findIndex(i => {
-                                 if (!i || typeof i !== 'object') return false;
                                  let k = `${i.catId}_${i.itemId || i.id}`;
                                  if (i.itemDate) k += `_date_${i.itemDate}`;
-                                 if (i.itemNote && typeof i.itemNote === 'string') {
+                                 if (i.itemNote) {
                                      let h = 0; for (let j=0; j<i.itemNote.length; j++) { h=((h<<5)-h)+i.itemNote.charCodeAt(j); h=h&h; }
                                      k += `_note_${Math.abs(h)}`;
                                  }
@@ -2310,6 +2223,7 @@ export default function App() {
                                  typeData.activeItems[existingIndex].bankMatchDate = bankRow.date;
                              }
                              
+                             // C. Simpan link URL bukti transfer
                              if (alloc.apiRefId) {
                                  const apiItem = apis.find(a => a.id === alloc.apiRefId);
                                  if (apiItem && apiItem.buktiTransferUrl) {
@@ -2317,70 +2231,56 @@ export default function App() {
                                  }
                              }
                              
-                             newReports[allocYmd] = dayData;
+                             newReports[allocYmd] = updatedDayData;
                          });
 
-                         const newBankRows = bankRows.map(r => r.id === bankRow.id ? { ...r, status: 'matched', matchedTo: targetSummary } : r);
-                         
-                         setAllReports(newReports);
-                         setBankRows(newBankRows);
-                         
-                         saveToFirebaseDirectly(newReports, newBankRows);
-                         showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
-                     } catch (err) {
-                         console.error("Error in onSaveRekon:", err);
-                         alert("Terjadi kesalahan saat menyimpan alokasi: " + err.message);
-                     }
+                         return newReports;
+                     });
+
+                     showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
                  }}
                  onLinkRekon={async (bankRow, targetDate, targetType, targetGroupInfo) => {
-                     try {
-                         // 1. Construct new reports
-                         const newReports = { ...allReports };
-                         const dayData = { ...(newReports[targetDate] || {}) };
-                         const typeData = { ...(dayData[targetType] || { formData: {}, activeItems: [] }) };
-                         const safeActiveItems = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
-                         const newActiveItems = [...safeActiveItems];
-                         
-                         targetGroupInfo.itemIndices.forEach(idx => {
-                             if (newActiveItems[idx]) {
-                                 newActiveItems[idx] = { 
-                                     ...newActiveItems[idx], 
-                                     bankMatched: true, 
-                                     bankMatchDate: bankRow.date,
-                                     bankMatchRowId: bankRow.id 
-                                 };
-                             }
-                         });
-                         
-                         dayData[targetType] = { ...typeData, activeItems: newActiveItems };
-                         newReports[targetDate] = dayData;
-                         
-                         // 2. Construct new bank rows
-                         const newBankRows = bankRows.map(r => r.id === bankRow.id ? { ...r, status: 'linked', linkedTo: { date: targetDate, groupName: targetGroupInfo.name } } : r);
+                     // 1. Construct new reports
+                     const newReports = { ...allReports };
+                     const dayData = { ...(newReports[targetDate] || {}) };
+                     const typeData = { ...(dayData[targetType] || { formData: {}, activeItems: [] }) };
+                     const newActiveItems = [...typeData.activeItems];
+                     
+                     targetGroupInfo.itemIndices.forEach(idx => {
+                         if (newActiveItems[idx]) {
+                             newActiveItems[idx] = { 
+                                 ...newActiveItems[idx], 
+                                 bankMatched: true, 
+                                 bankMatchDate: bankRow.date,
+                                 bankMatchRowId: bankRow.id 
+                             };
+                         }
+                     });
+                     
+                     dayData[targetType] = { ...typeData, activeItems: newActiveItems };
+                     newReports[targetDate] = dayData;
+                     
+                     // 2. Construct new bank rows
+                     const newBankRows = bankRows.map(r => r.id === bankRow.id ? { ...r, status: 'linked', linkedTo: { date: targetDate, groupName: targetGroupInfo.name } } : r);
 
-                         // 3. Set states
-                         setAllReports(newReports);
-                         setBankRows(newBankRows);
-                         
-                         saveToFirebaseDirectly(newReports, newBankRows);
+                     // 3. Set states
+                     setAllReports(newReports);
+                     setBankRows(newBankRows);
 
-                         showToast(`Berhasil memasangkan mutasi dengan pendapatan tanggal ${targetDate}!`);
-                     } catch (err) {
-                         console.error("Error in onLinkRekon:", err);
-                         alert("Gagal memasangkan data: " + err.message);
-                     }
+                     showToast(`Berhasil memasangkan mutasi dengan pendapatan tanggal ${targetDate}!`);
                  }}
                  onUpdateBankRow={(rowId, updates) => {
                      setBankRows(prev => prev.map(r => r.id === rowId ? { ...r, ...updates } : r));
                  }}
                  onUnlinkBankRow={(bankRow) => {
-                     try {
-                         const newReports = JSON.parse(JSON.stringify(allReports));
+                     let updatedReports;
+                     setAllReports(prev => {
+                         const newReports = JSON.parse(JSON.stringify(prev));
                          Object.keys(newReports).forEach(date => {
-                             Object.keys(newReports[date]).forEach(type => {
-                                 if (newReports[date][type] && Array.isArray(newReports[date][type].activeItems)) {
+                             ['utama', 'lain'].forEach(type => {
+                                 if (newReports[date][type] && newReports[date][type].activeItems) {
                                      newReports[date][type].activeItems = newReports[date][type].activeItems.map(item => {
-                                         if (item && item.bankMatchRowId === bankRow.id) {
+                                         if (item.bankMatchRowId === bankRow.id) {
                                              const newItem = { ...item };
                                              delete newItem.bankMatched;
                                              delete newItem.bankMatchDate;
@@ -2392,18 +2292,13 @@ export default function App() {
                                  }
                              });
                          });
+                         updatedReports = newReports;
+                         return newReports;
+                     });
 
-                         const newBankRows = bankRows.map(r => r.id === bankRow.id ? { ...r, status: 'pending', linkedTo: null } : r);
-                         
-                         setAllReports(newReports);
-                         setBankRows(newBankRows);
-                         
-                         saveToFirebaseDirectly(newReports, newBankRows);
-                         showToast('Status pasangan mutasi bank berhasil dibatalkan!');
-                     } catch (err) {
-                         console.error("Error unlinking:", err);
-                         alert("Gagal membatalkan pasangan: " + err.message);
-                     }
+                     setBankRows(prev => prev.map(r => r.id === bankRow.id ? { ...r, status: 'pending', linkedTo: null } : r));
+                     
+                     showToast('Status pasangan mutasi bank berhasil dibatalkan!');
                  }}
                  allReports={allReports}
               />
@@ -2565,7 +2460,7 @@ export default function App() {
                       return (
                         <div key={inputKey} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-50 pb-3 last:border-0 last:pb-0">
                           <div className="flex items-start gap-2 sm:w-1/2">
-                            <button onClick={() => handleRemoveActiveItem(item, inputKey)} className="text-red-400 hover:text-red-600 p-2 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm mt-0.5 shrink-0"><Trash size={18} /></button>
+                            <button onClick={() => handleRemoveActiveItem(item)} className="text-red-400 hover:text-red-600 p-2 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm mt-0.5 shrink-0"><Trash size={18} /></button>
                             <div className="flex flex-col w-full">
                               <label className="text-gray-700 font-medium">
                                 {item.id === 'direct' ? 'Nominal Pemasukan' : safeString(item.name)}
@@ -2914,7 +2809,72 @@ export default function App() {
 
       {topLevelRoute === 'dashboard' && (
   <div className="max-w-6xl mx-auto px-4 py-6 no-print w-full animate-in fade-in slide-in-from-bottom-4">
+     
+     <div className="flex overflow-x-auto no-scrollbar gap-2 mb-6 p-1.5 bg-white rounded-xl shadow-sm border border-gray-200 w-max mx-auto">
+       <button 
+          onClick={() => setDashboardTab('kalender')}
+          className={`px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${dashboardTab === 'kalender' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+       >
+          <Calendar className="inline-block mr-2" size={18} /> Kalender Status
+       </button>
+       <button 
+          onClick={() => setDashboardTab('rekap')}
+          className={`px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${dashboardTab === 'rekap' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+       >
+          <FileSpreadsheet className="inline-block mr-2" size={18} /> Rekapitulasi & Rekon
+       </button>
+     </div>
 
+{dashboardTab === 'kalender' && (
+<div className="mt-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-6 text-center text-white">
+              <h2 className="text-2xl font-black mb-1 drop-shadow-sm">Pusat Laporan & Analitik</h2>
+              <p className="text-blue-100 text-sm opacity-90">Pantau kelengkapan STSU Pendapatan dan STSU Lain-lain.</p>
+            </div>
+            <div className="p-4 sm:p-6">
+              <div className="flex justify-between items-center mb-6 bg-gray-50 p-2 rounded-xl border border-gray-100">
+                <button onClick={prevMonth} className="p-2 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-gray-100"><ChevronLeft size={20} className="text-gray-600"/></button>
+                <h3 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{calendarMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}</h3>
+                <button onClick={nextMonth} className="p-2 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-gray-100"><ChevronRight size={20} className="text-gray-600"/></button>
+              </div>
+              <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 text-center">
+                {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map(day => (<div key={day} className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">{day}</div>))}
+              </div>
+              <div className="grid grid-cols-7 gap-1 sm:gap-2">
+                {blanks.map(b => <div key={`blank-${b}`} className="h-28 sm:h-36 bg-gray-50/50 rounded-lg sm:rounded-xl"></div>)}
+                {days.map(d => {
+                  const isToday = d.dateStr === getLocalYMD();
+                  const isActive = d.dateStr === reportDate;
+                  return (
+                    <button 
+                      key={d.day} 
+                      onClick={() => { handleDateChange(d.dateStr); setActiveTab('input'); setTopLevelRoute('operasional'); }}
+                      className={`relative h-28 sm:h-36 rounded-lg sm:rounded-xl flex flex-col justify-start items-center pt-1.5 sm:pt-2 border transition-all overflow-hidden ${(d.hasUtama || d.hasLain) ? 'bg-blue-50/30 hover:bg-blue-50 border-blue-200 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'} ${isActive ? 'ring-2 ring-blue-500 transform scale-105 z-10 bg-blue-50' : ''}`}
+                    >
+                      <span className={`text-sm sm:text-lg font-bold ${isToday ? 'text-blue-600 bg-blue-100 px-2 rounded-full' : 'text-gray-700'}`}>{d.day}</span>
+                      <div className="mt-1 w-full px-1 flex flex-col gap-1 items-center overflow-y-auto no-scrollbar pb-1">
+                        {d.hasUtama && (
+                          <div className="w-full bg-green-50 border border-green-200 rounded shadow-sm flex flex-col overflow-hidden shrink-0">
+                            <div className="bg-green-500 text-white flex justify-between items-center px-1.5 py-0.5"><span className="text-[9px] font-bold">SU</span>{d.utamaSequence && d.utamaSequence !== '...' && <span className="text-[9px] font-bold">{safeString(d.utamaSequence)}</span>}</div>
+                            <div className="text-[9px] sm:text-[10px] font-black text-green-800 text-right px-1.5 py-0.5 truncate" title={`Rp ${formatRp(d.utamaTotal)}`}>Rp {formatRp(d.utamaTotal)}</div>
+                          </div>
+                        )}
+                        {d.lainDocs.map((lainDoc, index) => (
+                          <div key={index} className="w-full bg-purple-50 border border-purple-200 rounded shadow-sm flex flex-col overflow-hidden shrink-0">
+                            <div className="bg-purple-500 text-white flex justify-between items-center px-1.5 py-0.5"><span className="text-[9px] font-bold">SU/L</span>{lainDoc.sequence && lainDoc.sequence !== '...' && <span className="text-[9px] font-bold">{safeString(lainDoc.sequence)}</span>}</div>
+                            <div className="text-[9px] sm:text-[10px] font-black text-purple-800 text-right px-1.5 py-0.5 truncate" title={`Rp ${formatRp(lainDoc.total)}`}>Rp {formatRp(lainDoc.total)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+</div>
+)}
 
 {/* 🔴 TAB: LAPORAN (EXCEL) */}
       {/* ============================================================== */}

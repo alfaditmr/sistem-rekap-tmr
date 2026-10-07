@@ -267,8 +267,6 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
           return;
       }
       
-      setBankRows(prev => prev.map(r => r.id === splitModal.bankRow.id ? { ...r, status: 'matched' } : r));
-      
       if(onSaveRekon) {
           onSaveRekon(splitModal.bankRow, splitModal.allocations, apiData);
       }
