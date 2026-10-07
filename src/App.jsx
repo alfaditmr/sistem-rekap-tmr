@@ -2291,34 +2291,40 @@ export default function App() {
                      showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
                  }}
                  onLinkRekon={async (bankRow, targetDate, targetType, targetGroupInfo) => {
-                     // 1. Construct new reports
-                     const newReports = { ...allReports };
-                     const dayData = { ...(newReports[targetDate] || {}) };
-                     const typeData = { ...(dayData[targetType] || { formData: {}, activeItems: [] }) };
-                     const newActiveItems = [...typeData.activeItems];
-                     
-                     targetGroupInfo.itemIndices.forEach(idx => {
-                         if (newActiveItems[idx]) {
-                             newActiveItems[idx] = { 
-                                 ...newActiveItems[idx], 
-                                 bankMatched: true, 
-                                 bankMatchDate: bankRow.date,
-                                 bankMatchRowId: bankRow.id 
-                             };
-                         }
-                     });
-                     
-                     dayData[targetType] = { ...typeData, activeItems: newActiveItems };
-                     newReports[targetDate] = dayData;
-                     
-                     // 2. Construct new bank rows
-                     const newBankRows = bankRows.map(r => r.id === bankRow.id ? { ...r, status: 'linked', linkedTo: { date: targetDate, groupName: targetGroupInfo.name } } : r);
+                     try {
+                         // 1. Construct new reports
+                         const newReports = { ...allReports };
+                         const dayData = { ...(newReports[targetDate] || {}) };
+                         const typeData = { ...(dayData[targetType] || { formData: {}, activeItems: [] }) };
+                         const safeActiveItems = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
+                         const newActiveItems = [...safeActiveItems];
+                         
+                         targetGroupInfo.itemIndices.forEach(idx => {
+                             if (newActiveItems[idx]) {
+                                 newActiveItems[idx] = { 
+                                     ...newActiveItems[idx], 
+                                     bankMatched: true, 
+                                     bankMatchDate: bankRow.date,
+                                     bankMatchRowId: bankRow.id 
+                                 };
+                             }
+                         });
+                         
+                         dayData[targetType] = { ...typeData, activeItems: newActiveItems };
+                         newReports[targetDate] = dayData;
+                         
+                         // 2. Construct new bank rows
+                         const newBankRows = bankRows.map(r => r.id === bankRow.id ? { ...r, status: 'linked', linkedTo: { date: targetDate, groupName: targetGroupInfo.name } } : r);
 
-                     // 3. Set states
-                     setAllReports(newReports);
-                     setBankRows(newBankRows);
+                         // 3. Set states
+                         setAllReports(newReports);
+                         setBankRows(newBankRows);
 
-                     showToast(`Berhasil memasangkan mutasi dengan pendapatan tanggal ${targetDate}!`);
+                         showToast(`Berhasil memasangkan mutasi dengan pendapatan tanggal ${targetDate}!`);
+                     } catch (err) {
+                         console.error("Error in onLinkRekon:", err);
+                         alert("Gagal memasangkan data: " + err.message);
+                     }
                  }}
                  onUpdateBankRow={(rowId, updates) => {
                      setBankRows(prev => prev.map(r => r.id === rowId ? { ...r, ...updates } : r));
