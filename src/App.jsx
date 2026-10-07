@@ -2199,94 +2199,93 @@ export default function App() {
 
                      // 2. Simpan Alokasi ke Laporan Firestore (via state allReports)
                      setAllReports(prev => {
-                         const newReports = { ...prev };
-                         
-                         allocations.forEach(alloc => {
-                             const allocYmd = alloc.targetDate || ymd;
-                             const dayData = newReports[allocYmd] || {};
-                             // Buat salinan dalam (deep copy) dari dayData agar tidak memutasi state secara langsung
-                             const updatedDayData = JSON.parse(JSON.stringify(dayData));
-
-                             const cat = categories.find(c => c.id === alloc.categoryId);
-                             if (!cat) return; // Kategori wajib
+                         try {
+                             const newReports = { ...prev };
                              
-                             // Jika Pos/Item tidak dipilih, kita set sebagai 'direct' (input langsung ke kategori)
-                             let theItemId = alloc.itemId;
-                             if (!theItemId || !cat.items || cat.items.length === 0) {
-                                 theItemId = 'direct';
-                             }
+                             allocations.forEach(alloc => {
+                                 const allocYmd = alloc.targetDate || ymd;
+                                 const dayData = newReports[allocYmd] || {};
+                                 const updatedDayData = JSON.parse(JSON.stringify(dayData));
 
-                             let docKey = 'utama'; // default
-                             if (cat.type === 'lain') {
-                                 docKey = 'lain'; // Mengarah ke STSU Pendapatan Lain-lain
-                             }
-
-                             // Pastikan struktur docKey sudah ada
-                             if (!updatedDayData[docKey]) {
-                                 updatedDayData[docKey] = { sequence: '', signatureDate: allocYmd, activeItems: [], formData: {} };
-                             }
-                             if (!updatedDayData[docKey].formData) updatedDayData[docKey].formData = {};
-                             if (!updatedDayData[docKey].activeItems) updatedDayData[docKey].activeItems = [];
-
-                             const typeData = updatedDayData[docKey];
-                             
-                             // Susun object newItem untuk dimasukkan ke activeItems
-                             const newItem = { catId: cat.id, itemId: theItemId };
-                             if (docKey === 'lain') {
-                                 newItem.itemDate = allocYmd; // Gunakan tanggal alokasi yang dipilih
-                                 if (alloc.description) newItem.itemNote = alloc.description.trim();
-                             }
-
-                             // Generate key persis seperti getActiveItemKey
-                             let itemKey = `${newItem.catId}_${newItem.itemId}`;
-                             if (newItem.itemDate) itemKey += `_date_${newItem.itemDate}`;
-                             if (newItem.itemNote) { 
-                                 let hash = 0; 
-                                 for (let i = 0; i < newItem.itemNote.length; i++) { 
-                                     hash = ((hash << 5) - hash) + newItem.itemNote.charCodeAt(i); 
-                                     hash = hash & hash; 
-                                 } 
-                                 itemKey += `_note_${Math.abs(hash)}`; 
-                             }
-                             
-                             // A. Tambahkan nominal uang ke formData
-                             const currentAmount = typeData.formData[itemKey] || 0;
-                             typeData.formData[itemKey] = currentAmount + Number(alloc.amount || 0);
-
-                             // B. Aktifkan checkbox item ini di activeItems (Harus berupa Object, BUKAN string)
-                             const existingIndex = typeData.activeItems.findIndex(i => {
-                                 let k = `${i.catId}_${i.itemId || i.id}`;
-                                 if (i.itemDate) k += `_date_${i.itemDate}`;
-                                 if (i.itemNote) {
-                                     let h = 0; for (let j=0; j<i.itemNote.length; j++) { h=((h<<5)-h)+i.itemNote.charCodeAt(j); h=h&h; }
-                                     k += `_note_${Math.abs(h)}`;
+                                 const cat = categories.find(c => c.id === alloc.categoryId);
+                                 if (!cat) return; // Kategori wajib
+                                 
+                                 let theItemId = alloc.itemId;
+                                 if (!theItemId || !cat.items || cat.items.length === 0) {
+                                     theItemId = 'direct';
                                  }
-                                 return k === itemKey;
+
+                                 let docKey = 'utama'; 
+                                 if (cat.type === 'lain') {
+                                     docKey = 'lain'; 
+                                 }
+
+                                 if (!updatedDayData[docKey]) {
+                                     updatedDayData[docKey] = { sequence: '', signatureDate: allocYmd, activeItems: [], formData: {} };
+                                 }
+                                 if (!updatedDayData[docKey].formData) updatedDayData[docKey].formData = {};
+                                 if (!Array.isArray(updatedDayData[docKey].activeItems)) updatedDayData[docKey].activeItems = [];
+
+                                 const typeData = updatedDayData[docKey];
+                                 
+                                 const newItem = { catId: cat.id, itemId: theItemId };
+                                 if (docKey === 'lain') {
+                                     newItem.itemDate = allocYmd; 
+                                     if (alloc.description) newItem.itemNote = alloc.description.trim();
+                                 }
+
+                                 let itemKey = `${newItem.catId}_${newItem.itemId}`;
+                                 if (newItem.itemDate) itemKey += `_date_${newItem.itemDate}`;
+                                 if (newItem.itemNote) { 
+                                     let hash = 0; 
+                                     for (let i = 0; i < newItem.itemNote.length; i++) { 
+                                         hash = ((hash << 5) - hash) + newItem.itemNote.charCodeAt(i); 
+                                         hash = hash & hash; 
+                                     } 
+                                     itemKey += `_note_${Math.abs(hash)}`; 
+                                 }
+                                 
+                                 const currentAmount = typeData.formData[itemKey] || 0;
+                                 typeData.formData[itemKey] = currentAmount + Number(alloc.amount || 0);
+
+                                 const existingIndex = typeData.activeItems.findIndex(i => {
+                                     if (!i || typeof i !== 'object') return false;
+                                     let k = `${i.catId}_${i.itemId || i.id}`;
+                                     if (i.itemDate) k += `_date_${i.itemDate}`;
+                                     if (i.itemNote && typeof i.itemNote === 'string') {
+                                         let h = 0; for (let j=0; j<i.itemNote.length; j++) { h=((h<<5)-h)+i.itemNote.charCodeAt(j); h=h&h; }
+                                         k += `_note_${Math.abs(h)}`;
+                                     }
+                                     return k === itemKey;
+                                 });
+
+                                 if (existingIndex === -1) {
+                                     newItem.bankMatched = true;
+                                     newItem.bankMatchRowId = bankRow.id;
+                                     newItem.bankMatchDate = bankRow.date;
+                                     typeData.activeItems.push(newItem);
+                                 } else {
+                                     typeData.activeItems[existingIndex].bankMatched = true;
+                                     typeData.activeItems[existingIndex].bankMatchRowId = bankRow.id;
+                                     typeData.activeItems[existingIndex].bankMatchDate = bankRow.date;
+                                 }
+                                 
+                                 if (alloc.apiRefId) {
+                                     const apiItem = apis.find(a => a.id === alloc.apiRefId);
+                                     if (apiItem && apiItem.buktiTransferUrl) {
+                                         typeData.formData[`${itemKey}_buktiUrl`] = apiItem.buktiTransferUrl;
+                                     }
+                                 }
+                                 
+                                 newReports[allocYmd] = updatedDayData;
                              });
 
-                             if (existingIndex === -1) {
-                                 newItem.bankMatched = true;
-                                 newItem.bankMatchRowId = bankRow.id;
-                                 newItem.bankMatchDate = bankRow.date;
-                                 typeData.activeItems.push(newItem);
-                             } else {
-                                 typeData.activeItems[existingIndex].bankMatched = true;
-                                 typeData.activeItems[existingIndex].bankMatchRowId = bankRow.id;
-                                 typeData.activeItems[existingIndex].bankMatchDate = bankRow.date;
-                             }
-                             
-                             // C. Simpan link URL bukti transfer
-                             if (alloc.apiRefId) {
-                                 const apiItem = apis.find(a => a.id === alloc.apiRefId);
-                                 if (apiItem && apiItem.buktiTransferUrl) {
-                                     typeData.formData[`${itemKey}_buktiUrl`] = apiItem.buktiTransferUrl;
-                                 }
-                             }
-                             
-                             newReports[allocYmd] = updatedDayData;
-                         });
-
-                         return newReports;
+                             return newReports;
+                         } catch (err) {
+                             console.error("Error in onSaveRekon:", err);
+                             alert("Terjadi kesalahan saat menyimpan alokasi: " + err.message);
+                             return prev;
+                         }
                      });
 
                      showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
