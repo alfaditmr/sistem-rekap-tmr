@@ -2425,9 +2425,15 @@ export default function App() {
                              if (alloc.apiRefId) {
                                  const apiItem = apis.find(a => a.id === alloc.apiRefId);
                                  const proofUrl = apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
+                                 if (existingIndex === -1) {
+                                     newItem.apiRefId = alloc.apiRefId;
+                                     if (proofUrl) newItem.proofUrl = proofUrl;
+                                 } else {
+                                     typeData.activeItems[existingIndex].apiRefId = alloc.apiRefId;
+                                     if (proofUrl) typeData.activeItems[existingIndex].proofUrl = proofUrl;
+                                 }
                                  if (proofUrl) {
                                      typeData.formData[itemKey + '_buktiUrl'] = proofUrl;
-                                     if (existingIndex === -1) { newItem.proofUrl = proofUrl; } else { typeData.activeItems[existingIndex].proofUrl = proofUrl; }
                                  }
                              }
                              
@@ -2435,8 +2441,10 @@ export default function App() {
                          });
 
                          let matchedProofUrl = '';
+                          let matchedApiRefIds = [];
                           allocations.forEach(alloc => {
                               if (alloc.apiRefId) {
+                                  matchedApiRefIds.push(alloc.apiRefId);
                                   const apiItem = apis.find(a => a.id === alloc.apiRefId);
                                   const url = apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
                                   if (url) matchedProofUrl = url;
@@ -2449,7 +2457,9 @@ export default function App() {
                               status: 'matched', 
                               matchedTo: targetSummary,
                               linkedTo: { date: ymd, groupName: targetSummary, proofUrl: matchedProofUrl || r.proofUrl || '' },
-                              proofUrl: matchedProofUrl || r.proofUrl || ''
+                              proofUrl: matchedProofUrl || r.proofUrl || '',
+                              apiRefId: matchedApiRefIds[0] || r.apiRefId || '',
+                              apiRefIds: matchedApiRefIds.length > 0 ? matchedApiRefIds : (r.apiRefIds || [])
                           } : r);
                          
                          setAllReports(newReports);

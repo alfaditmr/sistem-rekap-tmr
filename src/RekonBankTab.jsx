@@ -1,11 +1,97 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
-import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, Plus, Trash, Database, Filter, Trash2, Edit, RotateCcw, Zap, Sparkles } from 'lucide-react';
+import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, AlertCircle, Plus, Trash, Database, Filter, Trash2, Edit, RotateCcw, Zap, Sparkles } from 'lucide-react';
 import MultiDateCalendar from './MultiDateCalendar';
 
 export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeString, categories, onSaveRekon, allReports, onLinkRekon, onUpdateBankRow, onUnlinkBankRow }) {
   const [selectedBankDates, setSelectedBankDates] = useState([]);
   const [editModal, setEditModal] = useState({ isOpen: false, row: null, proof: '' });
+  const [apiFilterStatus, setApiFilterStatus] = useState('all');
+
+  const getMatchedInfoForApi = (item) => {
+      const urls = [
+          item.buktiTransferUrl, 
+          item.buktiTransferDocUrl, 
+          item.pksDriveUrl, 
+          item.fileUrl, 
+          item.url
+      ].filter(u => typeof u === 'string' && u.trim().length > 0).map(u => u.trim());
+      
+      const extractDriveId = (u) => {
+          if (!u || typeof u !== 'string') return '';
+          const m = u.match(/[-\w]{25,}/);
+          return m ? m[0] : '';
+      };
+      
+      const itemDriveIds = urls.map(extractDriveId).filter(Boolean);
+      const itemId = String(item.id || '');
+      
+      const isUrlMatch = (target) => {
+          if (!target || typeof target !== 'string') return false;
+          const t = target.trim();
+          if (!t) return false;
+          if (urls.some(u => u === t || t.includes(u) || u.includes(t))) return true;
+          const targetDriveId = extractDriveId(t);
+          if (targetDriveId && itemDriveIds.includes(targetDriveId)) return true;
+          return false;
+      };
+
+      const matchedRow = bankRows.find(r => {
+          if (r.status !== 'matched' && r.status !== 'linked') return false;
+          if (r.apiRefId && String(r.apiRefId) === itemId) return true;
+          if (Array.isArray(r.apiRefIds) && r.apiRefIds.some(id => String(id) === itemId)) return true;
+          if (isUrlMatch(r.proofUrl)) return true;
+          if (isUrlMatch(r.linkedTo?.proofUrl)) return true;
+          if (isUrlMatch(r.transferProof)) return true;
+          return false;
+      });
+      if (matchedRow) return { isMatched: true, matchedRow };
+
+      if (allReports) {
+          for (const ymd of Object.keys(allReports)) {
+              const dayData = allReports[ymd];
+              if (!dayData) continue;
+              for (const type of ['utama', 'lain']) {
+                  const typeData = dayData[type];
+                  if (typeData && Array.isArray(typeData.activeItems)) {
+                      for (const activeItem of typeData.activeItems) {
+                          if (activeItem.bankMatched) {
+                              if (activeItem.apiRefId && String(activeItem.apiRefId) === itemId) {
+                                  return { isMatched: true, reportItem: activeItem, reportDate: ymd };
+                              }
+                              if (isUrlMatch(activeItem.proofUrl)) {
+                                  return { isMatched: true, reportItem: activeItem, reportDate: ymd };
+                              }
+                              if (typeData.formData) {
+                                  let itemKey = activeItem.catId + '_' + (activeItem.itemId || activeItem.id);
+                                  if (activeItem.itemDate) itemKey += '_date_' + activeItem.itemDate;
+                                  if (activeItem.itemNote) {
+                                      let h = 0; for(let j=0; j<activeItem.itemNote.length; j++){ h=((h<<5)-h)+activeItem.itemNote.charCodeAt(j); h=h&h; }
+                                      itemKey += '_note_' + Math.abs(h);
+                                  }
+                                  const formUrl = typeData.formData[itemKey + '_buktiUrl'];
+                                  if (formUrl && isUrlMatch(formUrl)) {
+                                      return { isMatched: true, reportItem: activeItem, reportDate: ymd };
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+      return { isMatched: false };
+  };
+
+  const matchedApiCount = useMemo(() => {
+      return apiData.filter(item => getMatchedInfoForApi(item).isMatched).length;
+  }, [apiData, bankRows, allReports]);
+
+  const displayedApiData = useMemo(() => {
+      if (apiFilterStatus === 'matched') return apiData.filter(item => getMatchedInfoForApi(item).isMatched);
+      if (apiFilterStatus === 'unmatched') return apiData.filter(item => !getMatchedInfoForApi(item).isMatched);
+      return apiData;
+  }, [apiData, apiFilterStatus, bankRows, allReports]);
   const hasInitializedDate = React.useRef(false);
 
   const uniqueBankDates = useMemo(() => {
@@ -408,64 +494,126 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
       </div>
 
       {apiData.length > 0 && (
-          <div className="mb-6 p-4 bg-indigo-50/70 border border-indigo-100 rounded-2xl shadow-sm">
-              <div className="flex justify-between items-center mb-3">
-                  <h3 className="font-black text-indigo-900 text-sm flex items-center gap-2">
-                      <CheckCircle size={18} className="text-emerald-500"/> {apiData.length} Bukti Transfer Tersedia dari API
-                  </h3>
-                  <button onClick={() => setApiData([])} className="text-xs text-indigo-400 hover:text-rose-600 font-bold transition-colors">
-                      Bersihkan Data API
-                  </button>
-              </div>
-              <div className="flex gap-3 overflow-x-auto pb-2 pt-1">
-                  {apiData.map(item => {
-                      const isListrik = item.tipe_transaksi === 'Listrik Tambahan' || (typeof item.id === 'string' && item.id.includes('_listrik'));
-                      const isPromo = item.source === 'Promo';
-                      const badgeBg = isListrik ? 'bg-amber-100 text-amber-800 border-amber-200' : isPromo ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-blue-100 text-blue-800 border-blue-200';
-                      const nominal = item.jumlahTransferNumeric || (typeof item.jumlahTransfer === 'string' ? Number(item.jumlahTransfer.replace(/[^0-9]/g, '')) : item.jumlahTransfer) || 0;
-                      const proofUrl = item.buktiTransferUrl || item.buktiTransferDocUrl || item.pksDriveUrl;
+           <div className="mb-6 p-4 bg-indigo-50/70 border border-indigo-100 rounded-2xl shadow-sm">
+               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
+                   <div className="flex items-center gap-2 flex-wrap">
+                       <h3 className="font-black text-indigo-900 text-sm flex items-center gap-2">
+                           <Database size={18} className="text-indigo-600"/> {apiData.length} Bukti Transfer Tersedia dari API
+                       </h3>
+                       <div className="flex items-center gap-1.5 ml-1">
+                           <button 
+                               type="button"
+                               onClick={() => setApiFilterStatus('all')}
+                               className={'text-[11px] px-2.5 py-0.5 rounded-full font-bold transition-all ' + (apiFilterStatus === 'all' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white text-gray-600 hover:bg-indigo-50 border border-gray-200')}
+                           >
+                               Semua ({apiData.length})
+                           </button>
+                           <button 
+                               type="button"
+                               onClick={() => setApiFilterStatus('unmatched')}
+                               className={'text-[11px] px-2.5 py-0.5 rounded-full font-bold transition-all flex items-center gap-1 ' + (apiFilterStatus === 'unmatched' ? 'bg-amber-600 text-white shadow-xs' : 'bg-white text-amber-700 hover:bg-amber-50 border border-amber-200')}
+                           >
+                               <AlertCircle size={10}/> Belum Disandingkan ({apiData.length - matchedApiCount})
+                           </button>
+                           <button 
+                               type="button"
+                               onClick={() => setApiFilterStatus('matched')}
+                               className={'text-[11px] px-2.5 py-0.5 rounded-full font-bold transition-all flex items-center gap-1 ' + (apiFilterStatus === 'matched' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white text-emerald-700 hover:bg-emerald-50 border border-emerald-200')}
+                           >
+                               <CheckCircle size={10}/> Sudah Disandingkan ({matchedApiCount})
+                           </button>
+                       </div>
+                   </div>
+                   <button onClick={() => setApiData([])} className="text-xs text-indigo-400 hover:text-rose-600 font-bold transition-colors self-end sm:self-auto">
+                       Bersihkan Data API
+                   </button>
+               </div>
+               <div className="flex gap-3 overflow-x-auto pb-2 pt-1">
+                   {displayedApiData.map(item => {
+                       const isListrik = item.tipe_transaksi === 'Listrik Tambahan' || (typeof item.id === 'string' && item.id.includes('_listrik'));
+                       const isPromo = item.source === 'Promo';
+                       const badgeBg = isListrik ? 'bg-amber-100 text-amber-800 border-amber-200' : isPromo ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-blue-100 text-blue-800 border-blue-200';
+                       const nominal = item.jumlahTransferNumeric || (typeof item.jumlahTransfer === 'string' ? Number(item.jumlahTransfer.replace(/[^0-9]/g, '')) : item.jumlahTransfer) || 0;
+                       const proofUrl = item.buktiTransferUrl || item.buktiTransferDocUrl || item.pksDriveUrl;
 
-                      return (
-                          <div key={item.id} className="min-w-[240px] max-w-[280px] bg-white p-3.5 rounded-xl shadow-sm border border-indigo-100 flex flex-col justify-between hover:shadow-md transition-shadow">
-                              <div>
-                                  <div className="flex items-center justify-between mb-1.5">
-                                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border flex items-center gap-1 ${badgeBg}`}>
-                                          {isListrik && <Zap size={10} className="fill-amber-500 text-amber-500"/>}
-                                          {isPromo && <Sparkles size={10} className="text-purple-500"/>}
-                                          {item.tipe_transaksi || item.source}
-                                      </span>
-                                      <span className="text-[10px] font-bold text-gray-400">
-                                          {item.tanggal_transfer || item.tanggalTransfer || '-'}
-                                      </span>
-                                  </div>
-                                  <div className="font-bold text-gray-900 text-sm truncate" title={item.nama_penyewa || item.namaPerusahaan}>
-                                      {item.nama_penyewa || item.namaPerusahaan || '-'}
-                                  </div>
-                                  <div className="text-xs text-gray-500 truncate mt-0.5" title={item.lokasi_sewa || item.keterangan_transaksi || item.namaProduk}>
-                                      {item.lokasi_sewa || item.namaProduk || '-'}
-                                  </div>
-                              </div>
-                              <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between">
-                                  <div className="font-black text-indigo-700 text-base">
-                                      Rp {formatRp(nominal)}
-                                  </div>
-                                  <button 
-                                      type="button" 
-                                      onClick={(e) => handleViewProof(e, proofUrl)} 
-                                      className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors"
-                                      title="Lihat Bukti Transfer"
-                                  >
-                                      <LinkIcon size={12}/> Bukti
-                                  </button>
-                              </div>
-                          </div>
-                      );
-                  })}
-              </div>
-          </div>
-      )}
+                       const matchedInfo = getMatchedInfoForApi(item);
+                       const isMatched = matchedInfo.isMatched;
 
-      {bankRows.length > 0 && (
+                       return (
+                           <div 
+                               key={item.id} 
+                               className={'min-w-[250px] max-w-[290px] p-3.5 rounded-xl shadow-sm border flex flex-col justify-between transition-all ' + (
+                                   isMatched ? 'bg-gradient-to-b from-emerald-50 to-emerald-100/50 border-emerald-400 ring-2 ring-emerald-300/40 shadow-sm' : 'bg-white border-gray-200 hover:border-amber-300 hover:shadow-md'
+                               )}
+                           >
+                               <div>
+                                   <div className="flex items-center justify-between mb-1.5 gap-1">
+                                       <span className={'text-[10px] font-extrabold px-2 py-0.5 rounded-md border flex items-center gap-1 ' + badgeBg}>
+                                           {isListrik && <Zap size={10} className="fill-amber-500 text-amber-500"/>}
+                                           {isPromo && <Sparkles size={10} className="text-purple-500"/>}
+                                           {item.tipe_transaksi || item.source}
+                                       </span>
+                                       
+                                       {isMatched ? (
+                                           <span className="text-[10px] font-black px-2 py-0.5 rounded-full border bg-emerald-600 text-white border-emerald-700 flex items-center gap-1 shadow-2xs"><CheckCircle size={10} className="text-emerald-100 fill-emerald-700"/> Sudah Disandingkan</span>
+                                       ) : (
+                                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-1">
+                                               <AlertCircle size={10} className="text-amber-500"/> Belum
+                                           </span>
+                                       )}
+                                   </div>
+
+                                   <div className="text-[10px] font-bold text-gray-400 mb-1">
+                                       Tanggal: {item.tanggal_transfer || item.tanggalTransfer || '-'}
+                                   </div>
+
+                                   <div className={'font-bold text-sm truncate ' + (isMatched ? 'text-emerald-950 font-black' : 'text-gray-900')} title={item.nama_penyewa || item.namaPerusahaan}>
+                                       {item.nama_penyewa || item.namaPerusahaan || '-'}
+                                   </div>
+                                   <div className="text-xs text-gray-500 truncate mt-0.5" title={item.lokasi_sewa || item.keterangan_transaksi || item.namaProduk}>
+                                       {item.lokasi_sewa || item.namaProduk || '-'}
+                                   </div>
+
+                                   {isMatched && (
+                                       <div className="mt-2 text-[11px] bg-emerald-100/90 text-emerald-900 border border-emerald-200 px-2 py-1 rounded-md font-medium flex items-center justify-between gap-1">
+                                           <span className="truncate">✓ Terpasang ke mutasi</span>
+                                           {matchedInfo.matchedRow && (
+                                               <span className="font-bold shrink-0 text-emerald-800 text-[10px]">
+                                                   {matchedInfo.matchedRow.date?.split(' ')[0] || ''}
+                                               </span>
+                                           )}
+                                       </div>
+                                   )}
+                               </div>
+                               
+                               <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between">
+                                   <div className={'font-black text-base ' + (isMatched ? 'text-emerald-800' : 'text-indigo-700')}>
+                                       Rp {formatRp(nominal)}
+                                   </div>
+                                   <button 
+                                       type="button" 
+                                       onClick={(e) => handleViewProof(e, proofUrl)} 
+                                       className={'text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors ' + (
+                                           isMatched ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs' : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700'
+                                       )}
+                                       title="Lihat Bukti Transfer"
+                                   >
+                                       <LinkIcon size={12}/> Bukti
+                                   </button>
+                               </div>
+                           </div>
+                       );
+                   })}
+                   {displayedApiData.length === 0 && (
+                       <div className="p-4 text-center text-xs text-gray-500 w-full italic">
+                           Tidak ada data bukti transfer untuk filter ini.
+                       </div>
+                   )}
+               </div>
+           </div>
+       )}
+
+       {bankRows.length > 0 && (
           <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-3 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
               <div className="flex items-center gap-2 text-gray-600 font-medium text-sm">
                   <Filter size={16} /> Filter Tanggal Mutasi:
