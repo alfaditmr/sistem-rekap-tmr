@@ -158,7 +158,7 @@ const callGeminiAPI = async (prompt, systemInstruction) => {
 export default function App() {
   const [activeTab, setActiveTab] = useState('input');
   const [topLevelRoute, setTopLevelRoute] = useState('home');
-  const [dashboardTab, setDashboardTab] = useState('kalender');
+  const [dashboardTab, setDashboardTab] = useState('rekap');
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null });
   const [resetDialog, setResetDialog] = useState({ isOpen: false, password: '', error: '', isVerifying: false });
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -2312,7 +2312,24 @@ export default function App() {
       {activeTab === 'input' && (
         <div className="max-w-4xl mx-auto px-4 py-6 no-print">
           
-          <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-3">
+          <div className="mt-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-6 text-center text-white">
+              <h2 className="text-2xl font-black mb-1 drop-shadow-sm">Kalender Status STSU</h2>
+              <p className="text-blue-100 text-sm opacity-90">Pantau kelengkapan STSU Pendapatan dan STSU Lain-lain.</p>
+            </div>
+            <div className="p-4 sm:p-6">
+              <div className="flex justify-between items-center mb-6 bg-gray-50 p-2 rounded-xl border border-gray-100">
+                <button onClick={prevMonth} className="p-2 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-gray-100"><ChevronLeft size={20} className="text-gray-600"/></button>
+                <h3 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{calendarMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}</h3>
+                <button onClick={nextMonth} className="p-2 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-gray-100"><ChevronRight size={20} className="text-gray-600"/></button>
+              </div>
+              <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 text-center">
+                {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map(day => (<div key={day} className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">{day}</div>))}
+              </div>
+              <div className="grid grid-cols-7 gap-1 sm:gap-2">
+                {blanks.map(b => <div key={`blank-${b}`} className="h-28 sm:h-36 bg-gray-50/50 rounded-lg sm:rounded-xl"></div>
+<div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-3">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-1.5 flex flex-col sm:flex-row w-full sm:w-auto">
               <button onClick={() => handleTypeSwitch('utama')} className={`flex-1 sm:flex-none py-2.5 px-6 rounded-xl font-bold flex items-center justify-center transition-all ${activeType === 'utama' ? 'bg-green-600 text-white shadow-md' : 'bg-transparent text-gray-500 hover:bg-green-50 hover:text-green-600'}`}>
                 STSU Pendapatan
@@ -2810,39 +2827,9 @@ export default function App() {
       {topLevelRoute === 'dashboard' && (
   <div className="max-w-6xl mx-auto px-4 py-6 no-print w-full animate-in fade-in slide-in-from-bottom-4">
      
-     <div className="flex overflow-x-auto no-scrollbar gap-2 mb-6 p-1.5 bg-white rounded-xl shadow-sm border border-gray-200 w-max mx-auto">
-       <button 
-          onClick={() => setDashboardTab('kalender')}
-          className={`px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${dashboardTab === 'kalender' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
-       >
-          <Calendar className="inline-block mr-2" size={18} /> Kalender Status
-       </button>
-       <button 
-          onClick={() => setDashboardTab('rekap')}
-          className={`px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${dashboardTab === 'rekap' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
-       >
-          <FileSpreadsheet className="inline-block mr-2" size={18} /> Rekapitulasi & Rekon
-       </button>
-     </div>
+     
 
-{dashboardTab === 'kalender' && (
-<div className="mt-4">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-6 text-center text-white">
-              <h2 className="text-2xl font-black mb-1 drop-shadow-sm">Pusat Laporan & Analitik</h2>
-              <p className="text-blue-100 text-sm opacity-90">Pantau kelengkapan STSU Pendapatan dan STSU Lain-lain.</p>
-            </div>
-            <div className="p-4 sm:p-6">
-              <div className="flex justify-between items-center mb-6 bg-gray-50 p-2 rounded-xl border border-gray-100">
-                <button onClick={prevMonth} className="p-2 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-gray-100"><ChevronLeft size={20} className="text-gray-600"/></button>
-                <h3 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{calendarMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}</h3>
-                <button onClick={nextMonth} className="p-2 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-gray-100"><ChevronRight size={20} className="text-gray-600"/></button>
-              </div>
-              <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 text-center">
-                {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map(day => (<div key={day} className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">{day}</div>))}
-              </div>
-              <div className="grid grid-cols-7 gap-1 sm:gap-2">
-                {blanks.map(b => <div key={`blank-${b}`} className="h-28 sm:h-36 bg-gray-50/50 rounded-lg sm:rounded-xl"></div>)}
+
                 {days.map(d => {
                   const isToday = d.dateStr === getLocalYMD();
                   const isActive = d.dateStr === reportDate;
