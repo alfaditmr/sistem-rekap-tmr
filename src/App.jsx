@@ -2388,15 +2388,31 @@ export default function App() {
                              
                              if (alloc.apiRefId) {
                                  const apiItem = apis.find(a => a.id === alloc.apiRefId);
-                                 if (apiItem && apiItem.buktiTransferUrl) {
-                                     typeData.formData[`${itemKey}_buktiUrl`] = apiItem.buktiTransferUrl;
+                                 const proofUrl = apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
+                                 if (proofUrl) {
+                                     typeData.formData[itemKey + '_buktiUrl'] = proofUrl;
+                                     if (existingIndex === -1) { newItem.proofUrl = proofUrl; } else { typeData.activeItems[existingIndex].proofUrl = proofUrl; }
                                  }
                              }
                              
                              newReports[allocYmd] = dayData;
                          });
 
-                         const newBankRows = bankRows.map(r => r.id === bankRow.id ? { ...r, status: 'matched', matchedTo: targetSummary } : r);
+                         let matchedProofUrl = '';
+                          allocations.forEach(alloc => {
+                              if (alloc.apiRefId) {
+                                  const apiItem = apis.find(a => a.id === alloc.apiRefId);
+                                  const url = apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
+                                  if (url) matchedProofUrl = url;
+                              }
+                          });
+
+                          const newBankRows = bankRows.map(r => r.id === bankRow.id ? { 
+                              ...r, 
+                              status: 'matched', 
+                              matchedTo: targetSummary,
+                              proofUrl: matchedProofUrl || r.proofUrl || ''
+                          } : r);
                          
                          setAllReports(newReports);
                          setBankRows(newBankRows);
@@ -2432,7 +2448,27 @@ export default function App() {
                          newReports[targetDate] = dayData;
                          
                          // 2. Construct new bank rows
-                         const newBankRows = bankRows.map(r => r.id === bankRow.id ? { ...r, status: 'linked', linkedTo: { date: targetDate, groupName: targetGroupInfo.name } } : r);
+                         let linkedProofUrl = '';
+                          targetGroupInfo.itemIndices.forEach(idx => {
+                              if (newActiveItems[idx]) {
+                                  const it = newActiveItems[idx];
+                                  let itemKey = `${it.catId}_${it.itemId || it.id}`;
+                                  if (it.itemDate) itemKey += `_date_${it.itemDate}`;
+                                  if (it.itemNote) {
+                                      let h = 0; for(let j=0; j<it.itemNote.length; j++){ h=((h<<5)-h)+it.itemNote.charCodeAt(j); h=h&h; }
+                                      itemKey += `_note_${Math.abs(h)}`;
+                                  }
+                                  const u = it.proofUrl || typeData.formData?.[itemKey + '_buktiUrl'];
+                                  if (u) linkedProofUrl = u;
+                              }
+                          });
+
+                          const newBankRows = bankRows.map(r => r.id === bankRow.id ? { 
+                              ...r, 
+                              status: 'linked', 
+                              linkedTo: { date: targetDate, groupName: targetGroupInfo.name, proofUrl: linkedProofUrl || r.proofUrl || '' },
+                              proofUrl: linkedProofUrl || r.proofUrl || ''
+                          } : r);
 
                          // 3. Set states
                          setAllReports(newReports);

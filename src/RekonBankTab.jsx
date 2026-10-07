@@ -534,7 +534,7 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
 
                                       // Jika punya linkedTo lengkap (cara lama)
                                       if (dynamicName && row.linkedTo?.date) {
-                                          matchedDetails.push({ date: row.linkedTo.date, name: dynamicName });
+                                          matchedDetails.push({ date: row.linkedTo.date, name: dynamicName, proofUrl: row.linkedTo.proofUrl || row.proofUrl || '' });
                                       } 
                                       // Jika dari Input Baru (matched) atau linkedTo kurang lengkap, kita cari di seluruh allReports
                                       else if (allReports) {
@@ -545,7 +545,14 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                                                           if (item.bankMatched && item.bankMatchRowId === row.id) {
                                                               const cat = categories.find(c => c.id === item.catId);
                                                               const name = cat ? cat.name : item.catId;
-                                                              matchedDetails.push({ date: item.itemDate || ymd, name });
+                                                              let itemKey = `${item.catId}_${item.itemId || item.id}`;
+                                                               if (item.itemDate) itemKey += `_date_${item.itemDate}`;
+                                                               if (item.itemNote) {
+                                                                   let h = 0; for(let j=0; j<item.itemNote.length; j++){ h=((h<<5)-h)+item.itemNote.charCodeAt(j); h=h&h; }
+                                                                   itemKey += `_note_${Math.abs(h)}`;
+                                                               }
+                                                               const proofUrl = item.proofUrl || allReports[ymd][type].formData?.[itemKey + '_buktiUrl'] || row.proofUrl || '';
+                                                               matchedDetails.push({ date: item.itemDate || ymd, name, proofUrl });
                                                           }
                                                       });
                                                   }
@@ -557,26 +564,56 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                                       const uniqueDetails = [];
                                       const seen = new Set();
                                       matchedDetails.forEach(d => {
-                                          const key = `${d.date}_${d.name}`;
-                                          if (!seen.has(key)) {
-                                              seen.add(key);
-                                              uniqueDetails.push(d);
-                                          }
-                                      });
+                                           const key = `${d.date}_${d.name}`;
+                                           if (!seen.has(key)) {
+                                               seen.add(key);
+                                               uniqueDetails.push(d);
+                                           } else {
+                                               const existing = uniqueDetails.find(u => `${u.date}_${u.name}` === key);
+                                               if (existing && !existing.proofUrl && d.proofUrl) {
+                                                   existing.proofUrl = d.proofUrl;
+                                               }
+                                           }
+                                       });
 
-                                      if (uniqueDetails.length === 0) return null;
+                                       if (uniqueDetails.length === 0 && !row.proofUrl && !row.transferProof) return null;
 
-                                      return (
-                                          <div className="text-xs text-indigo-700 bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100 font-medium flex flex-col gap-1">
-                                              <span>Telah dipasangkan dengan:</span>
-                                              {uniqueDetails.map((detail, idx) => (
-                                                  <span key={idx} className="font-bold">[{detail.date}] {detail.name}</span>
-                                              ))}
-                                          </div>
-                                      );
-                                  })()}
-                                  {(row.status === 'matched' || row.status === 'linked') && (
-                                      <button onClick={() => setEditModal({isOpen: true, row, proof: row.transferProof || ''})} className="text-gray-500 hover:text-blue-600 bg-white border border-gray-200 shadow-sm px-3 py-2 rounded-lg flex items-center justify-center transition-colors self-start" title="Edit Keterangan / Batalkan Pasangan">
+                                       return (
+                                           <div className="text-xs text-indigo-700 bg-indigo-50 px-3.5 py-2.5 rounded-xl border border-indigo-100 font-medium flex flex-col gap-1.5 min-w-[210px] shadow-xs">
+                                               <span className="text-[11px] text-gray-500 font-normal">Telah dipasangkan dengan:</span>
+                                               {uniqueDetails.map((detail, idx) => {
+                                                   const activeProof = detail.proofUrl || row.proofUrl || (row.transferProof && (row.transferProof.startsWith('http') || row.transferProof.startsWith('data:')) ? row.transferProof : '');
+                                                   return (
+                                                       <div key={idx} className="flex flex-col gap-1">
+                                                           <span className="font-bold text-indigo-900 leading-snug">[{detail.date}] {detail.name}</span>
+                                                           {activeProof && (
+                                                               <button 
+                                                                   type="button" 
+                                                                   onClick={(e) => handleViewProof(e, activeProof)}
+                                                                   className="text-[11px] text-indigo-700 hover:text-indigo-900 font-black bg-white hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5 w-fit shadow-xs transition-colors mt-0.5"
+                                                                   title="Klik untuk melihat bukti transfer"
+                                                               >
+                                                                   <LinkIcon size={12} className="text-indigo-600"/> Lihat Bukti Transfer
+                                                               </button>
+                                                           )}
+                                                       </div>
+                                                   );
+                                               })}
+                                               {!uniqueDetails.some(d => d.proofUrl) && (row.proofUrl || (row.transferProof && (row.transferProof.startsWith('http') || row.transferProof.startsWith('data:')))) && (
+                                                   <button 
+                                                       type="button" 
+                                                       onClick={(e) => handleViewProof(e, row.proofUrl || row.transferProof)}
+                                                       className="text-[11px] text-indigo-700 hover:text-indigo-900 font-black bg-white hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5 w-fit shadow-xs transition-colors mt-0.5"
+                                                       title="Klik untuk melihat bukti transfer"
+                                                   >
+                                                       <LinkIcon size={12} className="text-indigo-600"/> Lihat Bukti Transfer
+                                                   </button>
+                                               )}
+                                           </div>
+                                       );
+                                   })()}
+                                   {(row.status === 'matched' || row.status === 'linked') && (
+                                      <button onClick={() => setEditModal({isOpen: true, row, proof: row.transferProof || '', proofUrl: row.proofUrl || ''})} className="text-gray-500 hover:text-blue-600 bg-white border border-gray-200 shadow-sm px-3 py-2 rounded-lg flex items-center justify-center transition-colors self-start" title="Edit Keterangan / Batalkan Pasangan">
                                           <Edit size={16}/>
                                       </button>
                                   )}
@@ -769,15 +806,34 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                     <h3 className="font-bold text-lg text-gray-800">Edit Mutasi Bank</h3>
                 </div>
                 <div className="p-6">
-                    <div className="mb-5">
-                        <label className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider">Keterangan / Nama Pentransfer / Bukti</label>
+                    <div className="mb-4">
+                        <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wider">Keterangan / Nama Pentransfer</label>
                         <textarea 
                             value={editModal.proof}
                             onChange={e => setEditModal(prev => ({...prev, proof: e.target.value}))}
                             className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                            rows={3}
+                            rows={2}
                             placeholder="Contoh: Transfer dari Zainal Abidin PT..."
                         />
+                    </div>
+                    <div className="mb-5">
+                        <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wider">Link Bukti Transfer (URL / Google Drive / Gambar)</label>
+                        <input 
+                            type="text"
+                            value={editModal.proofUrl || ''}
+                            onChange={e => setEditModal(prev => ({...prev, proofUrl: e.target.value}))}
+                            className="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-medium"
+                            placeholder="https://drive.google.com/... atau https://..."
+                        />
+                        {editModal.proofUrl && (
+                            <button 
+                                type="button" 
+                                onClick={(e) => handleViewProof(e, editModal.proofUrl)} 
+                                className="mt-1.5 text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1"
+                            >
+                                <LinkIcon size={12}/> Uji Buka Link Bukti
+                            </button>
+                        )}
                     </div>
 
                     <div className="bg-red-50 border border-red-100 rounded-xl p-4 mb-2">
@@ -796,8 +852,8 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                 <div className="p-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50">
                     <button onClick={() => setEditModal({isOpen:false, row:null, proof:''})} className="px-4 py-2 font-bold text-gray-600 hover:bg-gray-200 rounded-xl text-sm transition-colors">Batal</button>
                     <button onClick={() => {
-                        if (onUpdateBankRow) onUpdateBankRow(editModal.row.id, { transferProof: editModal.proof });
-                        setEditModal({isOpen:false, row:null, proof:''});
+                        if (onUpdateBankRow) onUpdateBankRow(editModal.row.id, { transferProof: editModal.proof, proofUrl: editModal.proofUrl || '' });
+                        setEditModal({isOpen:false, row:null, proof:'', proofUrl:''});
                     }} className="px-5 py-2 font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl text-sm transition-colors shadow-sm">Simpan Keterangan</button>
                 </div>
             </div>
