@@ -320,17 +320,55 @@ export default function App() {
         if (docSnap.exists()) {
             const data = docSnap.data();
             
+            const serverUpdated = data.lastUpdated || '';
+            const localUpdated = getInitialState('tmr_v19_lastUpdated', '');
+
+            // Jika perubahan lokal lebih baru daripada snapshot server (misal user baru hapus/lepas mutasi lalu refresh cepat)
+            // Pertahankan state lokal yang lebih baru dan sinkronkan ke server
+            if (localUpdated && serverUpdated && localUpdated > serverUpdated) {
+                console.log("Local state is newer than Firestore snapshot, preserving local state.");
+                const localReports = getInitialState('tmr_v19_allReports', allReports);
+                const localBankRows = getInitialState('tmr_v19_bankRows', bankRows);
+                
+                prevReportsRef.current = localReports;
+                prevBankRowsRef.current = localBankRows;
+                
+                setDoc(getDocRef(), sanitizeForFirestore({
+                    signatures: data.signatures || signatures,
+                    categories: data.categories || categories,
+                    targets: data.targets || targets,
+                    allReports: localReports,
+                    bankRows: localBankRows,
+                    lastUpdated: localUpdated
+                })).catch(err => console.error("Background resync error:", err));
+
+                if (isInitialLoad) {
+                    setDbReady(true);
+                    isInitialLoad = false;
+                }
+                setSyncStatus('synced');
+                return;
+            }
+
             const loadedSigs = data.signatures || {};
             const loadedCats = data.categories || [];
             const loadedTargets = data.targets || {};
             const loadedReports = data.allReports || {};
             const loadedBankRows = data.bankRows || [];
 
+            // Sinkronkan ke penyimpanan lokal seketika
+            safeSetLocalStorage('tmr_v19_allReports', loadedReports);
+            safeSetLocalStorage('tmr_v19_bankRows', loadedBankRows);
+            if (serverUpdated) safeSetLocalStorage('tmr_v19_lastUpdated', serverUpdated);
+
             // Inisialisasi refs pada pembacaan awal agar tidak memicu auto-save menimpa data
             if (isInitialLoad) {
                 prevSigsRef.current = loadedSigs;
                 prevCatsRef.current = loadedCats;
                 prevTargetsRef.current = loadedTargets;
+                prevReportsRef.current = loadedReports;
+                prevBankRowsRef.current = loadedBankRows;
+            } else {
                 prevReportsRef.current = loadedReports;
                 prevBankRowsRef.current = loadedBankRows;
             }
@@ -403,14 +441,20 @@ export default function App() {
     setSyncStatus('syncing');
     const saveData = async () => {
       try { 
+        const nowIso = new Date().toISOString();
         const payload = sanitizeForFirestore({ 
           signatures, 
           categories, 
           targets, 
           allReports, 
           bankRows, 
-          lastUpdated: new Date().toISOString() 
+          lastUpdated: nowIso 
         });
+
+        // Simpan juga ke localStorage
+        safeSetLocalStorage('tmr_v19_allReports', allReports);
+        safeSetLocalStorage('tmr_v19_bankRows', bankRows);
+        safeSetLocalStorage('tmr_v19_lastUpdated', nowIso);
 
         await setDoc(getDocRef(), payload);
         
@@ -437,14 +481,20 @@ export default function App() {
     if (!user || !dbReady) return;
     setSyncStatus('syncing');
     try { 
+      const nowIso = new Date().toISOString();
       const payload = sanitizeForFirestore({ 
         signatures, 
         categories, 
         targets, 
         allReports, 
         bankRows, 
-        lastUpdated: new Date().toISOString() 
+        lastUpdated: nowIso 
       });
+
+      safeSetLocalStorage('tmr_v19_allReports', allReports);
+      safeSetLocalStorage('tmr_v19_bankRows', bankRows);
+      safeSetLocalStorage('tmr_v19_lastUpdated', nowIso);
+
       await setDoc(getDocRef(), payload); 
       
       prevReportsRef.current = allReports;
@@ -463,17 +513,23 @@ export default function App() {
   };
 
   const saveToFirebaseDirectly = async (newAllReports, newBankRows) => {
-    if (!user || !dbReady) return;
-
     const finalReports = newAllReports || allReports;
     const finalBankRows = newBankRows || bankRows;
+    const nowIso = new Date().toISOString();
 
-    // Sinkronkan ref segera secara synchronous untuk mencegah bentrok/debounce timer
+    // 1. SIMPAN SEGERA KE LOCALSTORAGE (0.1ms sinkron - tahan refresh instan)
+    safeSetLocalStorage('tmr_v19_allReports', finalReports);
+    safeSetLocalStorage('tmr_v19_bankRows', finalBankRows);
+    safeSetLocalStorage('tmr_v19_lastUpdated', nowIso);
+
+    // 2. Sinkronkan ref segera secara synchronous untuk mencegah bentrok/debounce timer
     prevReportsRef.current = finalReports;
     prevBankRowsRef.current = finalBankRows;
     prevSigsRef.current = signatures;
     prevCatsRef.current = categories;
     prevTargetsRef.current = targets;
+
+    if (!user || !dbReady) return;
 
     setSyncStatus('syncing');
     try {
@@ -483,14 +539,13 @@ export default function App() {
           targets, 
           allReports: finalReports, 
           bankRows: finalBankRows, 
-          lastUpdated: new Date().toISOString() 
+          lastUpdated: nowIso 
       });
       await setDoc(getDocRef(), payload);
       setSyncStatus('synced');
     } catch (e) {
       console.error("Instant Save Error:", e);
       setSyncStatus('offline');
-      alert("Peringatan: Gagal menyimpan data ke Cloud Firestore! Error: " + (e.message || e));
     }
   };
 
@@ -634,10 +689,21 @@ export default function App() {
   };
 
   const handleRemoveActiveItem = (itemToRemove, providedKey) => {
-    if (itemToRemove.bankMatched) {
-        alert("Peringatan: Item ini terpasang dengan Mutasi Bank! Silakan batalkan pasangan mutasi bank terlebih dahulu di tab 'Rekon Bank' jika Anda ingin menghapusnya.");
-        return;
+    let newBankRows = bankRows;
+    if (itemToRemove.bankMatched && itemToRemove.bankMatchRowId) {
+        // Otomatis kembalikan mutasi bank menjadi pending saat item dihapus
+        newBankRows = bankRows.map(r => {
+            if (r.id === itemToRemove.bankMatchRowId) {
+                const updated = { ...r, status: 'pending' };
+                delete updated.linkedTo;
+                delete updated.matchedTo;
+                return updated;
+            }
+            return r;
+        });
+        setBankRows(newBankRows);
     }
+
     const keyToRemove = providedKey || getActiveItemKey(itemToRemove.catId, itemToRemove.itemId || itemToRemove.id, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate, itemToRemove.itemNote);
     
     const dayData = allReports[reportDate] || {}; 
@@ -650,7 +716,7 @@ export default function App() {
     const newReports = { ...allReports, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
     
     setAllReports(newReports);
-    saveToFirebaseDirectly(newReports, bankRows);
+    saveToFirebaseDirectly(newReports, newBankRows);
     showToast('Item berhasil dihapus!');
   };
 
