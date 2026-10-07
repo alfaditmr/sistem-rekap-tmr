@@ -455,6 +455,27 @@ export default function App() {
     }
   };
 
+  const saveToFirebaseDirectly = async (newAllReports, newBankRows) => {
+    if (!user || !dbReady) return;
+    setSyncStatus('syncing');
+    try {
+      await setDoc(getDocRef(), { 
+          signatures, 
+          categories, 
+          targets, 
+          allReports: newAllReports || allReports, 
+          bankRows: newBankRows || bankRows, 
+          lastUpdated: new Date().toISOString() 
+      });
+      if (newAllReports) prevReportsRef.current = newAllReports;
+      if (newBankRows) prevBankRowsRef.current = newBankRows;
+      setSyncStatus('synced');
+    } catch (e) {
+      console.error("Instant Save Error:", e);
+      setSyncStatus('offline');
+    }
+  };
+
   const showToast = (message) => { setSaveToast({ show: true, message }); setTimeout(() => setSaveToast({ show: false, message: '' }), 3000); };
   const showConfirm = (message, onConfirmAction) => { setConfirmDialog({ isOpen: true, message, onConfirm: onConfirmAction }); };
 
@@ -600,12 +621,18 @@ export default function App() {
         return;
     }
     const keyToRemove = providedKey || getActiveItemKey(itemToRemove.catId, itemToRemove.itemId || itemToRemove.id, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate, itemToRemove.itemNote);
-    updateCurrentReport(prev => {
-      const newActive = (prev.activeItems || []).filter(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) !== keyToRemove);
-      const newFormData = { ...(prev.formData || {}) }; 
-      delete newFormData[keyToRemove];
-      return { ...prev, activeItems: newActive, formData: newFormData };
-    });
+    
+    const dayData = allReports[reportDate] || {}; 
+    const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
+    const newActive = (typeData.activeItems || []).filter(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) !== keyToRemove);
+    const newFormData = { ...(typeData.formData || {}) }; 
+    delete newFormData[keyToRemove];
+    
+    const updatedTypeData = { ...typeData, activeItems: newActive, formData: newFormData };
+    const newReports = { ...allReports, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
+    
+    setAllReports(newReports);
+    saveToFirebaseDirectly(newReports, null);
     showToast('Item berhasil dihapus!');
   };
 
@@ -2286,6 +2313,7 @@ export default function App() {
                                  newReports[allocYmd] = updatedDayData;
                              });
 
+                             saveToFirebaseDirectly(newReports, null);
                              return newReports;
                          } catch (err) {
                              console.error("Error in onSaveRekon:", err);
@@ -2325,6 +2353,8 @@ export default function App() {
                          // 3. Set states
                          setAllReports(newReports);
                          setBankRows(newBankRows);
+                         
+                         saveToFirebaseDirectly(newReports, newBankRows);
 
                          showToast(`Berhasil memasangkan mutasi dengan pendapatan tanggal ${targetDate}!`);
                      } catch (err) {
@@ -2337,28 +2367,30 @@ export default function App() {
                  }}
                  onUnlinkBankRow={(bankRow) => {
                      try {
-                         setAllReports(prev => {
-                             const newReports = JSON.parse(JSON.stringify(prev));
-                             Object.keys(newReports).forEach(date => {
-                                 ['utama', 'lain'].forEach(type => {
-                                     if (newReports[date][type] && Array.isArray(newReports[date][type].activeItems)) {
-                                         newReports[date][type].activeItems = newReports[date][type].activeItems.map(item => {
-                                             if (item && item.bankMatchRowId === bankRow.id) {
-                                                 const newItem = { ...item };
-                                                 delete newItem.bankMatched;
-                                                 delete newItem.bankMatchDate;
-                                                 delete newItem.bankMatchRowId;
-                                                 return newItem;
-                                             }
-                                             return item;
-                                         });
-                                     }
-                                 });
+                         const newReports = JSON.parse(JSON.stringify(allReports));
+                         Object.keys(newReports).forEach(date => {
+                             Object.keys(newReports[date]).forEach(type => {
+                                 if (newReports[date][type] && Array.isArray(newReports[date][type].activeItems)) {
+                                     newReports[date][type].activeItems = newReports[date][type].activeItems.map(item => {
+                                         if (item && item.bankMatchRowId === bankRow.id) {
+                                             const newItem = { ...item };
+                                             delete newItem.bankMatched;
+                                             delete newItem.bankMatchDate;
+                                             delete newItem.bankMatchRowId;
+                                             return newItem;
+                                         }
+                                         return item;
+                                     });
+                                 }
                              });
-                             return newReports;
                          });
 
-                         setBankRows(prev => prev.map(r => r.id === bankRow.id ? { ...r, status: 'pending', linkedTo: null } : r));
+                         const newBankRows = bankRows.map(r => r.id === bankRow.id ? { ...r, status: 'pending', linkedTo: null } : r);
+                         
+                         setAllReports(newReports);
+                         setBankRows(newBankRows);
+                         
+                         saveToFirebaseDirectly(newReports, newBankRows);
                          showToast('Status pasangan mutasi bank berhasil dibatalkan!');
                      } catch (err) {
                          console.error("Error unlinking:", err);
