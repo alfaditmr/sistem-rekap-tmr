@@ -7,6 +7,9 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
   const [selectedBankDates, setSelectedBankDates] = useState([]);
   const [editModal, setEditModal] = useState({ isOpen: false, row: null, proof: '' });
   const [apiFilterStatus, setApiFilterStatus] = useState('all');
+  const [apiData, setApiData] = useState([]);
+  const [loadingApi, setLoadingApi] = useState(false);
+  const [apiDate, setApiDate] = useState(new Date().toISOString().split('T')[0]);
 
   const getMatchedInfoForApi = (item) => {
       const urls = [
@@ -165,9 +168,7 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
       return Object.entries(groups).sort((a,b) => new Date(b[0]) - new Date(a[0]));
   }, [filteredBankRows]);
 
-  const [apiData, setApiData] = useState([]);
-  const [loadingApi, setLoadingApi] = useState(false);
-  const [apiDate, setApiDate] = useState(new Date().toISOString().split('T')[0]);
+
   
   // Modal State
   const [splitModal, setSplitModal] = useState({ isOpen: false, bankRow: null, allocations: [] });
