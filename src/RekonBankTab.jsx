@@ -291,7 +291,6 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
       if (!allReports) return groups;
       
       Object.entries(allReports).forEach(([date, dayData]) => {
-          if (linkModalFilterDate !== 'Semua' && date !== linkModalFilterDate) return;
           ['utama', 'lain'].forEach(type => {
               if (dayData[type] && dayData[type].activeItems) {
                   const typeGroups = {};
@@ -644,7 +643,7 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                         </select>
                     </div>
                     
-                    {unlinkedItems.length === 0 ? (
+                    {unlinkedItems.filter(item => linkModalFilterDate === 'Semua' || item.date === linkModalFilterDate).length === 0 ? (
                         <div className="text-center p-10 bg-white rounded-xl border border-dashed border-gray-300">
                             <CheckCircle size={40} className="mx-auto text-gray-300 mb-3" />
                             <p className="text-gray-500 font-bold">Semua data pendapatan sudah dipasangkan / belum ada data.</p>
@@ -652,7 +651,7 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {unlinkedItems.map(item => (
+                            {unlinkedItems.filter(item => linkModalFilterDate === 'Semua' || item.date === linkModalFilterDate).map(item => (
                                 <button 
                                     key={`${item.date}_${item.groupKey}`}
                                     onClick={() => handleLink(item)}
