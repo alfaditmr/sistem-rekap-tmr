@@ -89,17 +89,22 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
   const [linkModalFilterDate, setLinkModalFilterDate] = useState('Semua');
 
   const fetchApiFasilitas = async () => {
+    if (!apiDate) {
+        alert("Silakan pilih tanggal terlebih dahulu agar data spesifik dan penarikan lebih cepat.");
+        return;
+    }
     setLoadingApi(true);
     try {
-       const url = `https://sistem-informasi-ragunan.vercel.app/api/fasilitas${apiDate ? '?date=' + apiDate : ''}`;
+       const url = `https://sistem-informasi-ragunan.vercel.app/api/fasilitas?date=${apiDate}`;
        const res = await fetch(url);
        const fasRes = await res.json();
        
        if (fasRes && fasRes.data && fasRes.data.length > 0) {
            const newFasilitas = fasRes.data.map(d => ({...d, source: 'Fasilitas'}));
            setApiData(prev => [...prev.filter(d => d.source !== 'Fasilitas'), ...newFasilitas]);
+           alert(`Berhasil memuat ${newFasilitas.length} transaksi Fasilitas (tanggal ${apiDate}).`);
        } else {
-           alert(apiDate ? `Data API Fasilitas untuk tanggal ${apiDate} kosong (0 data). Coba klik tombol "Semua" untuk melihat seluruh bukti transfer.` : "Data API Fasilitas kosong (0 data).");
+           alert(`Tidak ada data bukti transfer Fasilitas untuk tanggal ${apiDate}.`);
        }
     } catch(e) {
        console.error("API Fasilitas error:", e);
@@ -109,17 +114,22 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
   };
 
   const fetchApiPromo = async () => {
+    if (!apiDate) {
+        alert("Silakan pilih tanggal terlebih dahulu agar data spesifik dan penarikan lebih cepat.");
+        return;
+    }
     setLoadingApi(true);
     try {
-       const url = `https://sistem-informasi-ragunan.vercel.app/api/promo${apiDate ? '?date=' + apiDate : ''}`;
+       const url = `https://sistem-informasi-ragunan.vercel.app/api/promo?date=${apiDate}`;
        const res = await fetch(url);
        const proRes = await res.json();
        
        if (proRes && proRes.data && proRes.data.length > 0) {
            const newPromo = proRes.data.map(d => ({...d, source: 'Promo'}));
            setApiData(prev => [...prev.filter(d => d.source !== 'Promo'), ...newPromo]);
+           alert(`Berhasil memuat ${newPromo.length} transaksi Promo (tanggal ${apiDate}).`);
        } else {
-           alert(apiDate ? `Data API Promo untuk tanggal ${apiDate} kosong (0 data). Coba klik tombol "Semua" untuk melihat seluruh bukti transfer.` : "Data API Promo kosong (0 data).");
+           alert(`Tidak ada data bukti transfer Promo untuk tanggal ${apiDate}.`);
        }
     } catch(e) {
        console.error("API Promo error:", e);
@@ -375,14 +385,7 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                    className="px-2 py-1.5 rounded-lg border border-indigo-200 text-sm text-indigo-900 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                    title="Filter Tanggal API"
                 />
-                <button 
-                   type="button"
-                   onClick={() => setApiDate('')} 
-                   className={`text-[11px] font-bold px-2 py-1.5 rounded-lg transition-colors ${!apiDate ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-600 hover:bg-indigo-100'}`}
-                   title="Tarik Semua Tanggal"
-                >
-                   Semua
-                </button>
+                
                 <div className="hidden sm:block w-px bg-indigo-200 h-6 mx-1"></div>
                 <div className="flex">
                     <button onClick={fetchApiFasilitas} disabled={loadingApi} className="hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors text-sm">
