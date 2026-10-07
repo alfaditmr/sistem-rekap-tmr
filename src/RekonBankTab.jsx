@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
-import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, Plus, Trash, Database, Filter, Trash2, Edit, RotateCcw } from 'lucide-react';
+import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, Plus, Trash, Database, Filter, Trash2, Edit, RotateCcw, Zap, Sparkles } from 'lucide-react';
 import MultiDateCalendar from './MultiDateCalendar';
 
 export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeString, categories, onSaveRekon, allReports, onLinkRekon, onUpdateBankRow, onUnlinkBankRow }) {
@@ -99,7 +99,7 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
            const newFasilitas = fasRes.data.map(d => ({...d, source: 'Fasilitas'}));
            setApiData(prev => [...prev.filter(d => d.source !== 'Fasilitas'), ...newFasilitas]);
        } else {
-           alert("Data API Fasilitas kosong (0 data).");
+           alert(apiDate ? `Data API Fasilitas untuk tanggal ${apiDate} kosong (0 data). Coba klik tombol "Semua" untuk melihat seluruh bukti transfer.` : "Data API Fasilitas kosong (0 data).");
        }
     } catch(e) {
        console.error("API Fasilitas error:", e);
@@ -119,7 +119,7 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
            const newPromo = proRes.data.map(d => ({...d, source: 'Promo'}));
            setApiData(prev => [...prev.filter(d => d.source !== 'Promo'), ...newPromo]);
        } else {
-           alert("Data API Promo kosong (0 data).");
+           alert(apiDate ? `Data API Promo untuk tanggal ${apiDate} kosong (0 data). Coba klik tombol "Semua" untuk melihat seluruh bukti transfer.` : "Data API Promo kosong (0 data).");
        }
     } catch(e) {
        console.error("API Promo error:", e);
@@ -375,6 +375,14 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                    className="px-2 py-1.5 rounded-lg border border-indigo-200 text-sm text-indigo-900 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                    title="Filter Tanggal API"
                 />
+                <button 
+                   type="button"
+                   onClick={() => setApiDate('')} 
+                   className={`text-[11px] font-bold px-2 py-1.5 rounded-lg transition-colors ${!apiDate ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-600 hover:bg-indigo-100'}`}
+                   title="Tarik Semua Tanggal"
+                >
+                   Semua
+                </button>
                 <div className="hidden sm:block w-px bg-indigo-200 h-6 mx-1"></div>
                 <div className="flex">
                     <button onClick={fetchApiFasilitas} disabled={loadingApi} className="hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors text-sm">
@@ -397,18 +405,59 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
       </div>
 
       {apiData.length > 0 && (
-          <div className="mb-6 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
-              <h3 className="font-bold text-indigo-800 mb-2 flex items-center gap-2"><CheckCircle size={18}/> {apiData.length} Data Bukti Transfer Tersedia (API)</h3>
-              <div className="flex gap-2 overflow-x-auto pb-2">
-                  {apiData.map(item => (
-                      <div key={item.id} className="min-w-[200px] bg-white p-3 rounded-lg shadow-sm border border-indigo-100">
-                          <div className="text-xs font-bold text-gray-500 mb-1">{item.source} - ID: {item.id.substring(0,6)}...</div>
-                          <div className="font-bold text-indigo-700">Rp {formatRp(item.jumlahTransferNumeric || (typeof item.jumlahTransfer === 'string' ? item.jumlahTransfer.replace(/\./g, '') : item.jumlahTransfer))}</div>
-                          <a href="#" onClick={(e) => handleViewProof(e, item.buktiTransferDocUrl || item.pksDriveUrl || item.buktiTransferUrl)} className="text-xs text-blue-500 hover:underline flex items-center gap-1 mt-2">
-                              <LinkIcon size={12}/> Lihat Bukti
-                          </a>
-                      </div>
-                  ))}
+          <div className="mb-6 p-4 bg-indigo-50/70 border border-indigo-100 rounded-2xl shadow-sm">
+              <div className="flex justify-between items-center mb-3">
+                  <h3 className="font-black text-indigo-900 text-sm flex items-center gap-2">
+                      <CheckCircle size={18} className="text-emerald-500"/> {apiData.length} Bukti Transfer Tersedia dari API
+                  </h3>
+                  <button onClick={() => setApiData([])} className="text-xs text-indigo-400 hover:text-rose-600 font-bold transition-colors">
+                      Bersihkan Data API
+                  </button>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-2 pt-1">
+                  {apiData.map(item => {
+                      const isListrik = item.tipe_transaksi === 'Listrik Tambahan' || (typeof item.id === 'string' && item.id.includes('_listrik'));
+                      const isPromo = item.source === 'Promo';
+                      const badgeBg = isListrik ? 'bg-amber-100 text-amber-800 border-amber-200' : isPromo ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-blue-100 text-blue-800 border-blue-200';
+                      const nominal = item.jumlahTransferNumeric || (typeof item.jumlahTransfer === 'string' ? Number(item.jumlahTransfer.replace(/[^0-9]/g, '')) : item.jumlahTransfer) || 0;
+                      const proofUrl = item.buktiTransferUrl || item.buktiTransferDocUrl || item.pksDriveUrl;
+
+                      return (
+                          <div key={item.id} className="min-w-[240px] max-w-[280px] bg-white p-3.5 rounded-xl shadow-sm border border-indigo-100 flex flex-col justify-between hover:shadow-md transition-shadow">
+                              <div>
+                                  <div className="flex items-center justify-between mb-1.5">
+                                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border flex items-center gap-1 ${badgeBg}`}>
+                                          {isListrik && <Zap size={10} className="fill-amber-500 text-amber-500"/>}
+                                          {isPromo && <Sparkles size={10} className="text-purple-500"/>}
+                                          {item.tipe_transaksi || item.source}
+                                      </span>
+                                      <span className="text-[10px] font-bold text-gray-400">
+                                          {item.tanggal_transfer || item.tanggalTransfer || '-'}
+                                      </span>
+                                  </div>
+                                  <div className="font-bold text-gray-900 text-sm truncate" title={item.nama_penyewa || item.namaPerusahaan}>
+                                      {item.nama_penyewa || item.namaPerusahaan || '-'}
+                                  </div>
+                                  <div className="text-xs text-gray-500 truncate mt-0.5" title={item.lokasi_sewa || item.keterangan_transaksi || item.namaProduk}>
+                                      {item.lokasi_sewa || item.namaProduk || '-'}
+                                  </div>
+                              </div>
+                              <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between">
+                                  <div className="font-black text-indigo-700 text-base">
+                                      Rp {formatRp(nominal)}
+                                  </div>
+                                  <button 
+                                      type="button" 
+                                      onClick={(e) => handleViewProof(e, proofUrl)} 
+                                      className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors"
+                                      title="Lihat Bukti Transfer"
+                                  >
+                                      <LinkIcon size={12}/> Bukti
+                                  </button>
+                              </div>
+                          </div>
+                      );
+                  })}
               </div>
           </div>
       )}
@@ -581,9 +630,35 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                                   </div>
                                   <div className="w-full md:flex-[1.2]">
                                       <label className="block text-xs font-bold text-gray-600 mb-1">Hubungkan Bukti API</label>
-                                      <select value={alloc.apiRefId} onChange={e => updateAllocation(alloc.id, 'apiRefId', e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white text-indigo-700">
+                                      <select 
+                                           value={alloc.apiRefId} 
+                                           onChange={e => {
+                                               const selectedId = e.target.value;
+                                               const itemFound = apiData.find(d => d.id === selectedId);
+                                               updateAllocation(alloc.id, 'apiRefId', selectedId);
+                                               if (itemFound) {
+                                                   const itemNominal = itemFound.jumlahTransferNumeric || (typeof itemFound.jumlahTransfer === 'string' ? Number(itemFound.jumlahTransfer.replace(/[^0-9]/g, '')) : itemFound.jumlahTransfer) || 0;
+                                                   if (!alloc.amount || Number(alloc.amount) === splitModal.bankRow.amount || Number(alloc.amount) === 0) {
+                                                       updateAllocation(alloc.id, 'amount', itemNominal);
+                                                   }
+                                                   if (itemFound.tanggal_transfer) {
+                                                       updateAllocation(alloc.id, 'targetDate', itemFound.tanggal_transfer);
+                                                   }
+                                               }
+                                           }} 
+                                           className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white text-indigo-700 font-bold"
+                                       >
                                           <option value="">-- Tanpa Bukti API --</option>
-                                          {apiData.map(d => <option key={d.id} value={d.id}>{d.source} - Rp {formatRp(d.jumlahTransfer)}</option>)}
+                                          {apiData.map(d => {
+                                               const nominal = d.jumlahTransferNumeric || (typeof d.jumlahTransfer === 'string' ? Number(d.jumlahTransfer.replace(/[^0-9]/g, '')) : d.jumlahTransfer) || 0;
+                                               const labelTenant = d.nama_penyewa || d.namaPerusahaan || '';
+                                               const labelDetail = d.lokasi_sewa || d.namaProduk || '';
+                                               return (
+                                                   <option key={d.id} value={d.id}>
+                                                       [{d.tipe_transaksi || d.source}] {labelTenant} - Rp {formatRp(nominal)} {labelDetail ? `(${labelDetail})` : ''}
+                                                   </option>
+                                               );
+                                           })}
                                       </select>
                                   </div>
                                   <div className="w-full md:flex-[0.8]">
