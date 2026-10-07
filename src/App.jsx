@@ -595,12 +595,18 @@ export default function App() {
   };
 
   const handleRemoveActiveItem = (itemToRemove) => {
+    if (itemToRemove.bankMatched) {
+        alert("Peringatan: Item ini terpasang dengan Mutasi Bank! Silakan batalkan pasangan mutasi bank terlebih dahulu di tab 'Rekon Bank' jika Anda ingin menghapusnya.");
+        return;
+    }
     const keyToRemove = getActiveItemKey(itemToRemove.catId, itemToRemove.itemId || itemToRemove.id, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate, itemToRemove.itemNote);
     updateCurrentReport(prev => {
       const newActive = (prev.activeItems || []).filter(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) !== keyToRemove);
-      const newFormData = { ...(prev.formData || {}) }; delete newFormData[keyToRemove];
+      const newFormData = { ...(prev.formData || {}) }; 
+      delete newFormData[keyToRemove];
       return { ...prev, activeItems: newActive, formData: newFormData };
     });
+    showToast('Item berhasil dihapus!');
   };
 
   const handleInputChange = (inputKey, value) => {
