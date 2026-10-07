@@ -40,6 +40,15 @@ const safeString = (val) => {
   return String(val);
 };
 
+// --- FUNGSI SANITASI FIRESTORE (CEGAH ERROR UNDEFINED) ---
+const sanitizeForFirestore = (data) => {
+  if (data === undefined) return null;
+  return JSON.parse(JSON.stringify(data, (key, value) => {
+    if (value === undefined) return null;
+    return value;
+  }));
+};
+
 // --- FUNGSI FORMATTING ---
 function terbilang(angka, depth = 0) {
   if (depth > 20) return ""; 
@@ -311,30 +320,45 @@ export default function App() {
         if (docSnap.exists()) {
             const data = docSnap.data();
             
+            const loadedSigs = data.signatures || {};
+            const loadedCats = data.categories || [];
+            const loadedTargets = data.targets || {};
+            const loadedReports = data.allReports || {};
+            const loadedBankRows = data.bankRows || [];
+
+            // Inisialisasi refs pada pembacaan awal agar tidak memicu auto-save menimpa data
+            if (isInitialLoad) {
+                prevSigsRef.current = loadedSigs;
+                prevCatsRef.current = loadedCats;
+                prevTargetsRef.current = loadedTargets;
+                prevReportsRef.current = loadedReports;
+                prevBankRowsRef.current = loadedBankRows;
+            }
+
             // Update state HANYA jika data berubah (mencegah infinite loop dengan saveData)
             setSignatures(prev => {
-                const newStr = JSON.stringify(data.signatures || {});
-                return JSON.stringify(prev) === newStr ? prev : (data.signatures || {});
+                const newStr = JSON.stringify(loadedSigs);
+                return JSON.stringify(prev) === newStr ? prev : loadedSigs;
             });
             
             setCategories(prev => {
-                const newStr = JSON.stringify(data.categories || []);
-                return JSON.stringify(prev) === newStr ? prev : (data.categories || []);
+                const newStr = JSON.stringify(loadedCats);
+                return JSON.stringify(prev) === newStr ? prev : loadedCats;
             });
             
             setTargets(prev => {
-                const newStr = JSON.stringify(data.targets || {});
-                return JSON.stringify(prev) === newStr ? prev : (data.targets || {});
+                const newStr = JSON.stringify(loadedTargets);
+                return JSON.stringify(prev) === newStr ? prev : loadedTargets;
             });
             
             setAllReports(prev => {
-                const newStr = JSON.stringify(data.allReports || {});
-                return JSON.stringify(prev) === newStr ? prev : (data.allReports || {});
+                const newStr = JSON.stringify(loadedReports);
+                return JSON.stringify(prev) === newStr ? prev : loadedReports;
             });
             
             setBankRows(prev => {
-                const newStr = JSON.stringify(data.bankRows || []);
-                return JSON.stringify(prev) === newStr ? prev : (data.bankRows || []);
+                const newStr = JSON.stringify(loadedBankRows);
+                return JSON.stringify(prev) === newStr ? prev : loadedBankRows;
             });
         }
         
@@ -379,41 +403,16 @@ export default function App() {
     setSyncStatus('syncing');
     const saveData = async () => {
       try { 
-        const updatePayload = { lastUpdated: new Date().toISOString() };
-        let hasChanges = false;
-        
-        if (signatures !== prevSigsRef.current) { updatePayload.signatures = signatures; hasChanges = true; }
-        if (categories !== prevCatsRef.current) { updatePayload.categories = categories; hasChanges = true; }
-        if (targets !== prevTargetsRef.current) { updatePayload.targets = targets; hasChanges = true; }
-        
-        if (allReports !== prevReportsRef.current) {
-             // Diff per tanggal (ymd) agar payload yang dikirim super kecil
-             Object.keys(allReports).forEach(ymd => {
-                  if (allReports[ymd] !== prevReportsRef.current[ymd]) {
-                       updatePayload[`allReports.${ymd}`] = allReports[ymd];
-                       hasChanges = true;
-                  }
-             });
-        }
-        
-        if (bankRows !== prevBankRowsRef.current) {
-             updatePayload.bankRows = bankRows; 
-             hasChanges = true;
-        }
+        const payload = sanitizeForFirestore({ 
+          signatures, 
+          categories, 
+          targets, 
+          allReports, 
+          bankRows, 
+          lastUpdated: new Date().toISOString() 
+        });
 
-        if (hasChanges) {
-            try {
-                // Gunakan updateDoc untuk mengirim payload persial
-                await updateDoc(getDocRef(), updatePayload);
-            } catch (err) {
-                // Fallback ke setDoc jika dokumen user belum pernah ada (pengguna baru)
-                if (err.code === 'not-found') {
-                    await setDoc(getDocRef(), { signatures, categories, targets, allReports, bankRows, lastUpdated: new Date().toISOString() });
-                } else {
-                    throw err;
-                }
-            }
-        }
+        await setDoc(getDocRef(), payload);
         
         // Update refs
         prevReportsRef.current = allReports;
@@ -438,8 +437,15 @@ export default function App() {
     if (!user || !dbReady) return;
     setSyncStatus('syncing');
     try { 
-      // Force save tetap menggunakan setDoc keseluruhan untuk memastikan integritas
-      await setDoc(getDocRef(), { signatures, categories, targets, allReports, bankRows, lastUpdated: new Date().toISOString() }); 
+      const payload = sanitizeForFirestore({ 
+        signatures, 
+        categories, 
+        targets, 
+        allReports, 
+        bankRows, 
+        lastUpdated: new Date().toISOString() 
+      });
+      await setDoc(getDocRef(), payload); 
       
       prevReportsRef.current = allReports;
       prevBankRowsRef.current = bankRows;
@@ -452,27 +458,39 @@ export default function App() {
     } catch(e) { 
       console.error("Force Save Error:", e);
       setSyncStatus('offline'); 
+      alert("Gagal menyimpan ke Cloud: " + (e.message || e));
     }
   };
 
   const saveToFirebaseDirectly = async (newAllReports, newBankRows) => {
     if (!user || !dbReady) return;
+
+    const finalReports = newAllReports || allReports;
+    const finalBankRows = newBankRows || bankRows;
+
+    // Sinkronkan ref segera secara synchronous untuk mencegah bentrok/debounce timer
+    prevReportsRef.current = finalReports;
+    prevBankRowsRef.current = finalBankRows;
+    prevSigsRef.current = signatures;
+    prevCatsRef.current = categories;
+    prevTargetsRef.current = targets;
+
     setSyncStatus('syncing');
     try {
-      await setDoc(getDocRef(), { 
+      const payload = sanitizeForFirestore({ 
           signatures, 
           categories, 
           targets, 
-          allReports: newAllReports || allReports, 
-          bankRows: newBankRows || bankRows, 
+          allReports: finalReports, 
+          bankRows: finalBankRows, 
           lastUpdated: new Date().toISOString() 
       });
-      if (newAllReports) prevReportsRef.current = newAllReports;
-      if (newBankRows) prevBankRowsRef.current = newBankRows;
+      await setDoc(getDocRef(), payload);
       setSyncStatus('synced');
     } catch (e) {
       console.error("Instant Save Error:", e);
       setSyncStatus('offline');
+      alert("Peringatan: Gagal menyimpan data ke Cloud Firestore! Error: " + (e.message || e));
     }
   };
 
@@ -632,7 +650,7 @@ export default function App() {
     const newReports = { ...allReports, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
     
     setAllReports(newReports);
-    saveToFirebaseDirectly(newReports, null);
+    saveToFirebaseDirectly(newReports, bankRows);
     showToast('Item berhasil dihapus!');
   };
 
@@ -1161,15 +1179,7 @@ export default function App() {
     newReports[reportDate] = { ...dayData, [activeTypeKey]: typeData };
     
     setAllReports(newReports);
-
-    // 🔴 FORCE INSTANT SAVE to prevent onSnapshot race condition
-    if (user && dbReady) {
-        try {
-            setDoc(getDocRef(), { signatures, categories, allReports: newReports, bankRows, lastUpdated: new Date().toISOString() });
-        } catch(e) {
-            console.error("Instant save failed:", e);
-        }
-    }
+    saveToFirebaseDirectly(newReports, bankRows);
     
     const is3a = transitModal.source === '3a';
     closeTransitModal();
@@ -2371,7 +2381,9 @@ export default function App() {
                      }
                  }}
                  onUpdateBankRow={(rowId, updates) => {
-                     setBankRows(prev => prev.map(r => r.id === rowId ? { ...r, ...updates } : r));
+                     const newBankRows = bankRows.map(r => r.id === rowId ? { ...r, ...updates } : r);
+                     setBankRows(newBankRows);
+                     saveToFirebaseDirectly(allReports, newBankRows);
                  }}
                  onUnlinkBankRow={(bankRow) => {
                      try {
@@ -2393,7 +2405,15 @@ export default function App() {
                              });
                          });
 
-                         const newBankRows = bankRows.map(r => r.id === bankRow.id ? { ...r, status: 'pending', linkedTo: null } : r);
+                         const newBankRows = bankRows.map(r => {
+                             if (r.id === bankRow.id) {
+                                 const updated = { ...r, status: 'pending' };
+                                 delete updated.linkedTo;
+                                 delete updated.matchedTo;
+                                 return updated;
+                             }
+                             return r;
+                         });
                          
                          setAllReports(newReports);
                          setBankRows(newBankRows);
