@@ -456,7 +456,7 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                                         : <span className="bg-yellow-100 text-yellow-800 text-xs font-bold px-2 py-0.5 rounded-md w-max inline-block shadow-sm border border-yellow-200">Pending</span>}
                                       <span className="text-xs text-gray-500 font-medium">{row.date}</span>
                                   </div>
-                                  <div className="font-medium text-gray-900 leading-snug">{row.description}</div>
+                                  <div className={`font-medium leading-snug ${row.status === 'matched' || row.status === 'linked' ? 'text-green-700' : 'text-gray-900'}`}>{row.description}</div>
                                   {row.transferProof && (
                                       <div className="mt-1 text-[11px] text-blue-700 bg-blue-50 px-2 py-1.5 rounded-md inline-block border border-blue-100 font-medium whitespace-pre-wrap">
                                           Keterangan: {row.transferProof}
@@ -465,7 +465,7 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                               </div>
                               <div className="text-left md:text-right shrink-0 md:mr-6">
                                   <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Nominal</div>
-                                  <div className="font-black text-gray-900 text-lg">Rp {formatRp(row.amount)}</div>
+                                  <div className={`font-black text-lg ${row.status === 'matched' || row.status === 'linked' ? 'text-green-700' : 'text-gray-900'}`}>Rp {formatRp(row.amount)}</div>
                               </div>
                               <div className="shrink-0 flex flex-wrap gap-2">
                                   {row.status === 'pending' && (
