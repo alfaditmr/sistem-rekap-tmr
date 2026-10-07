@@ -2324,32 +2324,34 @@ export default function App() {
                      setBankRows(prev => prev.map(r => r.id === rowId ? { ...r, ...updates } : r));
                  }}
                  onUnlinkBankRow={(bankRow) => {
-                     let updatedReports;
-                     setAllReports(prev => {
-                         const newReports = JSON.parse(JSON.stringify(prev));
-                         Object.keys(newReports).forEach(date => {
-                             ['utama', 'lain'].forEach(type => {
-                                 if (newReports[date][type] && newReports[date][type].activeItems) {
-                                     newReports[date][type].activeItems = newReports[date][type].activeItems.map(item => {
-                                         if (item.bankMatchRowId === bankRow.id) {
-                                             const newItem = { ...item };
-                                             delete newItem.bankMatched;
-                                             delete newItem.bankMatchDate;
-                                             delete newItem.bankMatchRowId;
-                                             return newItem;
-                                         }
-                                         return item;
-                                     });
-                                 }
+                     try {
+                         setAllReports(prev => {
+                             const newReports = JSON.parse(JSON.stringify(prev));
+                             Object.keys(newReports).forEach(date => {
+                                 ['utama', 'lain'].forEach(type => {
+                                     if (newReports[date][type] && Array.isArray(newReports[date][type].activeItems)) {
+                                         newReports[date][type].activeItems = newReports[date][type].activeItems.map(item => {
+                                             if (item && item.bankMatchRowId === bankRow.id) {
+                                                 const newItem = { ...item };
+                                                 delete newItem.bankMatched;
+                                                 delete newItem.bankMatchDate;
+                                                 delete newItem.bankMatchRowId;
+                                                 return newItem;
+                                             }
+                                             return item;
+                                         });
+                                     }
+                                 });
                              });
+                             return newReports;
                          });
-                         updatedReports = newReports;
-                         return newReports;
-                     });
 
-                     setBankRows(prev => prev.map(r => r.id === bankRow.id ? { ...r, status: 'pending', linkedTo: null } : r));
-                     
-                     showToast('Status pasangan mutasi bank berhasil dibatalkan!');
+                         setBankRows(prev => prev.map(r => r.id === bankRow.id ? { ...r, status: 'pending', linkedTo: null } : r));
+                         showToast('Status pasangan mutasi bank berhasil dibatalkan!');
+                     } catch (err) {
+                         console.error("Error unlinking:", err);
+                         alert("Gagal membatalkan pasangan: " + err.message);
+                     }
                  }}
                  allReports={allReports}
               />
