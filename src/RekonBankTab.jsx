@@ -398,6 +398,23 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
           </div>
       </div>
 
+      {apiData.length > 0 && (
+          <div className="mb-6 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+              <h3 className="font-bold text-indigo-800 mb-2 flex items-center gap-2"><CheckCircle size={18}/> {apiData.length} Data Bukti Transfer Tersedia (API)</h3>
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                  {apiData.map(item => (
+                      <div key={item.id} className="min-w-[200px] bg-white p-3 rounded-lg shadow-sm border border-indigo-100">
+                          <div className="text-xs font-bold text-gray-500 mb-1">{item.source} - ID: {item.id.substring(0,6)}...</div>
+                          <div className="font-bold text-indigo-700">Rp {formatRp(item.jumlahTransferNumeric || (typeof item.jumlahTransfer === 'string' ? item.jumlahTransfer.replace(/\./g, '') : item.jumlahTransfer))}</div>
+                          <a href="#" onClick={(e) => handleViewProof(e, item.buktiTransferDocUrl || item.pksDriveUrl || item.buktiTransferUrl)} className="text-xs text-blue-500 hover:underline flex items-center gap-1 mt-2">
+                              <LinkIcon size={12}/> Lihat Bukti
+                          </a>
+                      </div>
+                  ))}
+              </div>
+          </div>
+      )}
+
       {bankRows.length > 0 && (
           <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-3 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
               <div className="flex items-center gap-2 text-gray-600 font-medium text-sm">
@@ -413,24 +430,6 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                   <div className="text-xs font-bold mt-1 uppercase tracking-wide text-gray-400">
                       Total Filter: <span className="text-blue-600 text-base font-black">Rp {formatRp(filteredBankRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0))}</span>
                   </div>
-              </div>
-          </div>
-      )}
-
-
-      {apiData.length > 0 && (
-          <div className="mb-6 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
-              <h3 className="font-bold text-indigo-800 mb-2 flex items-center gap-2"><CheckCircle size={18}/> {apiData.length} Data Bukti Transfer Tersedia (API)</h3>
-              <div className="flex gap-2 overflow-x-auto pb-2">
-                  {apiData.map(item => (
-                      <div key={item.id} className="min-w-[200px] bg-white p-3 rounded-lg shadow-sm border border-indigo-100">
-                          <div className="text-xs font-bold text-gray-500 mb-1">{item.source} - ID: {item.id.substring(0,6)}...</div>
-                          <div className="font-bold text-indigo-700">Rp {formatRp(item.jumlahTransfer)}</div>
-                          <a href="#" onClick={(e) => handleViewProof(e, item.buktiTransferDocUrl || item.pksDriveUrl || item.buktiTransferUrl)} className="text-xs text-blue-500 hover:underline flex items-center gap-1 mt-2">
-                              <LinkIcon size={12}/> Lihat Bukti
-                          </a>
-                      </div>
-                  ))}
               </div>
           </div>
       )}
