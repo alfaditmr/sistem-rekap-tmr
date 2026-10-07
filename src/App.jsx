@@ -429,7 +429,7 @@ export default function App() {
       }
     };
     
-    const timer = setTimeout(saveData, 1000);
+    const timer = setTimeout(saveData, 250);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signatures, categories, targets, allReports, bankRows, user, dbReady]);
@@ -594,12 +594,12 @@ export default function App() {
     setTimeout(() => { if (typeof document !== 'undefined') { const inputElement = document.getElementById(`input_${inputKey}`); if (inputElement) inputElement.focus(); } }, 100);
   };
 
-  const handleRemoveActiveItem = (itemToRemove) => {
+  const handleRemoveActiveItem = (itemToRemove, providedKey) => {
     if (itemToRemove.bankMatched) {
         alert("Peringatan: Item ini terpasang dengan Mutasi Bank! Silakan batalkan pasangan mutasi bank terlebih dahulu di tab 'Rekon Bank' jika Anda ingin menghapusnya.");
         return;
     }
-    const keyToRemove = getActiveItemKey(itemToRemove.catId, itemToRemove.itemId || itemToRemove.id, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate, itemToRemove.itemNote);
+    const keyToRemove = providedKey || getActiveItemKey(itemToRemove.catId, itemToRemove.itemId || itemToRemove.id, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate, itemToRemove.itemNote);
     updateCurrentReport(prev => {
       const newActive = (prev.activeItems || []).filter(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) !== keyToRemove);
       const newFormData = { ...(prev.formData || {}) }; 
@@ -2525,7 +2525,7 @@ export default function App() {
                       return (
                         <div key={inputKey} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-50 pb-3 last:border-0 last:pb-0">
                           <div className="flex items-start gap-2 sm:w-1/2">
-                            <button onClick={() => handleRemoveActiveItem(item)} className="text-red-400 hover:text-red-600 p-2 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm mt-0.5 shrink-0"><Trash size={18} /></button>
+                            <button onClick={() => handleRemoveActiveItem(item, inputKey)} className="text-red-400 hover:text-red-600 p-2 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm mt-0.5 shrink-0"><Trash size={18} /></button>
                             <div className="flex flex-col w-full">
                               <label className="text-gray-700 font-medium">
                                 {item.id === 'direct' ? 'Nominal Pemasukan' : safeString(item.name)}
