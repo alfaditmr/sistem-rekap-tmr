@@ -408,8 +408,11 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                   selectedDates={selectedBankDates} 
                   onChange={setSelectedBankDates} 
               />
-              <div className="text-sm text-gray-500 sm:ml-auto">
-                  Menampilkan {filteredBankRows.length} dari {bankRows.length} data mutasi
+              <div className="text-sm text-gray-500 sm:ml-auto text-right">
+                  <div>Menampilkan {filteredBankRows.length} dari {bankRows.length} data mutasi</div>
+                  <div className="text-xs font-bold mt-1 uppercase tracking-wide text-gray-400">
+                      Total Filter: <span className="text-blue-600 text-base font-black">Rp {formatRp(filteredBankRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0))}</span>
+                  </div>
               </div>
           </div>
       )}
