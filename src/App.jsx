@@ -308,6 +308,14 @@ export default function App() {
   useEffect(() => { safeSetLocalStorage('tmr_v19_allReports', allReports); }, [allReports]);
   useEffect(() => { safeSetLocalStorage('tmr_v19_api_ip', apiIpAddress); }, [apiIpAddress]);
 
+  const prevReportsRef = useRef({});
+  const prevBankRowsRef = useRef([]);
+  const prevSigsRef = useRef({});
+  const prevCatsRef = useRef([]);
+  const prevTargetsRef = useRef({});
+  const lastLocalUpdatedRef = useRef('');
+  const lastLocalSaveTimeRef = useRef(0);
+
   const getDocRef = () => { return doc(db, 'tmr_data', user ? user.uid : 'demo_rekapitulasi_laporan'); };
 
   useEffect(() => {
@@ -319,35 +327,47 @@ export default function App() {
     const unsubscribe = onSnapshot(getDocRef(), (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
-            
             const serverUpdated = data.lastUpdated || '';
-            const localUpdated = getInitialState('tmr_v19_lastUpdated', '');
 
-            // Jika perubahan lokal lebih baru daripada snapshot server (misal user baru hapus/lepas mutasi lalu refresh cepat)
-            // Pertahankan state lokal yang lebih baru dan sinkronkan ke server
-            if (localUpdated && serverUpdated && localUpdated > serverUpdated) {
-                console.log("Local state is newer than Firestore snapshot, preserving local state.");
-                const localReports = getInitialState('tmr_v19_allReports', allReports);
-                const localBankRows = getInitialState('tmr_v19_bankRows', bankRows);
-                
-                prevReportsRef.current = localReports;
-                prevBankRowsRef.current = localBankRows;
-                
-                setDoc(getDocRef(), sanitizeForFirestore({
-                    signatures: data.signatures || signatures,
-                    categories: data.categories || categories,
-                    targets: data.targets || targets,
-                    allReports: localReports,
-                    bankRows: localBankRows,
-                    lastUpdated: localUpdated
-                })).catch(err => console.error("Background resync error:", err));
+            // HANYA saat pemuatan awal pertama kali (misal user refresh browser tepat setelah edit):
+            if (isInitialLoad) {
+                isInitialLoad = false;
+                const localUpdated = getInitialState('tmr_v19_lastUpdated', '');
+                if (localUpdated && serverUpdated && localUpdated > serverUpdated) {
+                    const localReports = getInitialState('tmr_v19_allReports', null);
+                    const localBankRows = getInitialState('tmr_v19_bankRows', null);
+                    if (localReports && localBankRows) {
+                        console.log("Initial load: local state is newer than Firestore, pushing to cloud.");
+                        prevReportsRef.current = localReports;
+                        prevBankRowsRef.current = localBankRows;
+                        lastLocalUpdatedRef.current = localUpdated;
+                        lastLocalSaveTimeRef.current = Date.now();
+                        
+                        setDoc(getDocRef(), sanitizeForFirestore({
+                            signatures: data.signatures || signatures,
+                            categories: data.categories || categories,
+                            targets: data.targets || targets,
+                            allReports: localReports,
+                            bankRows: localBankRows,
+                            lastUpdated: localUpdated
+                        })).catch(err => console.error("Initial resync error:", err));
 
-                if (isInitialLoad) {
-                    setDbReady(true);
-                    isInitialLoad = false;
+                        setAllReports(localReports);
+                        setBankRows(localBankRows);
+                        setDbReady(true);
+                        setSyncStatus('synced');
+                        return;
+                    }
                 }
-                setSyncStatus('synced');
-                return;
+            } else {
+                // Selama aplikasi berjalan normal: JANGAN PERNAH panggil setDoc di dalam onSnapshot!
+                // Jika server mengirim snapshot lama (in-flight snapshot dari save sebelumnya yang baru sampai),
+                // abaikan snapshot lama tersebut agar tidak menimpa state lokal yang lebih baru!
+                const hasPending = docSnap.metadata?.hasPendingWrites;
+                if (!hasPending && lastLocalUpdatedRef.current && serverUpdated && serverUpdated < lastLocalUpdatedRef.current) {
+                    console.log("Ignoring outdated Firestore snapshot (server:", serverUpdated, "< local:", lastLocalUpdatedRef.current, ")");
+                    return;
+                }
             }
 
             const loadedSigs = data.signatures || {};
@@ -361,17 +381,8 @@ export default function App() {
             safeSetLocalStorage('tmr_v19_bankRows', loadedBankRows);
             if (serverUpdated) safeSetLocalStorage('tmr_v19_lastUpdated', serverUpdated);
 
-            // Inisialisasi refs pada pembacaan awal agar tidak memicu auto-save menimpa data
-            if (isInitialLoad) {
-                prevSigsRef.current = loadedSigs;
-                prevCatsRef.current = loadedCats;
-                prevTargetsRef.current = loadedTargets;
-                prevReportsRef.current = loadedReports;
-                prevBankRowsRef.current = loadedBankRows;
-            } else {
-                prevReportsRef.current = loadedReports;
-                prevBankRowsRef.current = loadedBankRows;
-            }
+            prevReportsRef.current = loadedReports;
+            prevBankRowsRef.current = loadedBankRows;
 
             // Update state HANYA jika data berubah (mencegah infinite loop dengan saveData)
             setSignatures(prev => {
@@ -418,12 +429,6 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  const prevReportsRef = useRef({});
-  const prevBankRowsRef = useRef([]);
-  const prevSigsRef = useRef({});
-  const prevCatsRef = useRef([]);
-  const prevTargetsRef = useRef({});
-
   useEffect(() => {
     if (!user || !dbReady || !db) return;
     
@@ -442,6 +447,8 @@ export default function App() {
     const saveData = async () => {
       try { 
         const nowIso = new Date().toISOString();
+        lastLocalUpdatedRef.current = nowIso;
+        lastLocalSaveTimeRef.current = Date.now();
         const payload = sanitizeForFirestore({ 
           signatures, 
           categories, 
@@ -482,6 +489,8 @@ export default function App() {
     setSyncStatus('syncing');
     try { 
       const nowIso = new Date().toISOString();
+      lastLocalUpdatedRef.current = nowIso;
+      lastLocalSaveTimeRef.current = Date.now();
       const payload = sanitizeForFirestore({ 
         signatures, 
         categories, 
@@ -516,6 +525,9 @@ export default function App() {
     const finalReports = newAllReports || allReports;
     const finalBankRows = newBankRows || bankRows;
     const nowIso = new Date().toISOString();
+
+    lastLocalUpdatedRef.current = nowIso;
+    lastLocalSaveTimeRef.current = Date.now();
 
     // 1. SIMPAN SEGERA KE LOCALSTORAGE (0.1ms sinkron - tahan refresh instan)
     safeSetLocalStorage('tmr_v19_allReports', finalReports);
@@ -689,11 +701,23 @@ export default function App() {
   };
 
   const handleRemoveActiveItem = (itemToRemove, providedKey) => {
-    let newBankRows = bankRows;
-    if (itemToRemove.bankMatched && itemToRemove.bankMatchRowId) {
-        // Otomatis kembalikan mutasi bank menjadi pending saat item dihapus
-        newBankRows = bankRows.map(r => {
-            if (r.id === itemToRemove.bankMatchRowId) {
+    const baseBankRows = (prevBankRowsRef.current && prevBankRowsRef.current.length > 0)
+        ? prevBankRowsRef.current
+        : bankRows;
+    let newBankRows = baseBankRows;
+    
+    const rowIdsToPending = [];
+    if (itemToRemove.bankMatched) {
+        if (Array.isArray(itemToRemove.bankMatchRowIds) && itemToRemove.bankMatchRowIds.length > 0) {
+            rowIdsToPending.push(...itemToRemove.bankMatchRowIds);
+        } else if (itemToRemove.bankMatchRowId) {
+            rowIdsToPending.push(itemToRemove.bankMatchRowId);
+        }
+    }
+
+    if (rowIdsToPending.length > 0) {
+        newBankRows = baseBankRows.map(r => {
+            if (rowIdsToPending.includes(r.id)) {
                 const updated = { ...r, status: 'pending' };
                 delete updated.linkedTo;
                 delete updated.matchedTo;
@@ -706,14 +730,17 @@ export default function App() {
 
     const keyToRemove = providedKey || getActiveItemKey(itemToRemove.catId, itemToRemove.itemId || itemToRemove.id, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate, itemToRemove.itemNote);
     
-    const dayData = allReports[reportDate] || {}; 
+    const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0)
+        ? prevReportsRef.current
+        : allReports;
+    const dayData = baseReports[reportDate] || {}; 
     const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
     const newActive = (typeData.activeItems || []).filter(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) !== keyToRemove);
     const newFormData = { ...(typeData.formData || {}) }; 
     delete newFormData[keyToRemove];
     
     const updatedTypeData = { ...typeData, activeItems: newActive, formData: newFormData };
-    const newReports = { ...allReports, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
+    const newReports = { ...baseReports, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
     
     setAllReports(newReports);
     saveToFirebaseDirectly(newReports, newBankRows);
@@ -1210,7 +1237,8 @@ export default function App() {
   // 🔴 FUNGSI INJEKSI & AGREGASI PENGGABUNGAN TIKET SAMA
   // ==========================================
   const confirmTransitInjection = () => {
-    const newReports = JSON.parse(JSON.stringify(allReports));
+    const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports;
+                          const newReports = JSON.parse(JSON.stringify(baseReports));
     const dayData = newReports[reportDate] || {}; 
     const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
     
@@ -2379,11 +2407,19 @@ export default function App() {
                                  newItem.bankMatched = true;
                                  newItem.bankMatchRowId = bankRow.id;
                                  newItem.bankMatchDate = bankRow.date;
+                                 newItem.bankMatchRowIds = [bankRow.id];
                                  typeData.activeItems.push(newItem);
                              } else {
-                                 typeData.activeItems[existingIndex].bankMatched = true;
-                                 typeData.activeItems[existingIndex].bankMatchRowId = bankRow.id;
-                                 typeData.activeItems[existingIndex].bankMatchDate = bankRow.date;
+                                 const item = typeData.activeItems[existingIndex];
+                                 item.bankMatched = true;
+                                 item.bankMatchRowId = bankRow.id;
+                                 item.bankMatchDate = bankRow.date;
+                                 if (!Array.isArray(item.bankMatchRowIds)) {
+                                     item.bankMatchRowIds = item.bankMatchRowId ? [item.bankMatchRowId] : [];
+                                 }
+                                 if (!item.bankMatchRowIds.includes(bankRow.id)) {
+                                     item.bankMatchRowIds.push(bankRow.id);
+                                 }
                              }
                              
                              if (alloc.apiRefId) {
@@ -2407,10 +2443,12 @@ export default function App() {
                               }
                           });
 
-                          const newBankRows = bankRows.map(r => r.id === bankRow.id ? { 
+                          const baseBankRows = (prevBankRowsRef.current && prevBankRowsRef.current.length > 0) ? prevBankRowsRef.current : bankRows;
+                          const newBankRows = baseBankRows.map(r => r.id === bankRow.id ? { 
                               ...r, 
                               status: 'matched', 
                               matchedTo: targetSummary,
+                              linkedTo: { date: ymd, groupName: targetSummary, proofUrl: matchedProofUrl || r.proofUrl || '' },
                               proofUrl: matchedProofUrl || r.proofUrl || ''
                           } : r);
                          
@@ -2427,7 +2465,8 @@ export default function App() {
                  onLinkRekon={async (bankRow, targetDate, targetType, targetGroupInfo) => {
                      try {
                          // 1. Construct new reports
-                         const newReports = { ...allReports };
+                         const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports;
+                          const newReports = { ...baseReports };
                          const dayData = { ...(newReports[targetDate] || {}) };
                          const typeData = { ...(dayData[targetType] || { formData: {}, activeItems: [] }) };
                          const safeActiveItems = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
@@ -2463,7 +2502,8 @@ export default function App() {
                               }
                           });
 
-                          const newBankRows = bankRows.map(r => r.id === bankRow.id ? { 
+                          const baseBankRows = (prevBankRowsRef.current && prevBankRowsRef.current.length > 0) ? prevBankRowsRef.current : bankRows;
+                          const newBankRows = baseBankRows.map(r => r.id === bankRow.id ? { 
                               ...r, 
                               status: 'linked', 
                               linkedTo: { date: targetDate, groupName: targetGroupInfo.name, proofUrl: linkedProofUrl || r.proofUrl || '' },
@@ -2483,23 +2523,36 @@ export default function App() {
                      }
                  }}
                  onUpdateBankRow={(rowId, updates) => {
-                     const newBankRows = bankRows.map(r => r.id === rowId ? { ...r, ...updates } : r);
+                     const baseBankRows = (prevBankRowsRef.current && prevBankRowsRef.current.length > 0) ? prevBankRowsRef.current : bankRows;
+                     const newBankRows = baseBankRows.map(r => r.id === rowId ? { ...r, ...updates } : r);
                      setBankRows(newBankRows);
-                     saveToFirebaseDirectly(allReports, newBankRows);
+                     saveToFirebaseDirectly(prevReportsRef.current || allReports, newBankRows);
                  }}
                  onUnlinkBankRow={(bankRow) => {
                      try {
-                         const newReports = JSON.parse(JSON.stringify(allReports));
+                         const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports;
+                         const newReports = JSON.parse(JSON.stringify(baseReports));
                          Object.keys(newReports).forEach(date => {
                              Object.keys(newReports[date]).forEach(type => {
                                  if (newReports[date][type] && Array.isArray(newReports[date][type].activeItems)) {
                                      newReports[date][type].activeItems = newReports[date][type].activeItems.map(item => {
-                                         if (item && item.bankMatchRowId === bankRow.id) {
-                                             const newItem = { ...item };
-                                             delete newItem.bankMatched;
-                                             delete newItem.bankMatchDate;
-                                             delete newItem.bankMatchRowId;
-                                             return newItem;
+                                         if (item) {
+                                             if (Array.isArray(item.bankMatchRowIds)) {
+                                                 item.bankMatchRowIds = item.bankMatchRowIds.filter(id => id !== bankRow.id);
+                                                 if (item.bankMatchRowIds.length === 0) {
+                                                     delete item.bankMatched;
+                                                     delete item.bankMatchDate;
+                                                     delete item.bankMatchRowId;
+                                                 } else {
+                                                     item.bankMatchRowId = item.bankMatchRowIds[item.bankMatchRowIds.length - 1];
+                                                 }
+                                             } else if (item.bankMatchRowId === bankRow.id) {
+                                                 const newItem = { ...item };
+                                                 delete newItem.bankMatched;
+                                                 delete newItem.bankMatchDate;
+                                                 delete newItem.bankMatchRowId;
+                                                 return newItem;
+                                             }
                                          }
                                          return item;
                                      });
@@ -2507,7 +2560,8 @@ export default function App() {
                              });
                          });
 
-                         const newBankRows = bankRows.map(r => {
+                         const baseBankRows = (prevBankRowsRef.current && prevBankRowsRef.current.length > 0) ? prevBankRowsRef.current : bankRows;
+                         const newBankRows = baseBankRows.map(r => {
                              if (r.id === bankRow.id) {
                                  const updated = { ...r, status: 'pending' };
                                  delete updated.linkedTo;

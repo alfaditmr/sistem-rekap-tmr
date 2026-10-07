@@ -542,7 +542,8 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                                               ['utama', 'lain'].forEach(type => {
                                                   if (allReports[ymd][type] && allReports[ymd][type].activeItems) {
                                                       allReports[ymd][type].activeItems.forEach(item => {
-                                                          if (item.bankMatched && item.bankMatchRowId === row.id) {
+                                                          const isRowMatch = item.bankMatched && (item.bankMatchRowId === row.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(row.id)));
+                                                          if (isRowMatch) {
                                                               const cat = categories.find(c => c.id === item.catId);
                                                               const name = cat ? cat.name : item.catId;
                                                               let itemKey = `${item.catId}_${item.itemId || item.id}`;
@@ -576,7 +577,10 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                                            }
                                        });
 
-                                       if (uniqueDetails.length === 0 && !row.proofUrl && !row.transferProof) return null;
+                                       if (uniqueDetails.length === 0 && row.matchedTo) {
+                                            uniqueDetails.push({ date: row.date?.split(" ")[0] || "", name: row.matchedTo, proofUrl: row.proofUrl || "" });
+                                        }
+                                        if (uniqueDetails.length === 0 && !row.proofUrl && !row.transferProof) return null;
 
                                        return (
                                            <div className="text-xs text-indigo-700 bg-indigo-50 px-3.5 py-2.5 rounded-xl border border-indigo-100 font-medium flex flex-col gap-1.5 min-w-[210px] shadow-xs">
