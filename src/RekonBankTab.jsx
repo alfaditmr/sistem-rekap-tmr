@@ -3,7 +3,7 @@ import Papa from 'papaparse';
 import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, AlertCircle, Plus, Trash, Database, Filter, Trash2, Edit, RotateCcw, Zap, Sparkles } from 'lucide-react';
 import MultiDateCalendar from './MultiDateCalendar';
 
-export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeString, categories, onSaveRekon, allReports, onLinkRekon, onUpdateBankRow, onUnlinkBankRow }) {
+export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeString, categories, onSaveRekon, allReports, onLinkRekon, onUpdateBankRow, onUnlinkBankRow, onSaveBankRows }) {
   const [selectedBankDates, setSelectedBankDates] = useState([]);
   const [editModal, setEditModal] = useState({ isOpen: false, row: null, proof: '' });
   const [apiFilterStatus, setApiFilterStatus] = useState('all');
@@ -289,20 +289,41 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
 
             if (formattedRows.length === 0) {
                 alert("Gagal membaca CSV. Pastikan file berisi mutasi dengan angka Rupiah yang benar (contoh: 1.000.000).");
+                e.target.value = null;
+                return;
             }
             
-            // Tambahkan ke baris yang sudah ada agar tidak menimpa jika upload file baru
-            setBankRows(prev => {
-                // Untuk mencegah duplikasi saat append, pastikan id unik (menggunakan timestamp)
-                const newRows = formattedRows.map((r, i) => ({ ...r, id: `bank_${Date.now()}_${i}` }));
-                const combined = [...prev, ...newRows];
-                // Batasi maksimal 2000 baris mutasi terakhir agar tidak melebihi limit 1MB Firebase Firestore
-                if (combined.length > 2000) {
-                    return combined.slice(combined.length - 2000);
+            const currentRows = Array.isArray(bankRows) ? bankRows : [];
+            const combined = [...currentRows];
+            let newAdded = 0;
+
+            formattedRows.forEach((r, idx) => {
+                // Cek duplikasi berdasarkan tanggal, nominal, dan keterangan agar data tidak menumpuk saat re-upload
+                const isDup = combined.some(existing => 
+                    existing.date === r.date && 
+                    existing.amount === r.amount && 
+                    existing.description === r.description
+                );
+                if (!isDup) {
+                    combined.push({
+                        ...r,
+                        id: `bank_${Date.now()}_${idx}`
+                    });
+                    newAdded++;
                 }
-                return combined;
             });
+
+            // Batasi maksimal 2000 baris mutasi terakhir agar tidak melebihi limit 1MB Firebase Firestore
+            const finalRows = combined.length > 2000 ? combined.slice(combined.length - 2000) : combined;
+
+            if (onSaveBankRows) {
+                onSaveBankRows(finalRows);
+            } else {
+                setBankRows(finalRows);
+            }
+
             e.target.value = null; // Reset input file
+            alert(`Berhasil memuat file CSV!\n${newAdded} data mutasi baru ditambahkan (Total: ${finalRows.length} mutasi).\nData langsung disimpan permanen ke Cloud dan memori lokal browser.`);
         }
      });
   };
@@ -488,7 +509,7 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                  <Upload size={18} /> Upload CSV Bank
                  <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
              </label>
-             <button onClick={() => { if(window.confirm('Hapus semua data CSV mutasi bank?')) setBankRows([]); }} className="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-2 rounded-lg transition-colors" title="Bersihkan Data CSV">
+             <button onClick={() => { if(window.confirm('Hapus semua data CSV mutasi bank?')) { if (onSaveBankRows) onSaveBankRows([]); else setBankRows([]); } }} className="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-2 rounded-lg transition-colors" title="Bersihkan Data CSV">
                  <Trash2 size={18} />
              </button>
           </div>

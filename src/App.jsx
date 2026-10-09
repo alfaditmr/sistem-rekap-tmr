@@ -374,7 +374,40 @@ export default function App() {
             const loadedCats = data.categories || [];
             const loadedTargets = data.targets || {};
             const loadedReports = data.allReports || {};
-            const loadedBankRows = data.bankRows || [];
+            let loadedBankRows = data.bankRows || [];
+
+            // PENGAMAN KRUSIAL: Jika server mengembalikan bankRows kosong, tetapi lokal browser memiliki bankRows (misal user baru upload CSV):
+            // JANGAN TIMPA DENGAN KOSONG! Pertahankan data lokal dan sinkronkan segera ke server.
+            const localBankRows = getInitialState('tmr_v19_bankRows', []);
+            if (loadedBankRows.length === 0 && Array.isArray(localBankRows) && localBankRows.length > 0) {
+                console.log("Preserving local bankRows (count:", localBankRows.length, ") as server has none. Resyncing to cloud...");
+                loadedBankRows = localBankRows;
+                setDoc(getDocRef(), sanitizeForFirestore({
+                    ...data,
+                    bankRows: localBankRows,
+                    lastUpdated: new Date().toISOString()
+                })).catch(err => console.error("Cloud push bankRows error:", err));
+            } else if (Array.isArray(localBankRows) && localBankRows.length > loadedBankRows.length) {
+                // Jika lokal memiliki data yang belum ada di server (misal baru upload CSV sebelum sempat sync):
+                const existingKeys = new Set(loadedBankRows.map(r => `${r.date}_${r.amount}_${r.description}`));
+                const merged = [...loadedBankRows];
+                localBankRows.forEach(r => {
+                    const key = `${r.date}_${r.amount}_${r.description}`;
+                    if (!existingKeys.has(key)) {
+                        existingKeys.add(key);
+                        merged.push(r);
+                    }
+                });
+                if (merged.length > loadedBankRows.length) {
+                    console.log("Merged additional local bankRows into server data (new count:", merged.length, ")");
+                    loadedBankRows = merged;
+                    setDoc(getDocRef(), sanitizeForFirestore({
+                        ...data,
+                        bankRows: merged,
+                        lastUpdated: new Date().toISOString()
+                    })).catch(err => console.error("Cloud push merged bankRows error:", err));
+                }
+            }
 
             // Sinkronkan ke penyimpanan lokal seketika
             safeSetLocalStorage('tmr_v19_allReports', loadedReports);
@@ -558,6 +591,7 @@ export default function App() {
     } catch (e) {
       console.error("Instant Save Error:", e);
       setSyncStatus('offline');
+      alert("Peringatan Cloud: Gagal menyimpan data ke Cloud (" + (e.message || e) + "). Data tetap tersimpan aman di browser.");
     }
   };
 
@@ -2320,6 +2354,12 @@ export default function App() {
                  formatRp={formatRp} 
                  safeString={safeString} 
                  categories={categories}
+                 onSaveBankRows={async (newBankRows) => {
+                     const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports;
+                     setBankRows(newBankRows);
+                     await saveToFirebaseDirectly(baseReports, newBankRows);
+                     showToast(`Berhasil menyimpan ${newBankRows.length} data mutasi bank ke Cloud!`);
+                 }}
                  onSaveRekon={(bankRow, allocations, apis) => {
                      // 1. Format Tanggal
                      let ymd = new Date().toISOString().split('T')[0];
