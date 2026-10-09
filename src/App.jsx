@@ -285,6 +285,7 @@ export default function App() {
 
   const [selectedCatToAdd, setSelectedCatToAdd] = useState('');
   const [selectedItemToAdd, setSelectedItemToAdd] = useState('');
+  const [manualNominalToAdd, setManualNominalToAdd] = useState('');
   const [calendarMonth, setCalendarMonth] = useState(new Date());
 
   const [isAddingSusulan, setIsAddingSusulan] = useState(false);
@@ -316,6 +317,7 @@ export default function App() {
   const lastLocalUpdatedRef = useRef('');
   const lastLocalSaveTimeRef = useRef(0);
   const latestReportsRef = useRef(allReports);
+  const inputSaveTimerRef = useRef(null);
 
   const getDocRef = () => { return doc(db, 'tmr_data', user ? user.uid : 'demo_rekapitulasi_laporan'); };
 
@@ -343,13 +345,18 @@ export default function App() {
                 if (hasPending) {
                     return;
                 }
-                // 2. Abaikan snapshot jika client ini baru saja melakukan simpan lokal (< 2 detik yang lalu)
-                if (Date.now() - lastLocalSaveTimeRef.current < 2000) {
+                // 2. Abaikan snapshot jika client ini baru saja melakukan simpan lokal atau mengetik (< 3 detik yang lalu)
+                if (Date.now() - lastLocalSaveTimeRef.current < 3000) {
                     return;
                 }
-                // 3. Abaikan snapshot jika timestamp server lebih lama dari timestamp perubahan lokal
-                if (lastLocalUpdatedRef.current && serverUpdated && serverUpdated < lastLocalUpdatedRef.current) {
-                    console.log("Ignoring outdated Firestore snapshot (server:", serverUpdated, "< local:", lastLocalUpdatedRef.current, ")");
+                // 3. Abaikan snapshot jika timestamp server lebih lama atau sama dengan timestamp perubahan lokal
+                if (lastLocalUpdatedRef.current && serverUpdated && serverUpdated <= lastLocalUpdatedRef.current) {
+                    console.log("Ignoring outdated Firestore snapshot (server:", serverUpdated, "<= local:", lastLocalUpdatedRef.current, ")");
+                    return;
+                }
+                // 4. Abaikan snapshot jika user sedang aktif berinteraksi dengan input / textarea
+                if (typeof document !== 'undefined' && document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+                    console.log("Ignoring Firestore snapshot while user is actively typing in input field");
                     return;
                 }
             }
@@ -669,6 +676,11 @@ export default function App() {
   }, [allReports, reportDate]);
 
   const handleAddLainDoc = () => {
+    if (inputSaveTimerRef.current) {
+      clearTimeout(inputSaveTimerRef.current);
+      inputSaveTimerRef.current = null;
+      saveToFirebaseDirectly(latestReportsRef.current || allReports, bankRows);
+    }
     const nextIndex = Math.max(...lainDocIndices) + 1; const nextKey = `lain_${nextIndex}`;
     const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
       ? latestReportsRef.current
@@ -684,7 +696,7 @@ export default function App() {
     latestReportsRef.current = newReports;
     setAllReports(newReports);
     saveToFirebaseDirectly(newReports, bankRows);
-    setActiveLainIndex(nextIndex); setSelectedCatToAdd(''); setSelectedItemToAdd(''); setLainItemDate(''); setLainItemNote('');
+    setActiveLainIndex(nextIndex); setSelectedCatToAdd(''); setSelectedItemToAdd(''); setManualNominalToAdd(''); setLainItemDate(''); setLainItemNote('');
   };
 
   const handleRemoveLainDoc = (indexToRemove) => {
@@ -778,11 +790,31 @@ export default function App() {
   const handleSignatureDateChange = (e) => updateCurrentReport({ signatureDate: e.target.value });
 
   const handleDateChange = (newDateStr) => {
-    setReportDate(newDateStr); setSelectedCatToAdd(''); setSelectedItemToAdd(''); setIsAddingSusulan(false); setSusulanValidDate(''); setLainItemDate(''); setLainItemNote(''); setActiveLainIndex(1); setPrintMode('pdf');
+    if (inputSaveTimerRef.current) {
+      clearTimeout(inputSaveTimerRef.current);
+      inputSaveTimerRef.current = null;
+      saveToFirebaseDirectly(latestReportsRef.current || allReports, bankRows);
+    }
+    setReportDate(newDateStr); setSelectedCatToAdd(''); setSelectedItemToAdd(''); setManualNominalToAdd(''); setIsAddingSusulan(false); setSusulanValidDate(''); setLainItemDate(''); setLainItemNote(''); setActiveLainIndex(1); setPrintMode('pdf');
   };
 
   const handleTypeSwitch = (type) => {
-    setActiveType(type); setSelectedCatToAdd(''); setSelectedItemToAdd(''); setIsAddingSusulan(false); setSusulanValidDate(''); setLainItemDate(''); setLainItemNote(''); setActiveLainIndex(1); setPrintMode('pdf');
+    if (inputSaveTimerRef.current) {
+      clearTimeout(inputSaveTimerRef.current);
+      inputSaveTimerRef.current = null;
+      saveToFirebaseDirectly(latestReportsRef.current || allReports, bankRows);
+    }
+    setActiveType(type); setSelectedCatToAdd(''); setSelectedItemToAdd(''); setManualNominalToAdd(''); setIsAddingSusulan(false); setSusulanValidDate(''); setLainItemDate(''); setLainItemNote(''); setActiveLainIndex(1); setPrintMode('pdf');
+  };
+
+  const handleTabSwitch = (newTab) => {
+    if (inputSaveTimerRef.current) {
+      clearTimeout(inputSaveTimerRef.current);
+      inputSaveTimerRef.current = null;
+      saveToFirebaseDirectly(latestReportsRef.current || allReports, bankRows);
+    }
+    setActiveTab(newTab);
+    setPrintMode('pdf');
   };
 
   const clearCurrentReport = () => { setResetDialog({ isOpen: true, password: '', error: '', isVerifying: false }); };
@@ -832,6 +864,7 @@ export default function App() {
     else if (activeType === 'lain') { if (lainItemDate) newItem.itemDate = lainItemDate; if (lainItemNote.trim()) newItem.itemNote = lainItemNote.trim(); }
 
     const inputKey = getActiveItemKey(newItem.catId, newItem.itemId, newItem.isSusulan, newItem.validDate, newItem.itemDate, newItem.itemNote);
+    const initialNominal = Number(String(manualNominalToAdd).replace(/[^0-9]/g, '')) || 0;
     
     const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
       ? latestReportsRef.current
@@ -844,7 +877,7 @@ export default function App() {
       const updatedTypeData = {
         ...typeData,
         activeItems: [...currentItems, newItem],
-        formData: { ...(typeData.formData || {}), [inputKey]: 0 }
+        formData: { ...(typeData.formData || {}), [inputKey]: initialNominal }
       };
       const newReports = {
         ...baseReports,
@@ -860,7 +893,9 @@ export default function App() {
     
     const cat = categories.find(c => c.id === selectedCatToAdd);
     if (cat && Array.isArray(cat.items) && cat.items.length === 0) setSelectedCatToAdd('');
-    setSelectedItemToAdd(''); setLainItemNote('');
+    setSelectedItemToAdd(''); 
+    setManualNominalToAdd('');
+    setLainItemNote('');
     setTimeout(() => { if (typeof document !== 'undefined') { const inputElement = document.getElementById(`input_${inputKey}`); if (inputElement) inputElement.focus(); } }, 100);
   };
 
@@ -915,6 +950,10 @@ export default function App() {
   const handleInputChange = (inputKey, value) => {
     const rawValue = value.replace(/[^0-9]/g, '');
     const numVal = Number(rawValue) || 0;
+    const nowIso = new Date().toISOString();
+    
+    lastLocalUpdatedRef.current = nowIso;
+    lastLocalSaveTimeRef.current = Date.now();
     
     const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
       ? latestReportsRef.current
@@ -939,7 +978,13 @@ export default function App() {
     latestReportsRef.current = newReports;
     setAllReports(newReports);
     safeSetLocalStorage('tmr_v19_allReports', newReports);
-    lastLocalSaveTimeRef.current = Date.now();
+    safeSetLocalStorage('tmr_v19_lastUpdated', nowIso);
+
+    // Otomatis simpan ke Cloud Firestore dengan debounce 500ms
+    if (inputSaveTimerRef.current) clearTimeout(inputSaveTimerRef.current);
+    inputSaveTimerRef.current = setTimeout(() => {
+      saveToFirebaseDirectly(latestReportsRef.current || newReports, bankRows);
+    }, 500);
   };
 
   const handleGenerateUraian = async () => {
@@ -2453,11 +2498,11 @@ export default function App() {
             </button>
           </div>
           <div className="flex space-x-1 sm:space-x-2 shrink-0 overflow-x-auto no-scrollbar items-center">
-                        <button onClick={() => { setActiveTab('kalender'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'kalender' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Kalender</span></button>
-<button onClick={() => { setActiveTab('input'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'input' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Edit size={18} /> <span className="hidden md:inline">Input</span></button>
-            <button onClick={() => { setActiveTab('rekonBank'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'rekonBank' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Database size={18} /> <span className="hidden md:inline">Rekon Bank</span></button>
-            <button onClick={() => { setActiveTab('settings'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Settings size={18} /> <span className="hidden md:inline">Master</span></button>
-            <button onClick={() => { setActiveTab('print'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'print' ? 'bg-green-800' : 'hover:bg-green-600'}`}><FileText size={18} /> <span className="hidden md:inline">Cetak</span></button>
+            <button onClick={() => handleTabSwitch('kalender')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'kalender' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Kalender</span></button>
+            <button onClick={() => handleTabSwitch('input')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'input' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Edit size={18} /> <span className="hidden md:inline">Input</span></button>
+            <button onClick={() => handleTabSwitch('rekonBank')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'rekonBank' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Database size={18} /> <span className="hidden md:inline">Rekon Bank</span></button>
+            <button onClick={() => handleTabSwitch('settings')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Settings size={18} /> <span className="hidden md:inline">Master</span></button>
+            <button onClick={() => handleTabSwitch('print')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'print' ? 'bg-green-800' : 'hover:bg-green-600'}`}><FileText size={18} /> <span className="hidden md:inline">Cetak</span></button>
             
             <div className="pl-2 border-l border-green-600 ml-1 flex items-center gap-2">
                 <span className="text-xs font-bold bg-green-800 px-2 py-1 rounded-md capitalize hidden sm:block">
@@ -2502,17 +2547,42 @@ export default function App() {
                       <span className={`text-sm sm:text-lg font-bold ${isToday ? 'text-blue-600 bg-blue-100 px-2 rounded-full' : 'text-gray-700'}`}>{d.day}</span>
                       <div className="mt-1 w-full px-1 flex flex-col gap-1 items-center overflow-y-auto no-scrollbar pb-1">
                         {d.hasUtama && (
-                          <div className="w-full bg-green-50 border border-green-200 rounded shadow-sm flex flex-col overflow-hidden shrink-0">
+                          <div 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDateChange(d.dateStr);
+                              setActiveType('utama');
+                              setActiveTab('input');
+                              setTopLevelRoute('operasional');
+                            }}
+                            className="w-full bg-green-50 border border-green-200 rounded shadow-sm flex flex-col overflow-hidden shrink-0 cursor-pointer hover:ring-2 hover:ring-green-400 transition-all"
+                            title="Klik untuk membuka dokumen STSU Utama (SU)"
+                          >
                             <div className="bg-green-500 text-white flex justify-between items-center px-1.5 py-0.5"><span className="text-[9px] font-bold">SU</span>{d.utamaSequence && d.utamaSequence !== '...' && <span className="text-[9px] font-bold">{safeString(d.utamaSequence)}</span>}</div>
                             <div className="text-[9px] sm:text-[10px] font-black text-green-800 text-right px-1.5 py-0.5 truncate" title={`Rp ${formatRp(d.utamaTotal)}`}>Rp {formatRp(d.utamaTotal)}</div>
                           </div>
                         )}
-                        {d.lainDocs.map((lainDoc, index) => (
-                          <div key={index} className="w-full bg-purple-50 border border-purple-200 rounded shadow-sm flex flex-col overflow-hidden shrink-0">
-                            <div className="bg-purple-500 text-white flex justify-between items-center px-1.5 py-0.5"><span className="text-[9px] font-bold">SU/L</span>{lainDoc.sequence && lainDoc.sequence !== '...' && <span className="text-[9px] font-bold">{safeString(lainDoc.sequence)}</span>}</div>
-                            <div className="text-[9px] sm:text-[10px] font-black text-purple-800 text-right px-1.5 py-0.5 truncate" title={`Rp ${formatRp(lainDoc.total)}`}>Rp {formatRp(lainDoc.total)}</div>
-                          </div>
-                        ))}
+                        {d.lainDocs.map((lainDoc, index) => {
+                          const docNum = lainDoc.key === 'lain' ? 1 : (parseInt(lainDoc.key.split('_')[1], 10) || (index + 1));
+                          return (
+                            <div 
+                              key={index} 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDateChange(d.dateStr);
+                                setActiveType('lain');
+                                setActiveLainIndex(docNum);
+                                setActiveTab('input');
+                                setTopLevelRoute('operasional');
+                              }}
+                              className="w-full bg-purple-50 border border-purple-200 rounded shadow-sm flex flex-col overflow-hidden shrink-0 cursor-pointer hover:ring-2 hover:ring-purple-400 transition-all"
+                              title={`Klik untuk membuka Dokumen Lain-lain (SU/L) Ke-${docNum}`}
+                            >
+                              <div className="bg-purple-500 text-white flex justify-between items-center px-1.5 py-0.5"><span className="text-[9px] font-bold">SU/L {docNum > 1 ? `Ke-${docNum}` : ''}</span>{lainDoc.sequence && lainDoc.sequence !== '...' && <span className="text-[9px] font-bold">{safeString(lainDoc.sequence)}</span>}</div>
+                              <div className="text-[9px] sm:text-[10px] font-black text-purple-800 text-right px-1.5 py-0.5 truncate" title={`Rp ${formatRp(lainDoc.total)}`}>Rp {formatRp(lainDoc.total)}</div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </button>
                   );
@@ -2859,7 +2929,14 @@ export default function App() {
               {lainDocIndices.map(num => (
                 <div key={num} className="relative flex-shrink-0 group">
                   <button
-                    onClick={() => { setActiveLainIndex(num); setSelectedCatToAdd(''); setSelectedItemToAdd(''); setLainItemDate(''); setLainItemNote(''); }}
+                    onClick={() => { 
+                      if (inputSaveTimerRef.current) {
+                        clearTimeout(inputSaveTimerRef.current);
+                        inputSaveTimerRef.current = null;
+                        saveToFirebaseDirectly(latestReportsRef.current || allReports, bankRows);
+                      }
+                      setActiveLainIndex(num); setSelectedCatToAdd(''); setSelectedItemToAdd(''); setManualNominalToAdd(''); setLainItemDate(''); setLainItemNote(''); 
+                    }}
                     className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all border ${activeLainIndex === num ? 'bg-purple-600 text-white border-purple-600 shadow-md scale-105' : 'bg-white text-purple-600 border-purple-200 hover:bg-purple-50'}`}
                   >Dokumen Ke-{num}</button>
                   {num > 1 && <button onClick={(e) => { e.stopPropagation(); handleRemoveLainDoc(num); }} className={`absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-black shadow-md z-10 hover:bg-red-600 border border-white transition-opacity ${activeLainIndex === num ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} title="Hapus Dokumen">✕</button>}
@@ -2919,7 +2996,7 @@ export default function App() {
             )}
 
             <div className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className={`block text-xs font-semibold mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'}`}>Kategori</label>
                   <select value={selectedCatToAdd} onChange={(e) => handleCatChange(e.target.value)} className="w-full border border-gray-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
@@ -2933,6 +3010,20 @@ export default function App() {
                     {!selectedCatToAdd ? <option value="">Pilih Kategori Dulu</option> : availableItemsToAdd.length === 0 ? <option value="">Semua item ditambahkan</option> : (availableItemsToAdd.length === 1 && availableItemsToAdd[0].id === 'direct') ? <option value="direct">Langsung isi nominal</option> : <option value="">-- Pilih Item --</option>}
                     {availableItemsToAdd.map(item => item.id !== 'direct' && <option key={item.id} value={item.id}>{safeString(item.name)}</option>)}
                   </select>
+                </div>
+                <div>
+                  <label className={`block text-xs font-semibold mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'}`}>Nominal (Rp)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-xs">Rp</span>
+                    <input 
+                      type="text" 
+                      inputMode="numeric" 
+                      placeholder="0" 
+                      value={manualNominalToAdd ? formatRp(manualNominalToAdd) : ''} 
+                      onChange={(e) => setManualNominalToAdd(e.target.value.replace(/[^0-9]/g, ''))} 
+                      className="w-full border border-gray-300 bg-white rounded-lg pl-9 pr-3 py-2 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 text-right shadow-inner"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -2994,8 +3085,17 @@ export default function App() {
                               id={`input_${inputKey}`} type="text" inputMode="numeric" 
                               value={currentReport.formData[inputKey] ? formatRp(currentReport.formData[inputKey]) : ''} 
                               onChange={(e) => handleInputChange(inputKey, e.target.value)} 
-                              onBlur={() => saveToFirebaseDirectly(latestReportsRef.current || allReports, bankRows)}
-                              onKeyDown={(e) => { if (e.key === 'Enter') { e.target.blur(); saveToFirebaseDirectly(latestReportsRef.current || allReports, bankRows); } }}
+                              onBlur={() => {
+                                if (inputSaveTimerRef.current) clearTimeout(inputSaveTimerRef.current);
+                                saveToFirebaseDirectly(latestReportsRef.current || allReports, bankRows);
+                              }}
+                              onKeyDown={(e) => { 
+                                if (e.key === 'Enter') { 
+                                  e.target.blur(); 
+                                  if (inputSaveTimerRef.current) clearTimeout(inputSaveTimerRef.current);
+                                  saveToFirebaseDirectly(latestReportsRef.current || allReports, bankRows); 
+                                } 
+                              }}
                               className={`w-full border rounded-lg pl-10 pr-3 py-2.5 text-right font-bold focus:ring-2 outline-none ${group.isSusulan ? 'border-yellow-300 focus:ring-yellow-500' : 'border-gray-300 focus:ring-green-500'}`} placeholder="0" 
                             />
                           </div>
