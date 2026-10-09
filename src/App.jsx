@@ -329,42 +329,24 @@ export default function App() {
             const data = docSnap.data();
             const serverUpdated = data.lastUpdated || '';
 
-            // HANYA saat pemuatan awal pertama kali (misal user refresh browser tepat setelah edit):
+            // Saat startup / pemuatan awal:
+            // FIRESTORE ADALAH MASTER SUMBER KEBENARAN TUNGGAL (SINGLE SOURCE OF TRUTH).
+            // Jangan pernah menimpa server dengan localStorage komputer saat baru membuka aplikasi!
             if (isInitialLoad) {
                 isInitialLoad = false;
-                const localUpdated = getInitialState('tmr_v19_lastUpdated', '');
-                if (localUpdated && serverUpdated && localUpdated > serverUpdated) {
-                    const localReports = getInitialState('tmr_v19_allReports', null);
-                    const localBankRows = getInitialState('tmr_v19_bankRows', null);
-                    if (localReports && localBankRows) {
-                        console.log("Initial load: local state is newer than Firestore, pushing to cloud.");
-                        prevReportsRef.current = localReports;
-                        prevBankRowsRef.current = localBankRows;
-                        lastLocalUpdatedRef.current = localUpdated;
-                        lastLocalSaveTimeRef.current = Date.now();
-                        
-                        setDoc(getDocRef(), sanitizeForFirestore({
-                            signatures: data.signatures || signatures,
-                            categories: data.categories || categories,
-                            targets: data.targets || targets,
-                            allReports: localReports,
-                            bankRows: localBankRows,
-                            lastUpdated: localUpdated
-                        })).catch(err => console.error("Initial resync error:", err));
-
-                        setAllReports(localReports);
-                        setBankRows(localBankRows);
-                        setDbReady(true);
-                        setSyncStatus('synced');
-                        return;
-                    }
-                }
             } else {
-                // Selama aplikasi berjalan normal: JANGAN PERNAH panggil setDoc di dalam onSnapshot!
-                // Jika server mengirim snapshot lama (in-flight snapshot dari save sebelumnya yang baru sampai),
-                // abaikan snapshot lama tersebut agar tidak menimpa state lokal yang lebih baru!
+                // Selama aplikasi berjalan normal:
+                // 1. Abaikan snapshot jika masih ada pending writes (penulisan lokal yang sedang dikirim)
                 const hasPending = docSnap.metadata?.hasPendingWrites;
-                if (!hasPending && lastLocalUpdatedRef.current && serverUpdated && serverUpdated < lastLocalUpdatedRef.current) {
+                if (hasPending) {
+                    return;
+                }
+                // 2. Abaikan snapshot jika client ini baru saja melakukan simpan lokal (< 3 detik yang lalu)
+                if (Date.now() - lastLocalSaveTimeRef.current < 3000) {
+                    return;
+                }
+                // 3. Abaikan snapshot jika timestamp server lebih lama dari timestamp perubahan lokal
+                if (lastLocalUpdatedRef.current && serverUpdated && serverUpdated < lastLocalUpdatedRef.current) {
                     console.log("Ignoring outdated Firestore snapshot (server:", serverUpdated, "< local:", lastLocalUpdatedRef.current, ")");
                     return;
                 }
@@ -519,6 +501,13 @@ export default function App() {
 
   const pullLatestFromCloud = async (showNotification = false) => {
     if (!user || !db) return;
+
+    // Proteksi: Jangan lakukan penimpaan otomatis jika user baru saja mengedit/menyimpan (< 4 detik lalu)
+    if (!showNotification && Date.now() - lastLocalSaveTimeRef.current < 4000) {
+      console.log("Skipping pullLatestFromCloud: local changes in progress");
+      return;
+    }
+
     setSyncStatus('syncing');
     try {
       const docSnap = await getDoc(getDocRef());
@@ -563,15 +552,14 @@ export default function App() {
 
   useEffect(() => {
     const handleWakeup = () => {
-      if (document.visibilityState === 'visible' && user && db) {
+      // Hanya sinkronkan saat tab kembali aktif dan user tidak sedang aktif menyimpan
+      if (document.visibilityState === 'visible' && user && db && (Date.now() - lastLocalSaveTimeRef.current > 4000)) {
         pullLatestFromCloud(false);
       }
     };
     document.addEventListener('visibilitychange', handleWakeup);
-    window.addEventListener('focus', handleWakeup);
     return () => {
       document.removeEventListener('visibilitychange', handleWakeup);
-      window.removeEventListener('focus', handleWakeup);
     };
   }, [user]);
 
@@ -666,13 +654,29 @@ export default function App() {
 
   const handleAddLainDoc = () => {
     const nextIndex = Math.max(...lainDocIndices) + 1; const nextKey = `lain_${nextIndex}`;
-    setAllReports(prev => ({ ...prev, [reportDate]: { ...(prev[reportDate] || {}), [nextKey]: { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} } } }));
+    const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports;
+    const dayData = baseReports[reportDate] || {};
+    const newReports = {
+      ...baseReports,
+      [reportDate]: {
+        ...dayData,
+        [nextKey]: { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} }
+      }
+    };
+    setAllReports(newReports);
+    saveToFirebaseDirectly(newReports, bankRows);
     setActiveLainIndex(nextIndex); setSelectedCatToAdd(''); setSelectedItemToAdd(''); setLainItemDate(''); setLainItemNote('');
   };
 
   const handleRemoveLainDoc = (indexToRemove) => {
     showConfirm(`Hapus Dokumen Ke-${indexToRemove}? Semua data di dalam dokumen ini akan ikut terhapus.`, () => {
-      setAllReports(prev => { const dayData = { ...(prev[reportDate] || {}) }; const keyToRemove = indexToRemove === 1 ? 'lain' : `lain_${indexToRemove}`; delete dayData[keyToRemove]; return { ...prev, [reportDate]: dayData }; });
+      const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports;
+      const dayData = { ...(baseReports[reportDate] || {}) };
+      const keyToRemove = indexToRemove === 1 ? 'lain' : `lain_${indexToRemove}`;
+      delete dayData[keyToRemove];
+      const newReports = { ...baseReports, [reportDate]: dayData };
+      setAllReports(newReports);
+      saveToFirebaseDirectly(newReports, bankRows);
       if (activeLainIndex === indexToRemove) setActiveLainIndex(1);
     });
   };
@@ -684,55 +688,62 @@ export default function App() {
 
   const updateCurrentReport = (updater) => {
     setAllReports(prev => {
-      const dayData = prev[reportDate] || {}; const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
+      const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : prev;
+      const dayData = baseReports[reportDate] || {}; const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
       const updatedTypeData = typeof updater === 'function' ? updater(typeData) : { ...typeData, ...updater };
-      return { ...prev, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
+      const newReports = { ...baseReports, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
+      safeSetLocalStorage('tmr_v19_allReports', newReports);
+      lastLocalSaveTimeRef.current = Date.now();
+      return newReports;
     });
   };
 
   const handleUpdateRekonRow = (dateStr, isSusulan, susulanKeys, field, value) => {
-    setAllReports(prev => {
-        const dayData = prev[dateStr] || {};
-        const typeData = dayData['utama'] || { sequence: '', signatureDate: dateStr, activeItems: [], formData: {} };
-        
-        if (isSusulan && Array.isArray(susulanKeys)) {
-           const susulanMeta = typeData.susulanMeta || {};
-           const newSusulanMeta = { ...susulanMeta };
-           
-           // Apply the value to all merged keys in this susulan row
-           [].concat(susulanKeys).forEach(k => {
-               if(k) {
-                   newSusulanMeta[k] = {
-                       ...(newSusulanMeta[k] || {}),
-                       [field]: value
-                   };
-               }
-           });
+    const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports;
+    const dayData = baseReports[dateStr] || {};
+    const typeData = dayData['utama'] || { sequence: '', signatureDate: dateStr, activeItems: [], formData: {} };
+    let newReports;
+    
+    if (isSusulan && Array.isArray(susulanKeys)) {
+       const susulanMeta = typeData.susulanMeta || {};
+       const newSusulanMeta = { ...susulanMeta };
+       
+       // Apply the value to all merged keys in this susulan row
+       [].concat(susulanKeys).forEach(k => {
+           if(k) {
+               newSusulanMeta[k] = {
+                   ...(newSusulanMeta[k] || {}),
+                   [field]: value
+               };
+           }
+       });
 
-           return {
-               ...prev,
-               [dateStr]: {
-                   ...dayData,
-                   ['utama']: {
-                       ...typeData,
-                       susulanMeta: newSusulanMeta
-                   }
+       newReports = {
+           ...baseReports,
+           [dateStr]: {
+               ...dayData,
+               ['utama']: {
+                   ...typeData,
+                   susulanMeta: newSusulanMeta
                }
-           };
-        } else if (!isSusulan) {
-            return {
-                ...prev,
-                [dateStr]: {
-                    ...dayData,
-                    ['utama']: {
-                        ...typeData,
-                        [field]: value
-                    }
+           }
+       };
+    } else if (!isSusulan) {
+        newReports = {
+            ...baseReports,
+            [dateStr]: {
+                ...dayData,
+                ['utama']: {
+                    ...typeData,
+                    [field]: value
                 }
-            };
-        }
-        return prev;
-    });
+            }
+        };
+    }
+    if (newReports) {
+      setAllReports(newReports);
+      saveToFirebaseDirectly(newReports, bankRows);
+    }
   };
 
   const handleSequenceChange = (e) => updateCurrentReport({ sequence: e.target.value });
@@ -752,7 +763,17 @@ export default function App() {
     e.preventDefault(); setResetDialog(prev => ({ ...prev, isVerifying: true, error: '' }));
     try {
       await signInWithEmailAndPassword(auth, user.email, resetDialog.password);
-      updateCurrentReport({ sequence: '', signatureDate: reportDate, activeItems: [], formData: {} });
+      const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports;
+      const dayData = baseReports[reportDate] || {};
+      const newReports = {
+        ...baseReports,
+        [reportDate]: {
+          ...dayData,
+          [activeTypeKey]: { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} }
+        }
+      };
+      setAllReports(newReports);
+      saveToFirebaseDirectly(newReports, bankRows);
       setResetDialog({ isOpen: false, password: '', error: '', isVerifying: false });
     } catch (error) { setResetDialog(prev => ({ ...prev, isVerifying: false, error: 'Password salah! Penghapusan dibatalkan.' })); }
   };
@@ -780,11 +801,28 @@ export default function App() {
     else if (activeType === 'lain') { if (lainItemDate) newItem.itemDate = lainItemDate; if (lainItemNote.trim()) newItem.itemNote = lainItemNote.trim(); }
 
     const inputKey = getActiveItemKey(newItem.catId, newItem.itemId, newItem.isSusulan, newItem.validDate, newItem.itemDate, newItem.itemNote);
-    updateCurrentReport(prev => {
-      const currentItems = Array.isArray(prev.activeItems) ? prev.activeItems : [];
-      if (currentItems.find(i => getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote) === inputKey)) return prev;
-      return { ...prev, activeItems: [...currentItems, newItem], formData: { ...(prev.formData || {}), [inputKey]: 0 } };
-    });
+    
+    const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports;
+    const dayData = baseReports[reportDate] || {};
+    const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
+    const currentItems = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
+    
+    if (!currentItems.find(i => getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote) === inputKey)) {
+      const updatedTypeData = {
+        ...typeData,
+        activeItems: [...currentItems, newItem],
+        formData: { ...(typeData.formData || {}), [inputKey]: 0 }
+      };
+      const newReports = {
+        ...baseReports,
+        [reportDate]: {
+          ...dayData,
+          [activeTypeKey]: updatedTypeData
+        }
+      };
+      setAllReports(newReports);
+      saveToFirebaseDirectly(newReports, bankRows);
+    }
     
     const cat = categories.find(c => c.id === selectedCatToAdd);
     if (cat && Array.isArray(cat.items) && cat.items.length === 0) setSelectedCatToAdd('');
@@ -841,7 +879,29 @@ export default function App() {
 
   const handleInputChange = (inputKey, value) => {
     const rawValue = value.replace(/[^0-9]/g, '');
-    updateCurrentReport(prev => ({ ...prev, formData: { ...(prev.formData || {}), [inputKey]: Number(rawValue) || 0 } }));
+    const numVal = Number(rawValue) || 0;
+    
+    const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports;
+    const dayData = baseReports[reportDate] || {};
+    const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
+    const updatedTypeData = {
+      ...typeData,
+      formData: {
+        ...(typeData.formData || {}),
+        [inputKey]: numVal
+      }
+    };
+    const newReports = {
+      ...baseReports,
+      [reportDate]: {
+        ...dayData,
+        [activeTypeKey]: updatedTypeData
+      }
+    };
+    
+    setAllReports(newReports);
+    safeSetLocalStorage('tmr_v19_allReports', newReports);
+    lastLocalSaveTimeRef.current = Date.now();
   };
 
   const handleGenerateUraian = async () => {
@@ -860,15 +920,25 @@ export default function App() {
     if (trimmedNew && trimmedNew !== oldNote) {
       const oldKey = getActiveItemKey(group.catId, item.itemId || item.id, group.isSusulan, group.validDate, group.itemDate, oldNote);
       const newKey = getActiveItemKey(group.catId, item.itemId || item.id, group.isSusulan, group.validDate, group.itemDate, trimmedNew);
-      updateCurrentReport(prev => {
-        const newActive = (prev.activeItems || []).map(i => {
-          if (i.catId === group.catId && i.itemId === (item.itemId || item.id) && !!i.isSusulan === !!group.isSusulan && (i.validDate || '') === (group.validDate || '') && (i.itemDate || '') === (group.itemDate || '') && (i.itemNote || '') === oldNote) return { ...i, itemNote: trimmedNew };
-          return i;
-        });
-        const newFormData = { ...(prev.formData || {}) };
-        if (newFormData[oldKey] !== undefined) { newFormData[newKey] = newFormData[oldKey]; delete newFormData[oldKey]; }
-        return { ...prev, activeItems: newActive, formData: newFormData };
+      
+      const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports;
+      const dayData = baseReports[reportDate] || {};
+      const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
+      const newActive = (typeData.activeItems || []).map(i => {
+        if (i.catId === group.catId && i.itemId === (item.itemId || item.id) && !!i.isSusulan === !!group.isSusulan && (i.validDate || '') === (group.validDate || '') && (i.itemDate || '') === (group.itemDate || '') && (i.itemNote || '') === oldNote) return { ...i, itemNote: trimmedNew };
+        return i;
       });
+      const newFormData = { ...(typeData.formData || {}) };
+      if (newFormData[oldKey] !== undefined) { newFormData[newKey] = newFormData[oldKey]; delete newFormData[oldKey]; }
+      const newReports = {
+        ...baseReports,
+        [reportDate]: {
+          ...dayData,
+          [activeTypeKey]: { ...typeData, activeItems: newActive, formData: newFormData }
+        }
+      };
+      setAllReports(newReports);
+      saveToFirebaseDirectly(newReports, bankRows);
     }
     setEditNoteModal({ isOpen: false, group: null, item: null, newNote: '' });
   };
@@ -2758,11 +2828,11 @@ export default function App() {
             <div className={`absolute top-0 right-0 text-white text-xs font-bold px-3 py-1 rounded-bl-lg ${activeType === 'utama' ? 'bg-green-500' : 'bg-purple-500'}`}>Dokumen {activeType === 'utama' ? 'STSU (SU)' : `Lain-lain (SU/L) - Ke ${activeLainIndex}`}</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mt-3">
               <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tgl Laporan (Di Atas)</label><input type="date" value={reportDate} onChange={(e) => handleDateChange(e.target.value)} className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-blue-500 bg-gray-50 font-bold text-gray-700" /></div>
-              <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tgl Cetak (Bawah/TTD)</label><input type="date" value={currentReport.signatureDate} onChange={handleSignatureDateChange} className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-blue-500 bg-blue-50 font-bold text-blue-700" /></div>
+              <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tgl Cetak (Bawah/TTD)</label><input type="date" value={currentReport.signatureDate} onChange={handleSignatureDateChange} onBlur={() => saveToFirebaseDirectly(prevReportsRef.current || allReports, bankRows)} className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-blue-500 bg-blue-50 font-bold text-blue-700" /></div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nomor Urut STSU</label>
                 <div className="flex gap-2">
-                  <input type="text" placeholder="07" value={currentReport.sequence || ''} onChange={handleSequenceChange} className="w-16 border border-gray-300 rounded-lg p-2.5 text-center font-bold outline-none focus:border-blue-500 bg-white shadow-inner text-lg" />
+                  <input type="text" placeholder="07" value={currentReport.sequence || ''} onChange={handleSequenceChange} onBlur={() => saveToFirebaseDirectly(prevReportsRef.current || allReports, bankRows)} className="w-16 border border-gray-300 rounded-lg p-2.5 text-center font-bold outline-none focus:border-blue-500 bg-white shadow-inner text-lg" />
                   <div className="flex-1 border border-dashed border-gray-300 rounded-lg bg-gray-50 p-2 flex items-center overflow-x-auto min-w-0"><span className="font-mono font-bold text-gray-600 text-xs sm:text-sm whitespace-nowrap truncate">{safeString(computedStsuNo || 'Preview...')}</span></div>
                 </div>
               </div>
@@ -2879,6 +2949,8 @@ export default function App() {
                               id={`input_${inputKey}`} type="text" inputMode="numeric" 
                               value={currentReport.formData[inputKey] ? formatRp(currentReport.formData[inputKey]) : ''} 
                               onChange={(e) => handleInputChange(inputKey, e.target.value)} 
+                              onBlur={() => saveToFirebaseDirectly(prevReportsRef.current || allReports, bankRows)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.target.blur(); saveToFirebaseDirectly(prevReportsRef.current || allReports, bankRows); } }}
                               className={`w-full border rounded-lg pl-10 pr-3 py-2.5 text-right font-bold focus:ring-2 outline-none ${group.isSusulan ? 'border-yellow-300 focus:ring-yellow-500' : 'border-gray-300 focus:ring-green-500'}`} placeholder="0" 
                             />
                           </div>
