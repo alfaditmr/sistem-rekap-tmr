@@ -3,7 +3,7 @@ import Papa from 'papaparse';
 import { Upload, RefreshCw, Link as LinkIcon, CheckCircle, AlertCircle, Plus, Trash, Database, Filter, Trash2, Edit, RotateCcw, Zap, Sparkles } from 'lucide-react';
 import MultiDateCalendar from './MultiDateCalendar';
 
-export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeString, categories, onSaveRekon, allReports, onLinkRekon, onUpdateBankRow, onUnlinkBankRow, onSaveBankRows }) {
+export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeString, categories, onSaveRekon, allReports, onLinkRekon, onUpdateBankRow, onUnlinkBankRow, onSaveBankRows, syncStatus, onRefreshCloud }) {
   const [selectedBankDates, setSelectedBankDates] = useState([]);
   const [editModal, setEditModal] = useState({ isOpen: false, row: null, proof: '' });
   const [apiFilterStatus, setApiFilterStatus] = useState('all');
@@ -505,6 +505,15 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                     </button>
                 </div>
              </div>
+             <button 
+                 type="button" 
+                 onClick={() => onRefreshCloud && onRefreshCloud()} 
+                 className="bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 px-3.5 py-2 rounded-lg font-bold flex items-center gap-1.5 transition-colors shadow-sm text-sm"
+                 title="Tarik pembaruan data rekon dan mutasi terbaru dari PC lain / Cloud"
+             >
+                 <RefreshCw size={16} className={syncStatus === 'syncing' ? 'animate-spin text-indigo-600' : 'text-indigo-600'} />
+                 <span className="hidden sm:inline">Sinkron Cloud</span>
+             </button>
              <label className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 cursor-pointer transition-colors shadow-md">
                  <Upload size={18} /> Upload CSV Bank
                  <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />

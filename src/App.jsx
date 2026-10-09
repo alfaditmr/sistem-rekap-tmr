@@ -517,6 +517,64 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signatures, categories, targets, allReports, bankRows, user, dbReady]);
 
+  const pullLatestFromCloud = async (showNotification = false) => {
+    if (!user || !db) return;
+    setSyncStatus('syncing');
+    try {
+      const docSnap = await getDoc(getDocRef());
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const serverUpdated = data.lastUpdated || '';
+        
+        const loadedSigs = data.signatures || {};
+        const loadedCats = data.categories || [];
+        const loadedTargets = data.targets || {};
+        const loadedReports = data.allReports || {};
+        let loadedBankRows = data.bankRows || [];
+
+        safeSetLocalStorage('tmr_v19_allReports', loadedReports);
+        safeSetLocalStorage('tmr_v19_bankRows', loadedBankRows);
+        if (serverUpdated) safeSetLocalStorage('tmr_v19_lastUpdated', serverUpdated);
+
+        prevReportsRef.current = loadedReports;
+        prevBankRowsRef.current = loadedBankRows;
+        prevSigsRef.current = loadedSigs;
+        prevCatsRef.current = loadedCats;
+        prevTargetsRef.current = loadedTargets;
+        lastLocalUpdatedRef.current = serverUpdated;
+
+        setSignatures(loadedSigs);
+        setCategories(loadedCats);
+        setTargets(loadedTargets);
+        setAllReports(loadedReports);
+        setBankRows(loadedBankRows);
+        
+        setSyncStatus('synced');
+        if (showNotification) showToast("Data terbaru berhasil disinkronkan dari Cloud!");
+      } else {
+        setSyncStatus('synced');
+      }
+    } catch (err) {
+      console.error("Error pulling latest from cloud:", err);
+      setSyncStatus('offline');
+      if (showNotification) alert("Gagal menyinkronkan data: " + (err.message || err));
+    }
+  };
+
+  useEffect(() => {
+    const handleWakeup = () => {
+      if (document.visibilityState === 'visible' && user && db) {
+        pullLatestFromCloud(false);
+      }
+    };
+    document.addEventListener('visibilitychange', handleWakeup);
+    window.addEventListener('focus', handleWakeup);
+    return () => {
+      document.removeEventListener('visibilitychange', handleWakeup);
+      window.removeEventListener('focus', handleWakeup);
+    };
+  }, [user]);
+
   const handleForceSave = async () => {
     if (!user || !dbReady) return;
     setSyncStatus('syncing');
@@ -2270,10 +2328,15 @@ export default function App() {
         <div className="max-w-6xl mx-auto px-4 flex justify-between items-center h-16">
           <div className="font-bold text-lg flex items-center gap-2 mr-4 shrink-0">
             <Calculator size={24} /> <span className="hidden lg:inline">Sistem Rekap STSU</span>
-            <div className="ml-0 sm:ml-4 flex items-center gap-1.5 text-[10px] sm:text-xs font-medium px-2.5 py-1 bg-green-800 rounded-lg shadow-inner">
+            <button 
+              type="button" 
+              onClick={() => pullLatestFromCloud(true)} 
+              className="ml-0 sm:ml-4 flex items-center gap-1.5 text-[10px] sm:text-xs font-bold px-2.5 py-1 bg-green-800 hover:bg-green-900 border border-green-600 rounded-lg shadow-inner cursor-pointer transition-all hover:scale-105 active:scale-95" 
+              title="Klik untuk menyinkronkan data terbaru dari Cloud secara instan"
+            >
               {syncStatus === 'syncing' ? <RefreshCw className="animate-spin text-white" size={14}/> : syncStatus === 'synced' ? <Cloud size={14} className="text-blue-300"/> : <CloudOff size={14} className="text-red-300"/>}
-              <span className="hidden md:inline">{syncStatus === 'syncing' ? 'Menyimpan...' : syncStatus === 'synced' ? 'Tersimpan' : 'Mode Offline'}</span>
-            </div>
+              <span className="hidden md:inline">{syncStatus === 'syncing' ? 'Menyinkronkan...' : syncStatus === 'synced' ? 'Tersimpan (Klik Sync)' : 'Mode Offline'}</span>
+            </button>
           </div>
           <div className="flex space-x-1 sm:space-x-2 shrink-0 overflow-x-auto no-scrollbar items-center">
                         <button onClick={() => { setActiveTab('kalender'); setPrintMode('pdf'); }} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'kalender' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Kalender</span></button>
@@ -2349,6 +2412,8 @@ export default function App() {
       {activeTab === 'rekonBank' && (
           <div className="no-print w-full bg-gray-50 min-h-screen">
               <RekonBankTab 
+                 syncStatus={syncStatus}
+                 onRefreshCloud={() => pullLatestFromCloud(true)}
                  bankRows={bankRows}
                  setBankRows={setBankRows}
                  formatRp={formatRp} 
