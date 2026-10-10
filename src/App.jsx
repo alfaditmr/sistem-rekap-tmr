@@ -528,6 +528,13 @@ export default function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         const serverUpdated = data.lastUpdated || '';
+
+        // Abaikan auto-sync di latar belakang jika data lokal saat ini lebih baru daripada server
+        if (!showNotification && lastLocalUpdatedRef.current && serverUpdated && serverUpdated < lastLocalUpdatedRef.current) {
+          console.log("Skipping background cloud pull: local data is newer than server snapshot");
+          setSyncStatus('synced');
+          return;
+        }
         
         const loadedSigs = data.signatures || {};
         const loadedCats = data.categories || [];
@@ -1060,6 +1067,22 @@ export default function App() {
     return "";
   };
 
+  const isCategory3A = (catId) => {
+    if (catId === 'cat_3' || catId === 'cat_4' || catId === 'cat_5') return true;
+    const cat = categories.find(c => c.id === catId);
+    if (!cat) return false;
+    const name = (cat.name || '').toLowerCase();
+    return name.includes('new gate') || name.includes('online') || name.includes('tvm') || name.includes('vending');
+  };
+
+  const isCategoryIWM = (catId) => {
+    if (catId === 'cat_6') return true;
+    const cat = categories.find(c => c.id === catId);
+    if (!cat) return false;
+    const name = (cat.name || '').toLowerCase();
+    return name.includes('old gate') || name.includes('iwm');
+  };
+
   // --- Fungsi AI Matcher Internal ---
   const smartMappingAI = (nameAPI, apiSource, targetDate) => {
     let guessCat = '';
@@ -1067,17 +1090,17 @@ export default function App() {
     const lowerName = (nameAPI || '').toLowerCase();
     
     if (apiSource === 'iwm') {
-      const cat = categories.find(c => c.name.toLowerCase().includes('old gate') || c.name.toLowerCase().includes('iwm'));
+      const cat = categories.find(c => c.name.toLowerCase().includes('old gate') || c.name.toLowerCase().includes('iwm') || c.id === 'cat_6');
       if (cat) guessCat = cat.id;
     } else {
       if (lowerName.includes('gate')) {
-        const cat = categories.find(c => c.name.toLowerCase().includes('new gate'));
+        const cat = categories.find(c => c.name.toLowerCase().includes('new gate') || c.id === 'cat_3');
         if (cat) guessCat = cat.id;
       } else if (lowerName.includes('merchant_page') || lowerName.includes('online')) {
-        const cat = categories.find(c => c.name.toLowerCase().includes('online'));
+        const cat = categories.find(c => c.name.toLowerCase().includes('online') || c.id === 'cat_4');
         if (cat) guessCat = cat.id;
       } else if (lowerName.includes('tvm') || lowerName.includes('vending')) {
-        const cat = categories.find(c => c.name.toLowerCase().includes('tvm') || c.name.toLowerCase().includes('vending'));
+        const cat = categories.find(c => c.name.toLowerCase().includes('tvm') || c.name.toLowerCase().includes('vending') || c.id === 'cat_5');
         if (cat) guessCat = cat.id;
       }
     }
@@ -1492,15 +1515,29 @@ export default function App() {
     const dayData = newReports[reportDate] || {}; 
     const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
     
-    let newItems = transitModal.isOverwriting ? [] : [...(typeData.activeItems || [])];
-    let newFormData = transitModal.isOverwriting ? {} : { ...(typeData.formData || {}) };
+    const is3a = transitModal.source === '3a';
+    const isSourceCategory = (catId) => is3a ? isCategory3A(catId) : isCategoryIWM(catId);
+
+    let newItems = [...(typeData.activeItems || [])];
+    let newFormData = { ...(typeData.formData || {}) };
+
+    // Jika user memilih timpa, HANYA hapus kategori dari bot sumber ini (3A atau IWM).
+    // Data bot lain (misal 3A saat tarik IWM) dan input manual tetap 100% aman tersimpan.
+    if (transitModal.isOverwriting) {
+      newItems = newItems.filter(i => !isSourceCategory(i.catId));
+      (typeData.activeItems || []).forEach(i => {
+        if (isSourceCategory(i.catId)) {
+          const k = getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote);
+          delete newFormData[k];
+        }
+      });
+    }
 
     transitModal.data.forEach(t => {
       if (t.mappedCat && t.mappedItem) {
-        
-        const finalNote = activeType === 'lain' ? (lainItemNote || '') : ''; 
+        const finalNote = activeType === 'lain' ? (lainItemNote || '') : (t.itemNote || ''); 
         const key = getActiveItemKey(t.mappedCat, t.mappedItem, isAddingSusulan, susulanValidDate, lainItemDate, finalNote);
-        const exists = newItems.find(i => getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote) === key);
+        const exists = newItems.find(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) === key);
         
         if (!exists) {
           newItems.push({ 
@@ -1525,8 +1562,6 @@ export default function App() {
     latestReportsRef.current = newReports;
     setAllReports(newReports);
     saveToFirebaseDirectly(newReports, bankRows);
-    
-    const is3a = transitModal.source === '3a';
     closeTransitModal();
     showToast(`Berhasil! Data dari Bot ${is3a ? '3A' : 'IWM'} telah disuntikkan dan otomatis digabungkan pada STSU.`);
   };
@@ -2204,7 +2239,11 @@ export default function App() {
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <button onClick={closeTransitModal} className="px-5 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors order-2 sm:order-1">Batal</button>
                   <button onClick={() => {
-                    if (currentReport.activeItems && currentReport.activeItems.length > 0) {
+                    const sourceHasItems = transitModal.source === '3a'
+                      ? (currentReport.activeItems || []).some(item => isCategory3A(item.catId))
+                      : (currentReport.activeItems || []).some(item => isCategoryIWM(item.catId));
+
+                    if (sourceHasItems) {
                       setTransitModal(prev => ({...prev, step: 'confirm_overwrite'}));
                     } else {
                       executeFetchData(false);
@@ -2222,13 +2261,13 @@ export default function App() {
                 <div className="w-20 h-20 bg-yellow-50 rounded-full flex items-center justify-center mx-auto mb-5 shadow-inner">
                   <AlertCircle size={36} className="text-yellow-600" />
                 </div>
-                <h3 className="text-xl font-black text-gray-800 mb-3">Data Sudah Terisi</h3>
-                <p className="text-gray-600 mb-8 text-sm">Sudah ada data STSU yang tersimpan pada tanggal ini. Apakah data sebelumnya akan <strong>ditimpa</strong> dengan data baru dari {transitModal.source === '3a' ? '3A' : 'IWM'}?</p>
+                <h3 className="text-xl font-black text-gray-800 mb-3">Data {transitModal.source === '3a' ? '3A' : 'IWM'} Sudah Ada</h3>
+                <p className="text-gray-600 mb-8 text-sm">Sudah ada data dari <strong>{transitModal.source === '3a' ? '3A' : 'IWM'}</strong> yang tersimpan pada tanggal ini. Apakah Anda ingin <strong>memperbarui (menimpa)</strong> data {transitModal.source === '3a' ? '3A' : 'IWM'} saja? Data sumber lain ({transitModal.source === '3a' ? 'IWM' : '3A'} &amp; input manual) akan tetap aman tersimpan.</p>
                 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <button onClick={closeTransitModal} className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors order-3 sm:order-1 text-sm">Batal</button>
-                  <button onClick={() => executeFetchData(false)} className="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-md transition-colors order-2 text-sm">Gabungkan</button>
-                  <button onClick={() => executeFetchData(true)} className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-md transition-colors order-1 sm:order-3 text-sm">Ya, Timpa Data</button>
+                  <button onClick={() => executeFetchData(false)} className="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-md transition-colors order-2 text-sm">Gabungkan (Jumlahkan)</button>
+                  <button onClick={() => executeFetchData(true)} className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition-colors order-1 sm:order-3 text-sm">Ya, Timpa Data {transitModal.source === '3a' ? '3A' : 'IWM'}</button>
                 </div>
               </div>
             )}
