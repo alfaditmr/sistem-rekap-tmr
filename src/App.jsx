@@ -5,6 +5,8 @@ import TargetManager from './TargetManager';
 import TransitModal from './components/transit/TransitModal';
 import PrintPreviewTab from './components/print/PrintPreviewTab';
 import RekapExcelTab from './components/dashboard/RekapExcelTab';
+import ActionModals from './components/modals/ActionModals';
+import MasterSettingsTab from './components/settings/MasterSettingsTab';
 import { smartMappingAI, fetchBot3aData, fetchBotIwmData } from './services/transitBotService';
 import {
   auth,
@@ -1221,69 +1223,21 @@ export default function App() {
         safeString={safeString}
       />
 
-      {confirmDialog.isOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center gap-3 text-red-600 mb-4"><AlertCircle size={28} /><h3 className="font-bold text-xl">Konfirmasi</h3></div>
-            <p className="text-gray-600 mb-8 leading-relaxed font-medium">{safeString(confirmDialog.message)}</p>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setConfirmDialog({isOpen: false, message: '', onConfirm: null})} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors">Batal</button>
-              <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({isOpen: false, message: '', onConfirm: null}); }} className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors shadow-md">Lanjutkan</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {editNoteModal.isOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center gap-3 text-blue-600 mb-4"><Edit size={28} /><h3 className="font-bold text-xl">Edit Uraian Dinamis</h3></div>
-            <div className="mb-4">
-              <div className="flex justify-between items-end mb-1">
-                <label className="block text-xs font-semibold text-gray-600 uppercase">Keterangan / Uraian:</label>
-                <button 
-                  onClick={async () => {
-                    if (!editNoteModal.newNote) return;
-                    setIsGeneratingUraian(true);
-                    try {
-                      const prompt = `Rapikan catatan singkat berikut menjadi satu frasa atau kalimat resmi yang baku, sopan, dan formal untuk keperluan dokumen Surat Tanda Setoran Uang (STSU) bagian keterangan. Jangan tambahkan kata pengantar atau penutup, langsung berikan hasilnya. Catatan asli: "${editNoteModal.newNote}"`;
-                      const result = await callGeminiAPI(prompt, "Anda adalah asisten admin keuangan Sistem Rekap STSU.");
-                      setEditNoteModal(prev => ({...prev, newNote: result.trim()}));
-                    } catch (e) {} finally { setIsGeneratingUraian(false); }
-                  }}
-                  disabled={!editNoteModal.newNote || isGeneratingUraian}
-                  className="text-[10px] bg-purple-100 hover:bg-purple-200 text-purple-700 font-bold px-2 py-1 rounded border border-purple-200 flex items-center gap-1 disabled:opacity-50 transition-colors"
-                >{isGeneratingUraian ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />} ✨ AI Rapikan</button>
-              </div>
-              <textarea 
-                value={editNoteModal.newNote} onChange={(e) => setEditNoteModal(prev => ({...prev, newNote: e.target.value}))} rows={3}
-                className="w-full border border-gray-300 rounded-lg p-3 text-sm outline-none focus:border-blue-500 bg-gray-50 font-medium resize-none" placeholder="Masukkan keterangan baru..." autoFocus
-              />
-            </div>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setEditNoteModal({isOpen: false, group: null, item: null, newNote: ''})} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors text-sm">Batal</button>
-              <button onClick={saveEditedNote} disabled={!editNoteModal.newNote.trim()} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors shadow-md text-sm disabled:opacity-50">Simpan Perubahan</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {resetDialog.isOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center gap-3 text-red-600 mb-4"><AlertCircle size={28} /><h3 className="font-bold text-xl">Konfirmasi Reset</h3></div>
-            <p className="text-gray-600 mb-4 text-sm font-medium">Apakah Anda yakin ingin <strong className="text-red-600">MENGHAPUS SEMUA DATA</strong> di form STSU {activeType === 'utama' ? 'Pendapatan' : 'Lain-lain'} untuk tanggal ini? Data tidak dapat dikembalikan.</p>
-            {resetDialog.error && <div className="bg-red-50 text-red-600 p-2 rounded text-xs mb-4 border border-red-100 font-semibold">{safeString(resetDialog.error)}</div>}
-            <form onSubmit={handleConfirmReset}>
-              <div className="mb-6"><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Masukkan Password ADMIN</label><input type="password" value={resetDialog.password} onChange={(e) => setResetDialog(prev => ({...prev, password: e.target.value}))} placeholder="••••••••" className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-red-500 bg-gray-50 font-bold" required autoFocus /></div>
-              <div className="flex gap-3 justify-end">
-                <button type="button" onClick={() => setResetDialog({isOpen: false, password: '', error: '', isVerifying: false})} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors text-sm">Batal</button>
-                <button type="submit" disabled={resetDialog.isVerifying} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors shadow-md text-sm disabled:opacity-50">{resetDialog.isVerifying ? 'Memeriksa...' : 'Ya, Hapus Data'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* 🔴 MODAL AKSI (KONFIRMASI, EDIT URAIAN, RESET) */}
+      <ActionModals
+        confirmDialog={confirmDialog}
+        setConfirmDialog={setConfirmDialog}
+        editNoteModal={editNoteModal}
+        setEditNoteModal={setEditNoteModal}
+        isGeneratingUraian={isGeneratingUraian}
+        setIsGeneratingUraian={setIsGeneratingUraian}
+        callGeminiAPI={callGeminiAPI}
+        saveEditedNote={saveEditedNote}
+        resetDialog={resetDialog}
+        setResetDialog={setResetDialog}
+        handleConfirmReset={handleConfirmReset}
+        activeType={activeType}
+      />
 
       {topLevelRoute === 'home' && (
              <div className="min-h-[90vh] flex flex-col items-center justify-center p-4">
@@ -2021,137 +1975,24 @@ export default function App() {
       {/* ============================================================== */}
       {/* 🔴 TAB: SETTINGS (MASTER) */}
       {/* ============================================================== */}
-      {activeTab === 'settings' && (
-        <div className="max-w-4xl mx-auto px-4 py-6 no-print space-y-6">
-          
-          {activeMasterMenu === 'menu' && (
-            <div className="flex flex-col items-center mt-10">
-               <h1 className="text-3xl font-black text-gray-800 mb-2">Master Menu Admin</h1>
-               <p className="text-gray-500 mb-10">Sistem Informasi Manajemen Pendapatan Taman Margasatwa Ragunan</p>
-               
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-2xl">
-                  
-                  <button onClick={() => setActiveMasterMenu('kategori')} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4 group">
-                     <div className="w-16 h-16 rounded-2xl bg-green-100 text-green-600 flex items-center justify-center group-hover:scale-110 transition-transform"><Database size={32}/></div>
-                     <div>
-                        <h3 className="font-bold text-gray-800 text-lg mb-1">Database Kategori</h3>
-                        <p className="text-xs text-gray-500">Kelola master data pos STSU utama & lain-lain.</p>
-                     </div>
-                  </button>
-
-                  <button onClick={() => setActiveMasterMenu('pejabat')} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4 group">
-                     <div className="w-16 h-16 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform"><Edit size={32}/></div>
-                     <div>
-                        <h3 className="font-bold text-gray-800 text-lg mb-1">Pejabat Penandatangan</h3>
-                        <p className="text-xs text-gray-500">Atur pejabat pencetak resi NCR dan laporan.</p>
-                     </div>
-                  </button>
-                  
-                  <button onClick={() => setActiveMasterMenu('koneksi')} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4 group">
-                     <div className="w-16 h-16 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform"><Cloud size={32}/></div>
-                     <div>
-                        <h3 className="font-bold text-gray-800 text-lg mb-1">Koneksi Server</h3>
-                        <p className="text-xs text-gray-500">Konfigurasi alamat IP Address Bot Integrasi.</p>
-                     </div>
-                  </button>
-               </div>
-            </div>
-          )}
-
-          {activeMasterMenu !== 'menu' && (
-            <div>
-              <button onClick={() => setActiveMasterMenu('menu')} className="mb-6 text-gray-600 hover:text-gray-900 font-bold flex items-center gap-2 text-sm bg-white px-4 py-2 rounded-lg border border-gray-300 shadow-sm transition-colors hover:bg-gray-50 w-max">
-                 <ChevronLeft size={16}/> Kembali ke Menu Master
-              </button>
-
-              {activeMasterMenu === 'koneksi' && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-                  <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Cloud size={20} className="text-blue-500"/> Koneksi Server Bot Integrasi</h2>
-            <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
-                <label className="text-xs font-bold text-gray-600 uppercase mb-1.5 block">IP Address / Hostname Komputer Server</label>
-                <div className="flex gap-3 items-center">
-                  <div className="flex-1">
-                    <input type="text" value={apiIpAddress} onChange={e => setApiIpAddress(e.target.value)} className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 bg-white font-mono font-bold text-blue-700" placeholder="Contoh: localhost atau 192.168.1.5" />
-                  </div>
-                  <Database className="text-gray-400 shrink-0 hidden sm:block" size={24} />
-                </div>
-                <p className="text-xs text-gray-500 mt-2 font-medium">Isi dengan <strong className="text-gray-700">localhost</strong> jika Bot Python berjalan di PC yang sama dengan Web App ini. Atau isi dengan <strong className="text-gray-700">demo</strong> untuk mode simulasi data sesungguhnya.</p>
-                <div className="mt-3 text-[10px] text-gray-500 bg-white p-2 rounded border border-gray-200 inline-block font-mono">
-                  Sistem otomatis menembak Port <strong className="text-blue-600">5000 (3A)</strong> dan Port <strong className="text-purple-600">5001 (IWM)</strong> berdasarkan port standar Bot.
-                </div>
-              </div>
-            </div>
-          )}
-
-              {activeMasterMenu === 'pejabat' && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-                  <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2"><Edit size={20} className="text-blue-500"/> Pejabat Penandatangan</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                <h3 className="font-semibold text-gray-700 text-sm border-b pb-2">Pihak Kiri (Penyetor)</h3>
-                <div><label className="text-xs text-gray-500 uppercase">Jabatan</label><input type="text" value={signatures.leftRole || ''} onChange={(e) => setSignatures({...signatures, leftRole: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
-                <div><label className="text-xs text-gray-500 uppercase">Nama</label><input type="text" value={signatures.leftName || ''} onChange={(e) => setSignatures({...signatures, leftName: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none font-bold focus:border-blue-500" /></div>
-                <div><label className="text-xs text-gray-500 uppercase">NIP (Khusus Print NCR)</label><input type="text" value={signatures.leftNip || ''} onChange={(e) => setSignatures({...signatures, leftNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
-              </div>
-              <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                <h3 className="font-semibold text-gray-700 text-sm border-b pb-2">Pihak Kanan (Bendahara)</h3>
-                <div><label className="text-xs text-gray-500 uppercase">Lokasi</label><input type="text" value={signatures.location || ''} onChange={(e) => setSignatures({...signatures, location: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
-                <div><label className="text-xs text-gray-500 uppercase">Jabatan</label><input type="text" value={signatures.rightRole || ''} onChange={(e) => setSignatures({...signatures, rightRole: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
-                <div><label className="text-xs text-gray-500 uppercase">Nama</label><input type="text" value={signatures.rightName || ''} onChange={(e) => setSignatures({...signatures, rightName: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none font-bold focus:border-blue-500" /></div>
-                <div><label className="text-xs text-gray-500 uppercase">NIP (Khusus Print NCR)</label><input type="text" value={signatures.rightNip || ''} onChange={(e) => setSignatures({...signatures, rightNip: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm mt-1 outline-none focus:border-blue-500" /></div>
-              </div>
-              </div>
-            </div>
-          )}
-          
-          {activeMasterMenu === 'kategori' && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-              <div className="flex justify-between items-center mb-5"><h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Settings size={20} className="text-blue-500"/> Database Kategori</h2></div>
-            <div className="space-y-6">
-              {categories.map((cat, index) => (
-                <div key={cat.id} className="border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-                  <div className={`p-3 flex flex-col md:flex-row justify-between md:items-center gap-3 border-b ${cat.type === 'utama' ? 'bg-green-50 border-green-100' : 'bg-purple-50 border-purple-100'}`}>
-                    <div className="flex-1 flex items-center gap-2">
-                      <div className="flex flex-col gap-0.5 mr-1">
-                        <button onClick={() => moveCategory(index, 'up')} disabled={index === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowUp size={14}/></button>
-                        <button onClick={() => moveCategory(index, 'down')} disabled={index === categories.length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowDown size={14}/></button>
-                      </div>
-                      <span className={`font-bold w-6 h-6 flex items-center justify-center rounded-full text-xs text-white shrink-0 ${cat.type === 'utama' ? 'bg-green-600' : 'bg-purple-600'}`}>{index + 1}</span>
-                      <input type="text" value={cat.name || ''} onChange={(e) => updateCategory(cat.id, 'name', e.target.value)} className="bg-white border border-gray-300 rounded px-2 py-1.5 w-full max-w-md font-bold text-sm outline-none" placeholder="Nama Kategori..." />
-                    </div>
-                    <div className="flex items-center gap-2 pl-10 md:pl-0">
-                      <select value={cat.type || 'utama'} onChange={(e) => updateCategory(cat.id, 'type', e.target.value)} className={`text-xs font-bold px-2 py-1.5 rounded border outline-none ${cat.type === 'utama' ? 'bg-green-100 text-green-800 border-green-300' : 'bg-purple-100 text-purple-800 border-purple-300'}`}>
-                        <option value="utama">STSU Utama (SU)</option>
-                        <option value="lain">STSU Lain-lain (SU/L)</option>
-                      </select>
-                      <button onClick={() => deleteCategory(cat.id)} className="text-red-500 p-2 hover:bg-red-100 rounded-lg bg-white border border-red-100 shadow-sm"><Trash size={18} /></button>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-white space-y-2 pl-12 border-t border-gray-50">
-                    {Array.isArray(cat.items) && cat.items.length === 0 && <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 mb-2 font-medium flex items-center gap-1"><CheckCircle size={14} /> Mode Langsung Input Nominal.</div>}
-                    {Array.isArray(cat.items) && cat.items.map((item, itemIdx) => (
-                      <div key={item.id} className="flex items-center gap-2">
-                        <div className="flex flex-col gap-0.5">
-                          <button onClick={() => moveItem(cat.id, itemIdx, 'up')} disabled={itemIdx === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowUp size={14}/></button>
-                          <button onClick={() => moveItem(cat.id, itemIdx, 'down')} disabled={itemIdx === cat.items.length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ArrowDown size={14}/></button>
-                        </div>
-                        <Tag size={14} className="text-gray-400 hidden sm:block"/>
-                        <input type="text" value={item.name || ''} onChange={(e) => updateItemName(cat.id, item.id, e.target.value)} className="bg-gray-50 border border-gray-200 rounded px-3 py-1.5 flex-1 text-sm outline-none focus:border-blue-400 focus:bg-white" placeholder="Nama Tiket..." />
-                        <button onClick={() => deleteItem(cat.id, item.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg"><Trash size={18} /></button>
-                      </div>
-                    ))}
-                    <button onClick={() => addItem(cat.id)} className="text-sm text-blue-600 font-bold flex items-center gap-1 mt-3 hover:bg-blue-50 px-2 py-1 rounded transition-colors"><Plus size={16} /> Tambah Sub-Kategori</button>
-                  </div>
-                </div>
-              ))}
-              <button onClick={addCategory} className="w-full py-4 border-2 border-dashed border-gray-300 text-gray-600 bg-gray-50 rounded-xl font-bold flex justify-center items-center gap-2 hover:bg-gray-100 transition-colors"><Plus size={20} /> Buat Kategori Baru</button>
-            </div>
-          </div>
-          )}
-        </div>
-        )}
-      </div>
-      )}
+      <MasterSettingsTab
+        activeTab={activeTab}
+        activeMasterMenu={activeMasterMenu}
+        setActiveMasterMenu={setActiveMasterMenu}
+        apiIpAddress={apiIpAddress}
+        setApiIpAddress={setApiIpAddress}
+        signatures={signatures}
+        setSignatures={setSignatures}
+        categories={categories}
+        moveCategory={moveCategory}
+        updateCategory={updateCategory}
+        deleteCategory={deleteCategory}
+        moveItem={moveItem}
+        updateItemName={updateItemName}
+        deleteItem={deleteItem}
+        addItem={addItem}
+        addCategory={addCategory}
+      />
 
       {/* ============================================================== */}
       {/* 🔴 TAB: PRINT & NCR DOT MATRIX */}
