@@ -251,15 +251,23 @@ transitModal.data.forEach(t => {
 
 ---
 
-## 7. Rencana Pemisahan Modular (*Modular Architecture Plan*)
+## 7. Realisasi Struktur Arsitektur Modular (*Implemented Modular Architecture*)
 
-Untuk menjaga kode tetap aman dan tidak saling mengganggu:
+Seluruh pemisahan modular telah berhasil diimplementasikan tanpa merubah skema data, tanpa kehilangan data, dan teruji 100% build pass:
 
-| No | Modul yang Dipisahkan | File Target | Tanggung Jawab |
+| No | Modul / Komponen | Lokasi File | Peran & Tanggung Jawab |
 |---|---|---|---|
-| 1 | Bot Transit Logic | `src/services/transitBotService.js` | Berisi `smartMappingAI`, `process3aData`, dan fetcher Bot 3A/IWM. |
-| 2 | Transit Modal Component | `src/components/transit/TransitModal.jsx` | UI Ruang Transit 3A & IWM. |
-| 3 | Rekon Bank & Pairing | `src/components/rekon/RekonBankTab.jsx` | UI Rekon Bank, parser CSV, dan modal pemasangan bukti. |
-| 4 | Cetak NCR & STSU | `src/components/print/PrintManager.jsx` | Template cetak A4 dan dot matrix NCR A5. |
-| 5 | Master & Target | `src/components/master/MasterManager.jsx` | Master Kategori, Tanda Tangan, dan Target Pendapatan. |
-| 6 | Form Input Harian | `src/components/input/InputHarianTab.jsx` | Form input STSU & SU/L transaksi harian. |
+| 1 | **Formatters & Utils** | `src/utils/formatters.js` | Helper angka (`formatRp`, `terbilang`), tanggal (`getLocalYMD`, `formatTanggalTtd`), dan key hash sanitizer. |
+| 2 | **Firebase Core Service** | `src/services/firebase.js` | Inisialisasi Firebase app, auth instance, dan firestore instance. |
+| 3 | **Bot Transit Service** | `src/services/transitBotService.js` | Logika `smartMappingAI`, parser data 3A & IWM, normalisasi kata kunci dan deduplikasi rombongan. |
+| 4 | **Transit Modal** | `src/components/transit/TransitModal.jsx` | Modal ruang transit review & checklist sebelum data dimasukkan ke STSU. |
+| 5 | **Action Modals** | `src/components/modals/ActionModals.jsx` | Dialog Konfirmasi Umum, Modal Edit Uraian Dinamis AI, dan Dialog Reset ber-password. |
+| 6 | **Kalender Tab** | `src/components/calendar/KalenderTab.jsx` | Kalender status STSU bulanan, matriks badge SU / SU/L, dan navigasi bulan. |
+| 7 | **Input Harian Tab** | `src/components/input/InputHarianTab.jsx` | Form input STSU Utama & Lain-lain, mode susulan, kartu grup item, serta bottom floating bar aksi. |
+| 8 | **Rekon Bank Tab** | `src/RekonBankTab.jsx` | UI Rekening Koran Bank DKI, pencocokan transaksi (*pairing*), upload CSV/teks, dan link bukti transfer. |
+| 9 | **Master Settings Tab** | `src/components/settings/MasterSettingsTab.jsx` | Master Database Kategori (SU & SU/L), Pejabat Penandatangan NCR, dan Konfigurasi IP Server Bot. |
+| 10 | **Print & NCR Tab** | `src/components/print/PrintPreviewTab.jsx` | Pratinjau cetak PDF A4 dan mode dot matrix NCR Continuous Form A5 dengan elemen yang dapat digeser (`DraggableElement.jsx`). |
+| 11 | **Rekap & Rekon Excel** | `src/components/dashboard/RekapExcelTab.jsx` | Dashboard analitik, generator Excel Master 31 hari, serta Rekon Excel bulanan pejabat. |
+| 12 | **Target Manager** | `src/TargetManager.jsx` | Manajemen target pendapatan tahunan/bulanan dan pembagian target cerdas. |
+| 13 | **App Orchestrator** | `src/App.jsx` | Komponen induk yang mengelola state sinkronisasi Firebase Cloud, router navigasi, dan routing modular. |
+
