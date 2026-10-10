@@ -200,18 +200,128 @@ export default function App() {
   useEffect(() => { safeSetLocalStorage('tmr_v19_allReports', allReports); }, [allReports]);
   useEffect(() => { safeSetLocalStorage('tmr_v19_api_ip', apiIpAddress); }, [apiIpAddress]);
 
-  const prevReportsRef = useRef(allReports);
-  const prevBankRowsRef = useRef(bankRows);
-  const prevSigsRef = useRef(signatures);
-  const prevCatsRef = useRef(categories);
-  const prevTargetsRef = useRef(targets);
+  const CLIENT_ID = useRef('tmr_' + Math.random().toString(36).substring(2, 10)).current;
+  const stateRef = useRef({
+    allReports,
+    bankRows,
+    signatures,
+    categories,
+    targets
+  });
+  stateRef.current = {
+    allReports,
+    bankRows,
+    signatures,
+    categories,
+    targets
+  };
+
   const lastLocalUpdatedRef = useRef('');
   const lastLocalSaveTimeRef = useRef(0);
-  const latestReportsRef = useRef(allReports);
-  const inputSaveTimerRef = useRef(null);
+  const cloudSaveTimerRef = useRef(null);
 
   const getDocRef = () => { return doc(db, 'tmr_data', user ? user.uid : 'demo_rekapitulasi_laporan'); };
 
+  // ==============================================================
+  // 🔴 METODE PENYIMPANAN TERPUSAT & HANDAL (SINGLE AUTHORITATIVE WRITER)
+  // ==============================================================
+  const saveState = async (updates = {}, options = { immediate: false, showToastMessage: null }) => {
+    const current = stateRef.current;
+    const nextReports = updates.allReports !== undefined ? updates.allReports : current.allReports;
+    const nextBankRows = updates.bankRows !== undefined ? updates.bankRows : current.bankRows;
+    const nextSigs = updates.signatures !== undefined ? updates.signatures : current.signatures;
+    const nextCats = updates.categories !== undefined ? updates.categories : current.categories;
+    const nextTargets = updates.targets !== undefined ? updates.targets : current.targets;
+
+    // 1. Sinkronkan stateRef secara instan (0ms)
+    stateRef.current = {
+      allReports: nextReports,
+      bankRows: nextBankRows,
+      signatures: nextSigs,
+      categories: nextCats,
+      targets: nextTargets
+    };
+
+    // 2. Sinkronkan React state
+    if (updates.allReports !== undefined) setAllReports(nextReports);
+    if (updates.bankRows !== undefined) setBankRows(nextBankRows);
+    if (updates.signatures !== undefined) setSignatures(nextSigs);
+    if (updates.categories !== undefined) setCategories(nextCats);
+    if (updates.targets !== undefined) setTargets(nextTargets);
+
+    const nowIso = new Date().toISOString();
+    lastLocalUpdatedRef.current = nowIso;
+    lastLocalSaveTimeRef.current = Date.now();
+
+    // 3. Simpan ke LocalStorage seketika (0ms tahan refresh & offline)
+    if (updates.allReports !== undefined) safeSetLocalStorage('tmr_v19_allReports', nextReports);
+    if (updates.bankRows !== undefined) safeSetLocalStorage('tmr_v19_bankRows', nextBankRows);
+    if (updates.signatures !== undefined) safeSetLocalStorage('tmr_v19_signatures', nextSigs);
+    if (updates.categories !== undefined) safeSetLocalStorage('tmr_v19_categories', nextCats);
+    if (updates.targets !== undefined) safeSetLocalStorage('tmr_v19_targets', nextTargets);
+    safeSetLocalStorage('tmr_v19_lastUpdated', nowIso);
+
+    if (options.showToastMessage) {
+      showToast(options.showToastMessage);
+    }
+
+    if (!user || !db) return;
+
+    // 4. Sinkronkan ke Firestore Cloud
+    const pushToFirestore = async () => {
+      setSyncStatus('syncing');
+      try {
+        const payload = sanitizeForFirestore({
+          signatures: stateRef.current.signatures,
+          categories: stateRef.current.categories,
+          targets: stateRef.current.targets,
+          allReports: stateRef.current.allReports,
+          bankRows: stateRef.current.bankRows,
+          lastWriterId: CLIENT_ID,
+          lastUpdated: nowIso
+        });
+        await setDoc(getDocRef(), payload);
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error("Firestore push error:", err);
+        setSyncStatus('offline');
+      }
+    };
+
+    if (cloudSaveTimerRef.current) {
+      clearTimeout(cloudSaveTimerRef.current);
+      cloudSaveTimerRef.current = null;
+    }
+
+    if (options.immediate) {
+      await pushToFirestore();
+    } else {
+      cloudSaveTimerRef.current = setTimeout(pushToFirestore, 500);
+    }
+  };
+
+  const saveToFirebaseDirectly = (newReports, newBankRows) => {
+    return saveState({
+      ...(newReports !== undefined ? { allReports: newReports } : {}),
+      ...(newBankRows !== undefined ? { bankRows: newBankRows } : {})
+    }, { immediate: true });
+  };
+
+  const handleForceSave = () => {
+    return saveState({}, { immediate: true, showToastMessage: 'Data berhasil disimpan ke Cloud!' });
+  };
+
+  const flushPendingSave = () => {
+    if (cloudSaveTimerRef.current) {
+      clearTimeout(cloudSaveTimerRef.current);
+      cloudSaveTimerRef.current = null;
+      saveState({}, { immediate: true });
+    }
+  };
+
+  // ==============================================================
+  // 🔴 LISTENER REAL-TIME FIRESTORE (DENGAN PROTEKSI CLIENT_ID)
+  // ==============================================================
   useEffect(() => {
     if (!user || !db) return;
     setSyncStatus('syncing');
@@ -227,27 +337,19 @@ export default function App() {
 
         if (docSnap.exists()) {
             const data = docSnap.data();
-            const serverUpdated = data.lastUpdated || '';
 
             if (!isFirst) {
-                // Selama aplikasi berjalan normal:
-                // 1. Abaikan snapshot jika masih ada pending writes (penulisan lokal yang sedang dikirim)
-                const hasPending = docSnap.metadata?.hasPendingWrites;
-                if (hasPending) {
+                // PENGAMAN UTAMA: Jika snapshot ini berasal dari penulisan client/tab ini sendiri,
+                // ABAIKAN SEPENUHNYA! State lokal sudah paling mutakhir dan tidak boleh ditimpa.
+                if (data.lastWriterId === CLIENT_ID) {
                     return;
                 }
-                // 2. Abaikan snapshot jika client ini baru saja melakukan simpan lokal atau mengetik (< 3 detik yang lalu)
-                if (Date.now() - lastLocalSaveTimeRef.current < 3000) {
+                // Abaikan jika client ini baru saja melakukan simpan lokal (< 2.5 detik lalu)
+                if (Date.now() - lastLocalSaveTimeRef.current < 2500) {
                     return;
                 }
-                // 3. Abaikan snapshot jika timestamp server lebih lama atau sama dengan timestamp perubahan lokal
-                if (lastLocalUpdatedRef.current && serverUpdated && serverUpdated <= lastLocalUpdatedRef.current) {
-                    console.log("Ignoring outdated Firestore snapshot (server:", serverUpdated, "<= local:", lastLocalUpdatedRef.current, ")");
-                    return;
-                }
-                // 4. Abaikan snapshot jika user sedang aktif berinteraksi dengan input / textarea
-                if (typeof document !== 'undefined' && document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
-                    console.log("Ignoring Firestore snapshot while user is actively typing in input field");
+                // Abaikan jika masih ada penulisan lokal yang sedang dikirim
+                if (docSnap.metadata?.hasPendingWrites) {
                     return;
                 }
             }
@@ -255,81 +357,40 @@ export default function App() {
             const loadedSigs = data.signatures || {};
             const loadedCats = data.categories || [];
             const loadedTargets = data.targets || {};
-            const loadedReports = data.allReports || {};
+            let loadedReports = data.allReports || {};
             let loadedBankRows = data.bankRows || [];
 
-            // PENGAMAN KRUSIAL: Jika server mengembalikan bankRows kosong, tetapi lokal browser memiliki bankRows (misal user baru upload CSV):
-            // JANGAN TIMPA DENGAN KOSONG! Pertahankan data lokal dan sinkronkan segera ke server.
-            const localBankRows = getInitialState('tmr_v19_bankRows', []);
-            if (loadedBankRows.length === 0 && Array.isArray(localBankRows) && localBankRows.length > 0) {
-                console.log("Preserving local bankRows (count:", localBankRows.length, ") as server has none. Resyncing to cloud...");
-                loadedBankRows = localBankRows;
-                setDoc(getDocRef(), sanitizeForFirestore({
-                    ...data,
-                    bankRows: localBankRows,
-                    lastUpdated: new Date().toISOString()
-                })).catch(err => console.error("Cloud push bankRows error:", err));
-            } else if (Array.isArray(localBankRows) && localBankRows.length > loadedBankRows.length) {
-                // Jika lokal memiliki data yang belum ada di server (misal baru upload CSV sebelum sempat sync):
-                const existingKeys = new Set(loadedBankRows.map(r => `${r.date}_${r.amount}_${r.description}`));
-                const merged = [...loadedBankRows];
-                localBankRows.forEach(r => {
-                    const key = `${r.date}_${r.amount}_${r.description}`;
-                    if (!existingKeys.has(key)) {
-                        existingKeys.add(key);
-                        merged.push(r);
-                    }
-                });
-                if (merged.length > loadedBankRows.length) {
-                    console.log("Merged additional local bankRows into server data (new count:", merged.length, ")");
-                    loadedBankRows = merged;
-                    setDoc(getDocRef(), sanitizeForFirestore({
-                        ...data,
-                        bankRows: merged,
-                        lastUpdated: new Date().toISOString()
-                    })).catch(err => console.error("Cloud push merged bankRows error:", err));
+            if (isFirst) {
+                const localBank = getInitialState('tmr_v19_bankRows', []);
+                if (loadedBankRows.length === 0 && Array.isArray(localBank) && localBank.length > 0) {
+                    loadedBankRows = localBank;
+                }
+                const localRep = getInitialState('tmr_v19_allReports', {});
+                if (Object.keys(loadedReports).length === 0 && Object.keys(localRep).length > 0) {
+                    loadedReports = localRep;
                 }
             }
 
-            // Sinkronkan ke penyimpanan lokal seketika
+            stateRef.current = {
+                allReports: loadedReports,
+                bankRows: loadedBankRows,
+                signatures: loadedSigs,
+                categories: loadedCats,
+                targets: loadedTargets
+            };
+
             safeSetLocalStorage('tmr_v19_allReports', loadedReports);
             safeSetLocalStorage('tmr_v19_bankRows', loadedBankRows);
-            if (serverUpdated) safeSetLocalStorage('tmr_v19_lastUpdated', serverUpdated);
+            safeSetLocalStorage('tmr_v19_signatures', loadedSigs);
+            safeSetLocalStorage('tmr_v19_categories', loadedCats);
+            safeSetLocalStorage('tmr_v19_targets', loadedTargets);
+            if (data.lastUpdated) safeSetLocalStorage('tmr_v19_lastUpdated', data.lastUpdated);
 
-            latestReportsRef.current = loadedReports;
-            prevReportsRef.current = loadedReports;
-            prevBankRowsRef.current = loadedBankRows;
-            prevSigsRef.current = loadedSigs;
-            prevCatsRef.current = loadedCats;
-            prevTargetsRef.current = loadedTargets;
-
-            // Update state HANYA jika data berubah (mencegah infinite loop dengan saveData)
-            setSignatures(prev => {
-                const newStr = JSON.stringify(loadedSigs);
-                return JSON.stringify(prev) === newStr ? prev : loadedSigs;
-            });
-            
-            setCategories(prev => {
-                const newStr = JSON.stringify(loadedCats);
-                return JSON.stringify(prev) === newStr ? prev : loadedCats;
-            });
-            
-            setTargets(prev => {
-                const newStr = JSON.stringify(loadedTargets);
-                return JSON.stringify(prev) === newStr ? prev : loadedTargets;
-            });
-            
-            setAllReports(prev => {
-                const newStr = JSON.stringify(loadedReports);
-                return JSON.stringify(prev) === newStr ? prev : loadedReports;
-            });
-            
-            setBankRows(prev => {
-                const newStr = JSON.stringify(loadedBankRows);
-                return JSON.stringify(prev) === newStr ? prev : loadedBankRows;
-            });
-        } else {
-            console.log("No remote doc found. Cloud connection ready.");
+            setSignatures(loadedSigs);
+            setCategories(loadedCats);
+            setTargets(loadedTargets);
+            setAllReports(loadedReports);
+            setBankRows(loadedBankRows);
         }
         setSyncStatus('synced');
     }, (error) => {
@@ -339,72 +400,9 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  useEffect(() => {
-    if (!user || !db) return;
-    
-    // Cegah sinkronisasi jika tidak ada perubahan sama sekali dari iterasi sebelumnya
-    if (
-      allReports === prevReportsRef.current &&
-      bankRows === prevBankRowsRef.current &&
-      signatures === prevSigsRef.current &&
-      categories === prevCatsRef.current &&
-      targets === prevTargetsRef.current
-    ) {
-        return;
-    }
-
-    setSyncStatus('syncing');
-    const saveData = async () => {
-      try { 
-        const nowIso = new Date().toISOString();
-        lastLocalUpdatedRef.current = nowIso;
-        lastLocalSaveTimeRef.current = Date.now();
-        const currentReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
-          ? latestReportsRef.current
-          : allReports;
-        const currentBank = (prevBankRowsRef.current && prevBankRowsRef.current.length > 0)
-          ? prevBankRowsRef.current
-          : bankRows;
-        const payload = sanitizeForFirestore({ 
-          signatures, 
-          categories, 
-          targets, 
-          allReports: currentReports, 
-          bankRows: currentBank, 
-          lastUpdated: nowIso 
-        });
-
-        // Simpan juga ke localStorage
-        safeSetLocalStorage('tmr_v19_allReports', currentReports);
-        safeSetLocalStorage('tmr_v19_bankRows', currentBank);
-        safeSetLocalStorage('tmr_v19_lastUpdated', nowIso);
-
-        await setDoc(getDocRef(), payload);
-        
-        // Update refs
-        latestReportsRef.current = currentReports;
-        prevReportsRef.current = currentReports;
-        prevBankRowsRef.current = currentBank;
-        prevSigsRef.current = signatures;
-        prevCatsRef.current = categories;
-        prevTargetsRef.current = targets;
-
-        setSyncStatus('synced'); 
-      } catch(e) { 
-        console.error("Save Database Error:", e);
-        setSyncStatus('offline'); 
-      }
-    };
-    
-    const timer = setTimeout(saveData, 250);
-    return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signatures, categories, targets, allReports, bankRows, user]);
-
-  const pullLatestFromCloud = async (showNotification = false) => {
+    const pullLatestFromCloud = async (showNotification = false) => {
     if (!user || !db) return;
 
     // Proteksi: Jangan lakukan penimpaan otomatis jika user baru saja mengedit/menyimpan (< 2 detik lalu)
@@ -430,12 +428,13 @@ export default function App() {
         safeSetLocalStorage('tmr_v19_bankRows', loadedBankRows);
         if (serverUpdated) safeSetLocalStorage('tmr_v19_lastUpdated', serverUpdated);
 
-        latestReportsRef.current = loadedReports;
-        prevReportsRef.current = loadedReports;
-        prevBankRowsRef.current = loadedBankRows;
-        prevSigsRef.current = loadedSigs;
-        prevCatsRef.current = loadedCats;
-        prevTargetsRef.current = loadedTargets;
+                                        stateRef.current = {
+          allReports: loadedReports,
+          bankRows: loadedBankRows,
+          signatures: loadedSigs,
+          categories: loadedCats,
+          targets: loadedTargets
+        };
         lastLocalUpdatedRef.current = serverUpdated;
 
         setSignatures(loadedSigs);
@@ -469,92 +468,6 @@ export default function App() {
     };
   }, [user]);
 
-  const handleForceSave = async () => {
-    if (!user || !db) return;
-    setSyncStatus('syncing');
-    try { 
-      const nowIso = new Date().toISOString();
-      lastLocalUpdatedRef.current = nowIso;
-      lastLocalSaveTimeRef.current = Date.now();
-      const currentReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
-        ? latestReportsRef.current
-        : allReports;
-      const currentBank = (prevBankRowsRef.current && prevBankRowsRef.current.length > 0)
-        ? prevBankRowsRef.current
-        : bankRows;
-      const payload = sanitizeForFirestore({ 
-        signatures, 
-        categories, 
-        targets, 
-        allReports: currentReports, 
-        bankRows: currentBank, 
-        lastUpdated: nowIso 
-      });
-
-      safeSetLocalStorage('tmr_v19_allReports', currentReports);
-      safeSetLocalStorage('tmr_v19_bankRows', currentBank);
-      safeSetLocalStorage('tmr_v19_lastUpdated', nowIso);
-
-      await setDoc(getDocRef(), payload); 
-      
-      latestReportsRef.current = currentReports;
-      prevReportsRef.current = currentReports;
-      prevBankRowsRef.current = currentBank;
-      prevSigsRef.current = signatures;
-      prevCatsRef.current = categories;
-      prevTargetsRef.current = targets;
-      
-      setSyncStatus('synced'); 
-      showToast('Data berhasil disimpan ke Cloud!'); 
-    } catch(e) { 
-      console.error("Force Save Error:", e);
-      setSyncStatus('offline'); 
-      alert("Gagal menyimpan ke Cloud: " + (e.message || e));
-    }
-  };
-
-  const saveToFirebaseDirectly = async (newAllReports, newBankRows) => {
-    const finalReports = newAllReports || (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0 ? latestReportsRef.current : allReports);
-    const finalBankRows = newBankRows || (prevBankRowsRef.current && prevBankRowsRef.current.length > 0 ? prevBankRowsRef.current : bankRows);
-    const nowIso = new Date().toISOString();
-
-    lastLocalUpdatedRef.current = nowIso;
-    lastLocalSaveTimeRef.current = Date.now();
-
-    // 1. SIMPAN SEGERA KE LOCALSTORAGE (0.1ms sinkron - tahan refresh instan)
-    safeSetLocalStorage('tmr_v19_allReports', finalReports);
-    safeSetLocalStorage('tmr_v19_bankRows', finalBankRows);
-    safeSetLocalStorage('tmr_v19_lastUpdated', nowIso);
-
-    // 2. Sinkronkan ref segera secara synchronous untuk mencegah bentrok/debounce timer
-    latestReportsRef.current = finalReports;
-    prevReportsRef.current = finalReports;
-    prevBankRowsRef.current = finalBankRows;
-    prevSigsRef.current = signatures;
-    prevCatsRef.current = categories;
-    prevTargetsRef.current = targets;
-
-    if (!user || !db) return;
-
-    setSyncStatus('syncing');
-    try {
-      const payload = sanitizeForFirestore({ 
-          signatures, 
-          categories, 
-          targets, 
-          allReports: finalReports, 
-          bankRows: finalBankRows, 
-          lastUpdated: nowIso 
-      });
-      await setDoc(getDocRef(), payload);
-      setSyncStatus('synced');
-    } catch (e) {
-      console.error("Instant Save Error:", e);
-      setSyncStatus('offline');
-      alert("Peringatan Cloud: Gagal menyimpan data ke Cloud (" + (e.message || e) + "). Data tetap tersimpan aman di browser.");
-    }
-  };
-
   const showToast = (message) => { setSaveToast({ show: true, message }); setTimeout(() => setSaveToast({ show: false, message: '' }), 3000); };
   const showConfirm = (message, onConfirmAction) => { setConfirmDialog({ isOpen: true, message, onConfirm: onConfirmAction }); };
 
@@ -567,15 +480,9 @@ export default function App() {
   }, [allReports, reportDate]);
 
   const handleAddLainDoc = () => {
-    if (inputSaveTimerRef.current) {
-      clearTimeout(inputSaveTimerRef.current);
-      inputSaveTimerRef.current = null;
-      saveToFirebaseDirectly(latestReportsRef.current || allReports, bankRows);
-    }
+    flushPendingSave();
     const nextIndex = Math.max(...lainDocIndices) + 1; const nextKey = `lain_${nextIndex}`;
-    const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
-      ? latestReportsRef.current
-      : ((prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports);
+    const baseReports = stateRef.current.allReports;
     const dayData = baseReports[reportDate] || {};
     const newReports = {
       ...baseReports,
@@ -584,23 +491,19 @@ export default function App() {
         [nextKey]: { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} }
       }
     };
-    latestReportsRef.current = newReports;
-    setAllReports(newReports);
+        setAllReports(newReports);
     saveToFirebaseDirectly(newReports, bankRows);
     setActiveLainIndex(nextIndex); setSelectedCatToAdd(''); setSelectedItemToAdd(''); setManualNominalToAdd(''); setLainItemDate(''); setLainItemNote('');
   };
 
   const handleRemoveLainDoc = (indexToRemove) => {
     showConfirm(`Hapus Dokumen Ke-${indexToRemove}? Semua data di dalam dokumen ini akan ikut terhapus.`, () => {
-      const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
-        ? latestReportsRef.current
-        : ((prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports);
+      const baseReports = stateRef.current.allReports;
       const dayData = { ...(baseReports[reportDate] || {}) };
       const keyToRemove = indexToRemove === 1 ? 'lain' : `lain_${indexToRemove}`;
       delete dayData[keyToRemove];
       const newReports = { ...baseReports, [reportDate]: dayData };
-      latestReportsRef.current = newReports;
-      setAllReports(newReports);
+            setAllReports(newReports);
       saveToFirebaseDirectly(newReports, bankRows);
       if (activeLainIndex === indexToRemove) setActiveLainIndex(1);
     });
@@ -612,24 +515,16 @@ export default function App() {
   }, [allReports, reportDate, activeTypeKey]);
 
   const updateCurrentReport = (updater) => {
-    setAllReports(prev => {
-      const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
-        ? latestReportsRef.current
-        : ((prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : prev);
-      const dayData = baseReports[reportDate] || {}; const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
-      const updatedTypeData = typeof updater === 'function' ? updater(typeData) : { ...typeData, ...updater };
-      const newReports = { ...baseReports, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
-      latestReportsRef.current = newReports;
-      safeSetLocalStorage('tmr_v19_allReports', newReports);
-      lastLocalSaveTimeRef.current = Date.now();
-      return newReports;
-    });
+    const baseReports = stateRef.current.allReports;
+    const dayData = baseReports[reportDate] || {};
+    const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
+    const updatedTypeData = typeof updater === 'function' ? updater(typeData) : { ...typeData, ...updater };
+    const newReports = { ...baseReports, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
+    saveState({ allReports: newReports }, { immediate: false });
   };
 
   const handleUpdateRekonRow = (dateStr, isSusulan, susulanKeys, field, value) => {
-    const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
-      ? latestReportsRef.current
-      : ((prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports);
+    const baseReports = stateRef.current.allReports;
     const dayData = baseReports[dateStr] || {};
     const typeData = dayData['utama'] || { sequence: '', signatureDate: dateStr, activeItems: [], formData: {} };
     let newReports;
@@ -671,8 +566,7 @@ export default function App() {
         };
     }
     if (newReports) {
-      latestReportsRef.current = newReports;
-      setAllReports(newReports);
+            setAllReports(newReports);
       saveToFirebaseDirectly(newReports, bankRows);
     }
   };
@@ -681,29 +575,17 @@ export default function App() {
   const handleSignatureDateChange = (e) => updateCurrentReport({ signatureDate: e.target.value });
 
   const handleDateChange = (newDateStr) => {
-    if (inputSaveTimerRef.current) {
-      clearTimeout(inputSaveTimerRef.current);
-      inputSaveTimerRef.current = null;
-      saveToFirebaseDirectly(latestReportsRef.current || allReports, bankRows);
-    }
+    flushPendingSave();
     setReportDate(newDateStr); setSelectedCatToAdd(''); setSelectedItemToAdd(''); setManualNominalToAdd(''); setIsAddingSusulan(false); setSusulanValidDate(''); setLainItemDate(''); setLainItemNote(''); setActiveLainIndex(1); setPrintMode('pdf');
   };
 
   const handleTypeSwitch = (type) => {
-    if (inputSaveTimerRef.current) {
-      clearTimeout(inputSaveTimerRef.current);
-      inputSaveTimerRef.current = null;
-      saveToFirebaseDirectly(latestReportsRef.current || allReports, bankRows);
-    }
+    flushPendingSave();
     setActiveType(type); setSelectedCatToAdd(''); setSelectedItemToAdd(''); setManualNominalToAdd(''); setIsAddingSusulan(false); setSusulanValidDate(''); setLainItemDate(''); setLainItemNote(''); setActiveLainIndex(1); setPrintMode('pdf');
   };
 
   const handleTabSwitch = (newTab) => {
-    if (inputSaveTimerRef.current) {
-      clearTimeout(inputSaveTimerRef.current);
-      inputSaveTimerRef.current = null;
-      saveToFirebaseDirectly(latestReportsRef.current || allReports, bankRows);
-    }
+    flushPendingSave();
     setActiveTab(newTab);
     setPrintMode('pdf');
   };
@@ -714,9 +596,7 @@ export default function App() {
     e.preventDefault(); setResetDialog(prev => ({ ...prev, isVerifying: true, error: '' }));
     try {
       await signInWithEmailAndPassword(auth, user.email, resetDialog.password);
-      const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
-        ? latestReportsRef.current
-        : ((prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports);
+      const baseReports = stateRef.current.allReports;
       const dayData = baseReports[reportDate] || {};
       const newReports = {
         ...baseReports,
@@ -725,8 +605,7 @@ export default function App() {
           [activeTypeKey]: { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} }
         }
       };
-      latestReportsRef.current = newReports;
-      setAllReports(newReports);
+            setAllReports(newReports);
       saveToFirebaseDirectly(newReports, bankRows);
       setResetDialog({ isOpen: false, password: '', error: '', isVerifying: false });
     } catch (error) { setResetDialog(prev => ({ ...prev, isVerifying: false, error: 'Password salah! Penghapusan dibatalkan.' })); }
@@ -749,9 +628,7 @@ export default function App() {
     const inputKey = getActiveItemKey(newItem.catId, newItem.itemId, newItem.isSusulan, newItem.validDate, newItem.itemDate, newItem.itemNote);
     const initialNominal = Number(String(manualNominalToAdd).replace(/[^0-9]/g, '')) || 0;
     
-    const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
-      ? latestReportsRef.current
-      : ((prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports);
+    const baseReports = stateRef.current.allReports;
     const dayData = baseReports[reportDate] || {};
     const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
     const currentItems = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
@@ -769,8 +646,7 @@ export default function App() {
           [activeTypeKey]: updatedTypeData
         }
       };
-      latestReportsRef.current = newReports;
-      setAllReports(newReports);
+            setAllReports(newReports);
       saveToFirebaseDirectly(newReports, bankRows);
     }
     
@@ -783,9 +659,7 @@ export default function App() {
   };
 
   const handleRemoveActiveItem = (itemToRemove, providedKey) => {
-    const baseBankRows = (prevBankRowsRef.current && prevBankRowsRef.current.length > 0)
-        ? prevBankRowsRef.current
-        : bankRows;
+    const baseBankRows = stateRef.current.bankRows;
     let newBankRows = baseBankRows;
     
     const rowIdsToPending = [];
@@ -812,9 +686,7 @@ export default function App() {
 
     const keyToRemove = providedKey || getActiveItemKey(itemToRemove.catId, itemToRemove.itemId || itemToRemove.id, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate, itemToRemove.itemNote);
     
-    const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
-        ? latestReportsRef.current
-        : ((prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports);
+    const baseReports = stateRef.current.allReports;
     const dayData = baseReports[reportDate] || {}; 
     const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
     const newActive = (typeData.activeItems || []).filter(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) !== keyToRemove);
@@ -824,8 +696,7 @@ export default function App() {
     const updatedTypeData = { ...typeData, activeItems: newActive, formData: newFormData };
     const newReports = { ...baseReports, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
     
-    latestReportsRef.current = newReports;
-    setAllReports(newReports);
+        setAllReports(newReports);
     saveToFirebaseDirectly(newReports, newBankRows);
     showToast('Item berhasil dihapus!');
   };
@@ -833,14 +704,8 @@ export default function App() {
   const handleInputChange = (inputKey, value) => {
     const rawValue = value.replace(/[^0-9]/g, '');
     const numVal = Number(rawValue) || 0;
-    const nowIso = new Date().toISOString();
     
-    lastLocalUpdatedRef.current = nowIso;
-    lastLocalSaveTimeRef.current = Date.now();
-    
-    const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
-      ? latestReportsRef.current
-      : ((prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports);
+    const baseReports = stateRef.current.allReports;
     const dayData = baseReports[reportDate] || {};
     const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
     const updatedTypeData = {
@@ -858,16 +723,7 @@ export default function App() {
       }
     };
     
-    latestReportsRef.current = newReports;
-    setAllReports(newReports);
-    safeSetLocalStorage('tmr_v19_allReports', newReports);
-    safeSetLocalStorage('tmr_v19_lastUpdated', nowIso);
-
-    // Otomatis simpan ke Cloud Firestore dengan debounce 500ms
-    if (inputSaveTimerRef.current) clearTimeout(inputSaveTimerRef.current);
-    inputSaveTimerRef.current = setTimeout(() => {
-      saveToFirebaseDirectly(latestReportsRef.current || newReports, bankRows);
-    }, 500);
+    saveState({ allReports: newReports }, { immediate: false });
   };
 
   const handleGenerateUraian = async () => {
@@ -887,9 +743,7 @@ export default function App() {
       const oldKey = getActiveItemKey(group.catId, item.itemId || item.id, group.isSusulan, group.validDate, group.itemDate, oldNote);
       const newKey = getActiveItemKey(group.catId, item.itemId || item.id, group.isSusulan, group.validDate, group.itemDate, trimmedNew);
       
-      const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
-        ? latestReportsRef.current
-        : ((prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports);
+      const baseReports = stateRef.current.allReports;
       const dayData = baseReports[reportDate] || {};
       const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
       const newActive = (typeData.activeItems || []).map(i => {
@@ -905,8 +759,7 @@ export default function App() {
           [activeTypeKey]: { ...typeData, activeItems: newActive, formData: newFormData }
         }
       };
-      latestReportsRef.current = newReports;
-      setAllReports(newReports);
+            setAllReports(newReports);
       saveToFirebaseDirectly(newReports, bankRows);
     }
     setEditNoteModal({ isOpen: false, group: null, item: null, newNote: '' });
@@ -976,9 +829,7 @@ export default function App() {
   // 🔴 FUNGSI INJEKSI & AGREGASI PENGGABUNGAN TIKET SAMA
   // ==========================================
   const confirmTransitInjection = () => {
-    const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0)
-      ? latestReportsRef.current
-      : ((prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports);
+    const baseReports = stateRef.current.allReports;
     const newReports = JSON.parse(JSON.stringify(baseReports));
     const dayData = newReports[reportDate] || {}; 
     const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
@@ -1013,8 +864,7 @@ export default function App() {
     typeData.formData = newFormData;
     newReports[reportDate] = { ...dayData, [activeTypeKey]: typeData };
     
-    latestReportsRef.current = newReports;
-    setAllReports(newReports);
+        setAllReports(newReports);
     saveToFirebaseDirectly(newReports, bankRows);
     
     const is3a = transitModal.source === '3a';
@@ -1338,7 +1188,7 @@ export default function App() {
                  safeString={safeString} 
                  categories={categories}
                  onSaveBankRows={async (newBankRows) => {
-                     const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0) ? latestReportsRef.current : allReports;
+                     const baseReports = stateRef.current.allReports;
                      setBankRows(newBankRows);
                      await saveToFirebaseDirectly(baseReports, newBankRows);
                      showToast(`Berhasil menyimpan ${newBankRows.length} data mutasi bank ke Cloud!`);
@@ -1368,7 +1218,7 @@ export default function App() {
                      }).join(', ');
 
                      try {
-                         const baseReports = (latestReportsRef.current && Object.keys(latestReportsRef.current).length > 0) ? latestReportsRef.current : allReports;
+                         const baseReports = stateRef.current.allReports;
                          const newReports = JSON.parse(JSON.stringify(baseReports));
                          
                          allocations.forEach(alloc => {
@@ -1475,7 +1325,7 @@ export default function App() {
                               }
                           });
 
-                          const baseBankRows = (prevBankRowsRef.current && prevBankRowsRef.current.length > 0) ? prevBankRowsRef.current : bankRows;
+                          const baseBankRows = stateRef.current.bankRows;
                           const newBankRows = baseBankRows.map(r => r.id === bankRow.id ? { 
                               ...r, 
                               status: 'matched', 
@@ -1499,7 +1349,7 @@ export default function App() {
                  onLinkRekon={async (bankRow, targetDate, targetType, targetGroupInfo) => {
                      try {
                          // 1. Construct new reports
-                         const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports;
+                         const baseReports = stateRef.current.allReports;
                           const newReports = { ...baseReports };
                          const dayData = { ...(newReports[targetDate] || {}) };
                          const typeData = { ...(dayData[targetType] || { formData: {}, activeItems: [] }) };
@@ -1536,7 +1386,7 @@ export default function App() {
                               }
                           });
 
-                          const baseBankRows = (prevBankRowsRef.current && prevBankRowsRef.current.length > 0) ? prevBankRowsRef.current : bankRows;
+                          const baseBankRows = stateRef.current.bankRows;
                           const newBankRows = baseBankRows.map(r => r.id === bankRow.id ? { 
                               ...r, 
                               status: 'linked', 
@@ -1557,14 +1407,14 @@ export default function App() {
                      }
                  }}
                  onUpdateBankRow={(rowId, updates) => {
-                     const baseBankRows = (prevBankRowsRef.current && prevBankRowsRef.current.length > 0) ? prevBankRowsRef.current : bankRows;
+                     const baseBankRows = stateRef.current.bankRows;
                      const newBankRows = baseBankRows.map(r => r.id === rowId ? { ...r, ...updates } : r);
                      setBankRows(newBankRows);
-                     saveToFirebaseDirectly(latestReportsRef.current || allReports, newBankRows);
+                     saveToFirebaseDirectly(stateRef.current.allReports, newBankRows);
                  }}
                  onUnlinkBankRow={(bankRow) => {
                      try {
-                         const baseReports = (prevReportsRef.current && Object.keys(prevReportsRef.current).length > 0) ? prevReportsRef.current : allReports;
+                         const baseReports = stateRef.current.allReports;
                          const newReports = JSON.parse(JSON.stringify(baseReports));
                          Object.keys(newReports).forEach(date => {
                              Object.keys(newReports[date]).forEach(type => {
@@ -1594,7 +1444,7 @@ export default function App() {
                              });
                          });
 
-                         const baseBankRows = (prevBankRowsRef.current && prevBankRowsRef.current.length > 0) ? prevBankRowsRef.current : bankRows;
+                         const baseBankRows = stateRef.current.bankRows;
                          const newBankRows = baseBankRows.map(r => {
                              if (r.id === bankRow.id) {
                                  const updated = { ...r, status: 'pending' };
@@ -1667,11 +1517,7 @@ export default function App() {
         openEditNote={openEditNote}
         handleInputChange={handleInputChange}
         triggerSaveToFirebase={() => {
-          if (inputSaveTimerRef.current) {
-            clearTimeout(inputSaveTimerRef.current);
-            inputSaveTimerRef.current = null;
-          }
-          saveToFirebaseDirectly(latestReportsRef.current || allReports, bankRows);
+          flushPendingSave();
         }}
         subtotals={subtotals}
         clearCurrentReport={clearCurrentReport}
