@@ -711,36 +711,54 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                                       let dynamicName = row.linkedTo?.groupName;
                                       const matchedDetails = [];
 
-                                      // Jika punya linkedTo lengkap (cara lama)
-                                      if (dynamicName && row.linkedTo?.date) {
-                                          matchedDetails.push({ date: row.linkedTo.date, name: dynamicName, proofUrl: row.linkedTo.proofUrl || row.proofUrl || '' });
-                                      } 
-                                      // Jika dari Input Baru (matched) atau linkedTo kurang lengkap, kita cari di seluruh allReports
-                                      else if (allReports) {
-                                          Object.keys(allReports).forEach(ymd => {
-                                              ['utama', 'lain'].forEach(type => {
-                                                  if (allReports[ymd][type] && allReports[ymd][type].activeItems) {
-                                                      allReports[ymd][type].activeItems.forEach(item => {
-                                                          const isRowMatch = item.bankMatched && (item.bankMatchRowId === row.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(row.id)));
-                                                          if (isRowMatch) {
-                                                              const cat = categories.find(c => c.id === item.catId);
-                                                              const name = cat ? cat.name : item.catId;
-                                                              let itemKey = `${item.catId}_${item.itemId || item.id}`;
-                                                               if (item.itemDate) itemKey += `_date_${item.itemDate}`;
-                                                               if (item.itemNote) {
-                                                                   let h = 0; for(let j=0; j<item.itemNote.length; j++){ h=((h<<5)-h)+item.itemNote.charCodeAt(j); h=h&h; }
-                                                                   itemKey += `_note_${Math.abs(h)}`;
+                                      // 1. Prioritaskan mencari di allReports (sumber data dashboard utama yang paling akurat)
+                                       if (allReports) {
+                                           Object.keys(allReports).forEach(ymd => {
+                                               const dayData = allReports[ymd];
+                                               if (dayData && typeof dayData === 'object') {
+                                                   Object.keys(dayData).forEach(type => {
+                                                       const typeData = dayData[type];
+                                                       if (typeData && Array.isArray(typeData.activeItems)) {
+                                                           typeData.activeItems.forEach(item => {
+                                                               const isRowMatch = item && item.bankMatched && (
+                                                                   item.bankMatchRowId === row.id || 
+                                                                   (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(row.id))
+                                                               );
+                                                               if (isRowMatch) {
+                                                                   const cat = categories.find(c => c.id === item.catId);
+                                                                   let name = cat ? cat.name : item.catId;
+                                                                   if (cat && Array.isArray(cat.items) && cat.items.length > 0 && item.itemId && item.itemId !== 'direct') {
+                                                                       const subItem = cat.items.find(i => i.id === item.itemId);
+                                                                       if (subItem) name = `${name} - ${subItem.name}`;
+                                                                   }
+                                                                   let itemKey = `${item.catId}_${item.itemId || item.id}`;
+                                                                   if (item.isSusulan) itemKey += `_susulan_${item.validDate}`;
+                                                                   if (item.itemDate) itemKey += `_date_${item.itemDate}`;
+                                                                   if (item.itemNote) {
+                                                                       let h = 0; for(let j=0; j<item.itemNote.length; j++){ h=((h<<5)-h)+item.itemNote.charCodeAt(j); h=h&h; }
+                                                                       itemKey += `_note_${Math.abs(h)}`;
+                                                                   }
+                                                                   const nominal = typeData.formData?.[itemKey];
+                                                                   if (nominal) {
+                                                                       name = `${name} (Rp ${formatRp(nominal)})`;
+                                                                   }
+                                                                   const proofUrl = item.proofUrl || typeData.formData?.[itemKey + '_buktiUrl'] || row.proofUrl || '';
+                                                                   const targetDate = item.validDate || item.itemDate || ymd;
+                                                                   matchedDetails.push({ date: targetDate, name, proofUrl });
                                                                }
-                                                               const proofUrl = item.proofUrl || allReports[ymd][type].formData?.[itemKey + '_buktiUrl'] || row.proofUrl || '';
-                                                               matchedDetails.push({ date: item.itemDate || ymd, name, proofUrl });
-                                                          }
-                                                      });
-                                                  }
-                                              });
-                                          });
-                                      }
-                                      
-                                      // Dedup array if multiple splits go to same category on same date
+                                                           });
+                                                       }
+                                                   });
+                                               }
+                                           });
+                                       }
+
+                                       // 2. Jika tidak ditemukan di allReports, gunakan linkedTo (fallback)
+                                       if (matchedDetails.length === 0 && dynamicName && row.linkedTo?.date) {
+                                           matchedDetails.push({ date: row.linkedTo.date, name: dynamicName, proofUrl: row.linkedTo.proofUrl || row.proofUrl || '' });
+                                       }
+
+                                       // Dedup array if multiple splits go to same category on same date
                                       const uniqueDetails = [];
                                       const seen = new Set();
                                       matchedDetails.forEach(d => {

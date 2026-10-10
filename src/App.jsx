@@ -1207,6 +1207,9 @@ export default function App() {
                          }
                      } catch(e) {}
 
+                     const distinctTargetDates = [...new Set(allocations.map(a => a.targetDate || ymd).filter(Boolean))];
+                     const primaryTargetDate = distinctTargetDates[0] || ymd;
+
                      // Compute target summary for bankRows
                      let targetSummary = allocations.map(a => {
                          let n = '';
@@ -1330,7 +1333,7 @@ export default function App() {
                               ...r, 
                               status: 'matched', 
                               matchedTo: targetSummary,
-                              linkedTo: { date: ymd, groupName: targetSummary, proofUrl: matchedProofUrl || r.proofUrl || '' },
+                              linkedTo: { date: primaryTargetDate, dates: distinctTargetDates, groupName: targetSummary, proofUrl: matchedProofUrl || r.proofUrl || '' },
                               proofUrl: matchedProofUrl || r.proofUrl || '',
                               apiRefId: matchedApiRefIds[0] || r.apiRefId || '',
                               apiRefIds: matchedApiRefIds.length > 0 ? matchedApiRefIds : (r.apiRefIds || [])
