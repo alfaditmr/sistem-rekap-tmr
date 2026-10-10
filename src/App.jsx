@@ -4,94 +4,31 @@ import RekonBankTab from './RekonBankTab';
 import TargetManager from './TargetManager';
 import TransitModal from './components/transit/TransitModal';
 import { smartMappingAI, fetchBot3aData, fetchBotIwmData } from './services/transitBotService';
-
-// --- IMPORT FIREBASE ---
-import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously } from "firebase/auth";
-import { getFirestore, doc, setDoc, updateDoc, getDoc, onSnapshot } from "firebase/firestore";
-
-// ==========================================
-// 🔴 KONFIGURASI DATABASE FIREBASE USER
-// ==========================================
-const myFirebaseConfig = {
-  apiKey: "AIzaSyB_PtIg3kNwwpa62bIeFmBiDkn-KRxm5es",
-  authDomain: "rekap-stsu.firebaseapp.com",
-  projectId: "rekap-stsu",
-  storageBucket: "rekap-stsu.firebasestorage.app",
-  messagingSenderId: "811185738366",
-  appId: "1:811185738366:web:2db209f6eab966bccd7e2f"
-};
-
-const finalConfig = myFirebaseConfig;
-
-let app, auth, db;
-try {
-  app = initializeApp(finalConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-} catch (e) {
-  console.error("Firebase init error", e);
-}
-
-// --- FUNGSI PENGAMAN TEKS ---
-const safeString = (val) => {
-  if (val === null || val === undefined) return "";
-  if (typeof val === 'object') {
-    try { return JSON.stringify(val); } catch(e) { return ""; }
-  }
-  return String(val);
-};
-
-// --- FUNGSI SANITASI FIRESTORE (CEGAH ERROR UNDEFINED) ---
-const sanitizeForFirestore = (data) => {
-  if (data === undefined) return null;
-  return JSON.parse(JSON.stringify(data, (key, value) => {
-    if (value === undefined) return null;
-    return value;
-  }));
-};
-
-// --- FUNGSI FORMATTING ---
-function terbilang(angka, depth = 0) {
-  if (depth > 20) return ""; 
-  const num = Number(angka);
-  if (isNaN(num) || !isFinite(num)) return ""; 
-  
-  let val = Math.floor(Math.abs(num));
-  if (val === 0) return "nol";
-  
-  const huruf = ["", "satu", "dua", "tiga", "empat", "lima", "enam", "tujuh", "delapan", "sembilan", "sepuluh", "sebelas"];
-  let divide = 0; let word = "";
-  
-  if (val < 12) return huruf[val];
-  else if (val < 20) return terbilang(val - 10, depth + 1) + " belas";
-  else if (val < 100) { divide = Math.floor(val / 10); word = huruf[divide] + " puluh"; let rem = val % 10; return rem > 0 ? word + " " + terbilang(rem, depth + 1) : word; }
-  else if (val < 200) { let rem = val - 100; return rem > 0 ? "seratus " + terbilang(rem, depth + 1) : "seratus"; }
-  else if (val < 1000) { divide = Math.floor(val / 100); word = huruf[divide] + " ratus"; let rem = val % 100; return rem > 0 ? word + " " + terbilang(rem, depth + 1) : word; }
-  else if (val < 2000) { let rem = val - 1000; return rem > 0 ? "seribu " + terbilang(rem, depth + 1) : "seribu"; }
-  else if (val < 1000000) { divide = Math.floor(val / 1000); word = terbilang(divide, depth + 1) + " ribu"; let rem = val % 1000; return rem > 0 ? word + " " + terbilang(rem, depth + 1) : word; }
-  else if (val < 1000000000) { divide = Math.floor(val / 1000000); word = terbilang(divide, depth + 1) + " juta"; let rem = val % 1000000; return rem > 0 ? word + " " + terbilang(rem, depth + 1) : word; }
-  else if (val < 1000000000000) { divide = Math.floor(val / 1000000000); word = terbilang(divide, depth + 1) + " miliar"; let rem = val % 1000000000; return rem > 0 ? word + " " + terbilang(rem, depth + 1) : word; }
-  else if (val < 1000000000000000) { divide = Math.floor(val / 1000000000000); word = terbilang(divide, depth + 1) + " triliun"; let rem = val % 1000000000000; return rem > 0 ? word + " " + terbilang(rem, depth + 1) : word; }
-  return "";
-}
-
-const formatRp = (angka) => {
-  const num = Number(angka);
-  if (isNaN(num) || num === 0) return "0";
-  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-};
-
-const getLocalYMD = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
-const getDayName = (dateStr) => {
-  if (!dateStr) return "";
-  const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-  return days[new Date(dateStr).getDay()];
-};
+import {
+  auth,
+  db,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  doc,
+  setDoc,
+  updateDoc,
+  getDoc,
+  onSnapshot
+} from './services/firebase';
+import {
+  safeString,
+  sanitizeForFirestore,
+  terbilang,
+  formatRp,
+  getLocalYMD,
+  getDayName,
+  formatTanggalCetak,
+  formatTanggalTtd,
+  formatTanggalPopUp,
+  getActiveItemKey,
+  formatDetailsTooltip
+} from './utils/formatters';
 
 // ==========================================
 // 🔴 KOMPONEN DRAGGABLE UNTUK MODE CETAK NCR
@@ -851,14 +788,6 @@ export default function App() {
     if (cat && Array.isArray(cat.items) && cat.items.length === 0) setSelectedItemToAdd('direct'); else setSelectedItemToAdd('');
   };
 
-  const getActiveItemKey = (catId, itemId, isSus, validDate, itemDate, itemNote) => {
-    let key = `${catId}_${itemId}`;
-    if (isSus) key += `_susulan_${validDate}`;
-    if (itemDate) key += `_date_${itemDate}`;
-    if (itemNote) { let hash = 0; for (let i = 0; i < itemNote.length; i++) { hash = ((hash << 5) - hash) + itemNote.charCodeAt(i); hash = hash & hash; } key += `_note_${Math.abs(hash)}`; }
-    return key;
-  };
-
   const handleAddActiveItem = () => {
     if (!selectedCatToAdd || !selectedItemToAdd) return;
     const newItem = { catId: selectedCatToAdd, itemId: selectedItemToAdd };
@@ -1399,15 +1328,6 @@ export default function App() {
     return { columnStructure, reportRows: finalRows, grandTotalPerDay };
   };
 
-  const formatDetailsTooltip = (total, detailsObj) => {
-    if (total === 0) return "Tidak ada transaksi";
-    let str = `Total Digabungkan: Rp ${formatRp(total)}\n\nRincian Sumber:\n`;
-    Object.entries(detailsObj).forEach(([source, amount]) => {
-      str += `▸ ${source}: Rp ${formatRp(amount)}\n`;
-    });
-    return str.trim();
-  };
-
   const handleDownloadExcel = () => {
     const { columnStructure, reportRows, grandTotalPerDay } = generateExcelData();
 
@@ -1734,11 +1654,6 @@ export default function App() {
     link.click();
     document.body.removeChild(link);
   };
-
-
-  const formatTanggalCetak = (dateStr) => { if(!dateStr) return ""; return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).replace(',', ', tanggal'); };
-  const formatTanggalTtd = (dateStr) => { if(!dateStr) return ""; return new Date(dateStr).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: '2-digit' }); };
-  const formatTanggalPopUp = (dateStr) => { if(!dateStr) return ""; return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }); };
 
   if (!authReady) return <div className="min-h-screen flex items-center justify-center bg-gray-100 text-gray-500 font-bold">Memuat Sistem Keamanan...</div>;
   if (!user) {
