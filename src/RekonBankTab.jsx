@@ -544,14 +544,14 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                                onClick={() => setApiFilterStatus('unmatched')}
                                className={'text-[11px] px-2.5 py-0.5 rounded-full font-bold transition-all flex items-center gap-1 ' + (apiFilterStatus === 'unmatched' ? 'bg-amber-600 text-white shadow-xs' : 'bg-white text-amber-700 hover:bg-amber-50 border border-amber-200')}
                            >
-                               <AlertCircle size={10}/> Belum Disandingkan ({apiData.length - matchedApiCount})
+                               <AlertCircle size={10}/> Belum Dipasangkan ({apiData.length - matchedApiCount})
                            </button>
                            <button 
                                type="button"
                                onClick={() => setApiFilterStatus('matched')}
                                className={'text-[11px] px-2.5 py-0.5 rounded-full font-bold transition-all flex items-center gap-1 ' + (apiFilterStatus === 'matched' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white text-emerald-700 hover:bg-emerald-50 border border-emerald-200')}
                            >
-                               <CheckCircle size={10}/> Sudah Disandingkan ({matchedApiCount})
+                               <CheckCircle size={10}/> Sudah Dipasangkan ({matchedApiCount})
                            </button>
                        </div>
                    </div>
@@ -586,10 +586,10 @@ export default function RekonBankTab({ bankRows, setBankRows, formatRp, safeStri
                                        </span>
                                        
                                        {isMatched ? (
-                                           <span className="text-[10px] font-black px-2 py-0.5 rounded-full border bg-emerald-600 text-white border-emerald-700 flex items-center gap-1 shadow-2xs"><CheckCircle size={10} className="text-emerald-100 fill-emerald-700"/> Sudah Disandingkan</span>
+                                           <span className="text-[10px] font-black px-2 py-0.5 rounded-full border bg-emerald-600 text-white border-emerald-700 flex items-center gap-1 shadow-2xs"><CheckCircle size={10} className="text-emerald-100 fill-emerald-700"/> Sudah Dipasangkan</span>
                                        ) : (
                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-1">
-                                               <AlertCircle size={10} className="text-amber-500"/> Belum
+                                               <AlertCircle size={10} className="text-amber-500"/> Belum Dipasangkan
                                            </span>
                                        )}
                                    </div>
