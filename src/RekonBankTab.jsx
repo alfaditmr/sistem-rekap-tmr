@@ -367,6 +367,8 @@ export default function RekonBankTab({
   const [splitModal, setSplitModal] = useState({ isOpen: false, bankRow: null, allocations: [] });
   const [linkModal, setLinkModal] = useState({ isOpen: false, bankRow: null });
   const [linkModalFilterDate, setLinkModalFilterDate] = useState('Semua');
+  const [linkModalCalendarMonth, setLinkModalCalendarMonth] = useState(() => new Date());
+  const [isLinkCalendarCollapsed, setIsLinkCalendarCollapsed] = useState(false);
 
   const fetchApiFasilitas = async () => {
     if (!apiDate) {
@@ -624,7 +626,117 @@ export default function RekonBankTab({
     return groups.sort((a,b) => new Date(b.date) - new Date(a.date));
   }, [allReports, categories]);
 
+  // Data tanggal H-0, H-1, H-2 untuk modal link
+  const linkBankDates = useMemo(() => {
+    if (!linkModal.bankRow) return { h0: '', h1: '', h2: '' };
+    const rowYmd = parseYmd(linkModal.bankRow.date);
+    if (!rowYmd) return { h0: '', h1: '', h2: '' };
+    const parts = rowYmd.split('-');
+    if (parts.length !== 3) return { h0: '', h1: '', h2: '' };
+    
+    const d0 = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    const d1 = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    d1.setDate(d1.getDate() - 1);
+    const d2 = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    d2.setDate(d2.getDate() - 2);
+
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return {
+      h0: fmt(d0),
+      h1: fmt(d1),
+      h2: fmt(d2)
+    };
+  }, [linkModal.bankRow]);
+
+  // Kalender matriks bulan aktif di linkModal
+  const linkModalCalendar = useMemo(() => {
+    const year = linkModalCalendarMonth.getFullYear();
+    const month = linkModalCalendarMonth.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDayIndex = new Date(year, month, 1).getDay(); // 0 = Minggu
+    const blanks = Array.from({ length: firstDayIndex }, (_, i) => i);
+    
+    // Index unlinkedItems berdasarkan tanggal
+    const itemsByDate = {};
+    unlinkedItems.forEach(item => {
+      if (!itemsByDate[item.date]) {
+        itemsByDate[item.date] = { count: 0, nominal: 0, items: [] };
+      }
+      itemsByDate[item.date].count += 1;
+      itemsByDate[item.date].nominal += (Number(item.nominal) || 0);
+      itemsByDate[item.date].items.push(item);
+    });
+
+    const days = Array.from({ length: daysInMonth }, (_, i) => {
+      const dNum = i + 1;
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
+      const data = itemsByDate[dateStr] || null;
+      return {
+        day: dNum,
+        dateStr,
+        hasData: !!data,
+        count: data ? data.count : 0,
+        nominal: data ? data.nominal : 0,
+        isH1: dateStr === linkBankDates.h1,
+        isH2: dateStr === linkBankDates.h2,
+        isH0: dateStr === linkBankDates.h0
+      };
+    });
+
+    return { blanks, days, itemsByDate, year, month };
+  }, [linkModalCalendarMonth, unlinkedItems, linkBankDates]);
+
+  const prevLinkMonth = () => {
+    setLinkModalCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+  const nextLinkMonth = () => {
+    setLinkModalCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+  const jumpToBankMonth = () => {
+    if (linkModal.bankRow) {
+      const rowYmd = parseYmd(linkModal.bankRow.date);
+      if (rowYmd) {
+        const parts = rowYmd.split('-');
+        if (parts.length === 3) {
+          setLinkModalCalendarMonth(new Date(Number(parts[0]), Number(parts[1]) - 1, 1));
+        }
+      }
+    }
+  };
+
   const openLinkModal = (row) => {
+    const rowYmd = parseYmd(row.date);
+    let initialFilterDate = 'Semua';
+    let targetMonth = new Date();
+
+    if (rowYmd) {
+      const parts = rowYmd.split('-');
+      if (parts.length === 3) {
+        targetMonth = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+      }
+      
+      // Hitung H-1 (1 hari sebelum mutasi)
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      d.setDate(d.getDate() - 1);
+      const h1 = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      
+      // Jika ada data di H-1, langsung arahkan ke H-1
+      const hasH1 = unlinkedItems.some(item => item.date === h1);
+      if (hasH1) {
+        initialFilterDate = h1;
+      } else {
+        const hasSameDay = unlinkedItems.some(item => item.date === rowYmd);
+        if (hasSameDay) {
+          initialFilterDate = rowYmd;
+        } else {
+          initialFilterDate = 'Semua';
+        }
+      }
+    }
+    
+    setLinkModalCalendarMonth(targetMonth);
+    setLinkModalFilterDate(initialFilterDate);
+    setIsLinkCalendarCollapsed(false);
     setLinkModal({ isOpen: true, bankRow: row });
   };
 
@@ -1398,20 +1510,200 @@ export default function RekonBankTab({
             </div>
             
             <div className="p-6 overflow-y-auto bg-gray-50 flex-1">
-              <div className="mb-4 flex justify-between items-center bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
-                <div className="text-sm text-gray-600 font-medium">
-                  Pilih item pendapatan dari Dashboard yang ingin dipasangkan (H-1 / H-2):
+              {/* ============================================================== */}
+              {/* 🔴 TAMPILAN PEMILIH TANGGAL BERBENTUK KALENDER INTERAKTIF */}
+              {/* ============================================================== */}
+              <div className="mb-5 bg-white rounded-2xl border border-indigo-100 shadow-xs overflow-hidden">
+                {/* Header Kontrol Pemilih Tanggal */}
+                <div className="p-3.5 bg-gradient-to-r from-slate-50 to-indigo-50/60 border-b border-indigo-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="text-xs font-bold uppercase tracking-wider text-indigo-700 flex items-center gap-1.5">
+                      <Calendar size={15} /> Tanggal Dipilih:
+                    </div>
+                    <span className="text-xs font-black px-2.5 py-1 rounded-lg bg-indigo-600 text-white shadow-2xs">
+                      {linkModalFilterDate === 'Semua' 
+                        ? `Semua Tanggal (${unlinkedItems.length} item)` 
+                        : formatDateIndo(linkModalFilterDate)}
+                    </span>
+                  </div>
+
+                  {/* Tombol Cepat (Presets) & Toggle Lipat Kalender */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setLinkModalFilterDate('Semua')}
+                      className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-all ${
+                        linkModalFilterDate === 'Semua'
+                          ? 'bg-indigo-700 text-white shadow-2xs'
+                          : 'bg-white text-gray-600 hover:bg-indigo-50 border border-gray-200'
+                      }`}
+                    >
+                      Semua Tanggal
+                    </button>
+
+                    {linkBankDates.h1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLinkModalFilterDate(linkBankDates.h1);
+                          const parts = linkBankDates.h1.split('-');
+                          if (parts.length === 3) setLinkModalCalendarMonth(new Date(Number(parts[0]), Number(parts[1]) - 1, 1));
+                        }}
+                        className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 ${
+                          linkModalFilterDate === linkBankDates.h1
+                            ? 'bg-blue-600 text-white shadow-2xs'
+                            : 'bg-white text-blue-700 hover:bg-blue-50 border border-blue-200'
+                        }`}
+                        title="Pilih transaksi pendapatan H-1 sebelum uang masuk"
+                      >
+                        <span className="bg-blue-100 text-blue-800 text-[10px] px-1 rounded font-black">H-1</span>
+                        {linkBankDates.h1}
+                        {linkModalCalendar.itemsByDate[linkBankDates.h1] && (
+                          <span className="text-[10px] bg-blue-200 text-blue-900 px-1 rounded-full font-black">
+                            {linkModalCalendar.itemsByDate[linkBankDates.h1].count}
+                          </span>
+                        )}
+                      </button>
+                    )}
+
+                    {linkBankDates.h2 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLinkModalFilterDate(linkBankDates.h2);
+                          const parts = linkBankDates.h2.split('-');
+                          if (parts.length === 3) setLinkModalCalendarMonth(new Date(Number(parts[0]), Number(parts[1]) - 1, 1));
+                        }}
+                        className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 ${
+                          linkModalFilterDate === linkBankDates.h2
+                            ? 'bg-purple-600 text-white shadow-2xs'
+                            : 'bg-white text-purple-700 hover:bg-purple-50 border border-purple-200'
+                        }`}
+                        title="Pilih transaksi pendapatan H-2 sebelum uang masuk"
+                      >
+                        <span className="bg-purple-100 text-purple-800 text-[10px] px-1 rounded font-black">H-2</span>
+                        {linkBankDates.h2}
+                        {linkModalCalendar.itemsByDate[linkBankDates.h2] && (
+                          <span className="text-[10px] bg-purple-200 text-purple-900 px-1 rounded-full font-black">
+                            {linkModalCalendar.itemsByDate[linkBankDates.h2].count}
+                          </span>
+                        )}
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setIsLinkCalendarCollapsed(prev => !prev)}
+                      className="text-xs text-indigo-700 hover:text-indigo-900 bg-white hover:bg-indigo-50 border border-indigo-200 px-2 py-1 rounded-lg font-bold flex items-center gap-1 transition-colors ml-1"
+                    >
+                      {isLinkCalendarCollapsed ? "📅 Buka Kalender" : "▲ Lipat"}
+                    </button>
+                  </div>
                 </div>
-                <select 
-                  value={linkModalFilterDate} 
-                  onChange={(e) => setLinkModalFilterDate(e.target.value)}
-                  className="text-sm font-bold bg-indigo-50 text-indigo-700 border-none rounded-lg px-3 py-2 outline-none cursor-pointer"
-                >
-                  <option value="Semua">Semua Tanggal Dashboard</option>
-                  {uniqueDashboardDates.map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
+
+                {/* Badan Kalender Bulanan */}
+                {!isLinkCalendarCollapsed && (
+                  <div className="p-3 sm:p-4 bg-white">
+                    {/* Navigasi Bulan */}
+                    <div className="flex justify-between items-center mb-2.5 pb-2 border-b border-gray-100">
+                      <div className="flex items-center gap-1.5 sm:gap-2">
+                        <button 
+                          type="button" 
+                          onClick={prevLinkMonth} 
+                          className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-700 transition-colors shadow-2xs"
+                          title="Bulan Sebelumnya"
+                        >
+                          <ChevronLeft size={16}/>
+                        </button>
+                        <span className="text-xs sm:text-sm font-black text-gray-800 uppercase tracking-wide min-w-[140px] text-center">
+                          {linkModalCalendarMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+                        </span>
+                        <button 
+                          type="button" 
+                          onClick={nextLinkMonth} 
+                          className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-700 transition-colors shadow-2xs"
+                          title="Bulan Berikutnya"
+                        >
+                          <ChevronRight size={16}/>
+                        </button>
+                        <button 
+                          type="button" 
+                          onClick={jumpToBankMonth} 
+                          className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-200 ml-1 transition-colors"
+                        >
+                          Bulan Mutasi
+                        </button>
+                      </div>
+
+                      <div className="text-[11px] text-gray-400 font-medium hidden sm:flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 text-indigo-700 font-bold">
+                          <span className="w-2 h-2 rounded-full bg-indigo-500"></span> Ada Pendapatan
+                        </span>
+                        <span>• Klik tanggal untuk melihat item</span>
+                      </div>
+                    </div>
+
+                    {/* Nama Hari */}
+                    <div className="grid grid-cols-7 gap-1 mb-1 text-center select-none">
+                      {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map((d, i) => (
+                        <div key={d} className={`text-[10px] font-black uppercase py-0.5 ${i === 0 ? 'text-rose-500' : 'text-gray-400'}`}>
+                          {d}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Sel Hari Kalender */}
+                    <div className="grid grid-cols-7 gap-1 select-none">
+                      {linkModalCalendar.blanks.map(b => (
+                        <div key={`blank-${b}`} className="h-10 sm:h-12 bg-gray-50/40 rounded-lg"></div>
+                      ))}
+
+                      {linkModalCalendar.days.map(d => {
+                        const isSelected = linkModalFilterDate === d.dateStr;
+                        return (
+                          <button
+                            type="button"
+                            key={d.dateStr}
+                            onClick={() => setLinkModalFilterDate(d.dateStr)}
+                            className={`h-10 sm:h-12 p-1 rounded-lg border transition-all flex flex-col justify-between items-center text-left ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white border-indigo-700 shadow-md ring-2 ring-indigo-400 z-10'
+                                : d.hasData
+                                  ? 'bg-indigo-50/80 border-indigo-300 hover:bg-indigo-100 hover:border-indigo-500 text-indigo-950 font-bold shadow-2xs'
+                                  : 'bg-white border-gray-100 text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+                            }`}
+                            title={d.hasData ? `${d.dateStr}: ${d.count} item (Rp ${formatRp(d.nominal)})` : d.dateStr}
+                          >
+                            <div className="flex items-center justify-between w-full px-0.5">
+                              <span className={`text-[11px] sm:text-xs font-black ${isSelected ? 'text-white' : d.hasData ? 'text-indigo-900' : 'text-gray-600'}`}>
+                                {d.day}
+                              </span>
+                              {d.isH1 && !isSelected && (
+                                <span className="text-[8px] bg-blue-100 text-blue-800 font-extrabold px-1 rounded">H-1</span>
+                              )}
+                              {d.isH2 && !isSelected && (
+                                <span className="text-[8px] bg-purple-100 text-purple-800 font-extrabold px-1 rounded">H-2</span>
+                              )}
+                            </div>
+
+                            {d.hasData ? (
+                              <div className="w-full flex items-center justify-between gap-0.5">
+                                <span className={`text-[9px] font-black px-1 rounded ${isSelected ? 'bg-indigo-800 text-indigo-100' : 'bg-indigo-200/90 text-indigo-900'}`}>
+                                  {d.count} item
+                                </span>
+                                <span className={`text-[8px] font-bold truncate hidden sm:inline ${isSelected ? 'text-indigo-100' : 'text-indigo-700'}`}>
+                                  {formatCompactRp(d.nominal)}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="text-[8px] text-gray-300">-</div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
               
               {unlinkedItems.filter(item => linkModalFilterDate === 'Semua' || item.date === linkModalFilterDate).length === 0 ? (
