@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Papa from 'papaparse';
 import { 
   Upload, RefreshCw, Link as LinkIcon, CheckCircle, AlertCircle, Plus, Trash, Database, 
-  Filter, Trash2, Edit, RotateCcw, Zap, Sparkles, Calendar, ChevronLeft, ChevronRight, ListFilter 
+  Filter, Trash2, Edit, RotateCcw, Zap, Sparkles, Calendar, ChevronLeft, ChevronRight, ListFilter, Check 
 } from 'lucide-react';
 import MultiDateCalendar from './MultiDateCalendar';
 
@@ -671,12 +671,15 @@ export default function RekonBankTab({
       const dNum = i + 1;
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
       const data = itemsByDate[dateStr] || null;
+      const bankAmount = Number(linkModal.bankRow?.amount || 0);
+      const hasExactMatch = data ? data.items.some(it => Number(it.nominal || 0) === bankAmount) : false;
       return {
         day: dNum,
         dateStr,
         hasData: !!data,
         count: data ? data.count : 0,
         nominal: data ? data.nominal : 0,
+        hasExactMatch,
         isH1: dateStr === linkBankDates.h1,
         isH2: dateStr === linkBankDates.h2,
         isH0: dateStr === linkBankDates.h0
@@ -684,7 +687,7 @@ export default function RekonBankTab({
     });
 
     return { blanks, days, itemsByDate, year, month };
-  }, [linkModalCalendarMonth, unlinkedItems, linkBankDates]);
+  }, [linkModalCalendarMonth, unlinkedItems, linkBankDates, linkModal.bankRow]);
 
   const prevLinkMonth = () => {
     setLinkModalCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
@@ -704,10 +707,23 @@ export default function RekonBankTab({
     }
   };
 
+  // Daftar item kandidat yang disortir (yang nominalnya cocok diutamakan paling atas)
+  const candidateItems = useMemo(() => {
+    const list = unlinkedItems.filter(item => linkModalFilterDate === 'Semua' || item.date === linkModalFilterDate);
+    const bankAmount = Number(linkModal.bankRow?.amount || 0);
+    return [...list].sort((a, b) => {
+      const aMatch = Number(a.nominal || 0) === bankAmount ? 1 : 0;
+      const bMatch = Number(b.nominal || 0) === bankAmount ? 1 : 0;
+      if (aMatch !== bMatch) return bMatch - aMatch;
+      return Number(b.nominal || 0) - Number(a.nominal || 0);
+    });
+  }, [unlinkedItems, linkModalFilterDate, linkModal.bankRow]);
+
   const openLinkModal = (row) => {
     const rowYmd = parseYmd(row.date);
     let initialFilterDate = 'Semua';
     let targetMonth = new Date();
+    const bankAmount = Number(row?.amount || 0);
 
     if (rowYmd) {
       const parts = rowYmd.split('-');
@@ -720,16 +736,30 @@ export default function RekonBankTab({
       d.setDate(d.getDate() - 1);
       const h1 = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       
-      // Jika ada data di H-1, langsung arahkan ke H-1
-      const hasH1 = unlinkedItems.some(item => item.date === h1);
-      if (hasH1) {
+      // Prioritas 1: Cari tanggal yang memiliki item dengan nominal cocok persis di H-1
+      const matchInH1 = unlinkedItems.find(item => item.date === h1 && Number(item.nominal || 0) === bankAmount);
+      // Prioritas 2: Cari tanggal yang memiliki item dengan nominal cocok persis di tanggal manapun
+      const matchAnywhere = unlinkedItems.find(item => Number(item.nominal || 0) === bankAmount);
+
+      if (matchInH1) {
         initialFilterDate = h1;
+      } else if (matchAnywhere) {
+        initialFilterDate = matchAnywhere.date;
+        const mParts = matchAnywhere.date.split('-');
+        if (mParts.length === 3) {
+          targetMonth = new Date(Number(mParts[0]), Number(mParts[1]) - 1, 1);
+        }
       } else {
-        const hasSameDay = unlinkedItems.some(item => item.date === rowYmd);
-        if (hasSameDay) {
-          initialFilterDate = rowYmd;
+        const hasH1 = unlinkedItems.some(item => item.date === h1);
+        if (hasH1) {
+          initialFilterDate = h1;
         } else {
-          initialFilterDate = 'Semua';
+          const hasSameDay = unlinkedItems.some(item => item.date === rowYmd);
+          if (hasSameDay) {
+            initialFilterDate = rowYmd;
+          } else {
+            initialFilterDate = 'Semua';
+          }
         }
       }
     }
@@ -741,7 +771,17 @@ export default function RekonBankTab({
   };
 
   const handleLink = (targetGroupInfo) => {
-    if (onLinkRekon && linkModal.bankRow) {
+    if (!linkModal.bankRow) return;
+    const bankAmount = Number(linkModal.bankRow.amount || 0);
+    const itemAmount = Number(targetGroupInfo?.nominal || 0);
+
+    // Validasi ketat: Nominal mutasi HARUS sama persis dengan nominal dashboard
+    if (bankAmount !== itemAmount) {
+      alert(`Pemasangan Ditolak!\n\nNominal mutasi bank (Rp ${formatRp(bankAmount)}) TIDAK SAMA dengan nominal dashboard (Rp ${formatRp(itemAmount)}).\n\nPemasangan hanya diperbolehkan jika nominal bernilai sama persis.`);
+      return;
+    }
+
+    if (onLinkRekon) {
       onLinkRekon(linkModal.bankRow, targetGroupInfo.date, targetGroupInfo.type, targetGroupInfo);
       setLinkModal({ isOpen: false, bankRow: null });
     }
@@ -1668,9 +1708,11 @@ export default function RekonBankTab({
                             className={`h-10 sm:h-12 p-1 rounded-lg border transition-all flex flex-col justify-between items-center text-left ${
                               isSelected
                                 ? 'bg-indigo-600 text-white border-indigo-700 shadow-md ring-2 ring-indigo-400 z-10'
-                                : d.hasData
-                                  ? 'bg-indigo-50/80 border-indigo-300 hover:bg-indigo-100 hover:border-indigo-500 text-indigo-950 font-bold shadow-2xs'
-                                  : 'bg-white border-gray-100 text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+                                : d.hasExactMatch
+                                  ? 'bg-emerald-50 border-emerald-400 hover:bg-emerald-100 text-emerald-950 font-bold shadow-xs ring-1 ring-emerald-300'
+                                  : d.hasData
+                                    ? 'bg-indigo-50/80 border-indigo-300 hover:bg-indigo-100 hover:border-indigo-500 text-indigo-950 font-bold shadow-2xs'
+                                    : 'bg-white border-gray-100 text-gray-400 hover:bg-gray-50 hover:text-gray-700'
                             }`}
                             title={d.hasData ? `${d.dateStr}: ${d.count} item (Rp ${formatRp(d.nominal)})` : d.dateStr}
                           >
@@ -1683,6 +1725,9 @@ export default function RekonBankTab({
                               )}
                               {d.isH2 && !isSelected && (
                                 <span className="text-[8px] bg-purple-100 text-purple-800 font-extrabold px-1 rounded">H-2</span>
+                              )}
+                              {d.hasExactMatch && !isSelected && (
+                                <span className="text-[8px] bg-emerald-100 text-emerald-800 font-black px-1 rounded border border-emerald-300">✓ Match</span>
                               )}
                             </div>
 
@@ -1706,7 +1751,21 @@ export default function RekonBankTab({
                 )}
               </div>
               
-              {unlinkedItems.filter(item => linkModalFilterDate === 'Semua' || item.date === linkModalFilterDate).length === 0 ? (
+              {/* Banner Informasi Validasi Nominal */}
+              <div className="mb-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-slate-100/90 border border-slate-200 text-xs">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-gray-700">Target Nominal Mutasi:</span>
+                  <span className="font-black text-indigo-700 bg-white px-2.5 py-0.5 rounded-lg border border-indigo-200 text-sm">
+                    Rp {formatRp(linkModal.bankRow.amount)}
+                  </span>
+                </div>
+                <div className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                  <span>Hanya item dengan <strong>nominal yang sama persis</strong> yang dapat dipasangkan.</span>
+                </div>
+              </div>
+
+              {candidateItems.length === 0 ? (
                 <div className="text-center p-10 bg-white rounded-xl border border-dashed border-gray-300">
                   <CheckCircle size={40} className="mx-auto text-gray-300 mb-3" />
                   <p className="text-gray-500 font-bold">Semua data pendapatan sudah dipasangkan / belum ada data.</p>
@@ -1714,28 +1773,82 @@ export default function RekonBankTab({
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {unlinkedItems.filter(item => linkModalFilterDate === 'Semua' || item.date === linkModalFilterDate).map(item => (
-                    <button 
-                      key={`${item.date}_${item.groupKey}`}
-                      onClick={() => handleLink(item)}
-                      className="text-left bg-white p-4 rounded-xl border border-gray-200 hover:border-indigo-400 hover:shadow-md transition-all group relative overflow-hidden"
-                    >
-                      <div className="absolute top-0 left-0 w-1 h-full bg-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="font-bold text-gray-800">{item.name}</div>
-                        <div className="font-black text-indigo-700">Rp {formatRp(item.nominal)}</div>
-                      </div>
-                      <div className="flex gap-2 items-center text-xs text-gray-500">
-                        <span className="bg-gray-100 px-2 py-0.5 rounded font-bold">Tgl Dashboard: {item.date}</span>
-                        <span className="bg-gray-100 px-2 py-0.5 rounded uppercase">{item.type}</span>
-                      </div>
-                      {item.note && (
-                        <div className="mt-2 text-xs text-gray-400 line-clamp-1 italic">
-                          "{item.note}"
+                  {candidateItems.map(item => {
+                    const bankAmount = Number(linkModal.bankRow?.amount || 0);
+                    const itemAmount = Number(item.nominal || 0);
+                    const isMatch = (bankAmount === itemAmount);
+                    const diff = Math.abs(bankAmount - itemAmount);
+
+                    return (
+                      <div 
+                        key={`${item.date}_${item.groupKey}`}
+                        className={`text-left p-4 rounded-xl border transition-all relative overflow-hidden flex flex-col justify-between ${
+                          isMatch
+                            ? 'bg-white border-2 border-emerald-500 hover:border-emerald-600 shadow-md ring-1 ring-emerald-300'
+                            : 'bg-gray-50/90 border-gray-200 opacity-60 select-none'
+                        }`}
+                      >
+                        {isMatch && (
+                          <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500"></div>
+                        )}
+                        <div>
+                          <div className="flex justify-between items-start mb-2 gap-2">
+                            <div className={`font-bold text-sm sm:text-base leading-snug ${isMatch ? 'text-gray-900' : 'text-gray-500'}`}>
+                              {item.name}
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className={`font-black text-base sm:text-lg ${isMatch ? 'text-emerald-700' : 'text-gray-500'}`}>
+                                Rp {formatRp(item.nominal)}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-1.5 items-center text-xs text-gray-500 flex-wrap">
+                            <span className="bg-gray-100 px-2 py-0.5 rounded font-bold text-gray-700">Tgl Dashboard: {item.date}</span>
+                            <span className="bg-gray-100 px-2 py-0.5 rounded uppercase font-semibold text-gray-600">{item.type}</span>
+                            {isMatch ? (
+                              <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px] font-black px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                                <CheckCircle size={12} /> Nominal Sesuai
+                              </span>
+                            ) : (
+                              <span className="bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <AlertCircle size={11} /> Beda Rp {formatRp(diff)} (Tidak Sesuai)
+                              </span>
+                            )}
+                          </div>
+
+                          {item.note && (
+                            <div className="mt-2 text-xs text-gray-500 line-clamp-1 italic">
+                              "{item.note}"
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </button>
-                  ))}
+
+                        {/* Area Tombol Aksi */}
+                        <div className="mt-3.5 pt-3 border-t border-gray-100 flex items-center justify-between">
+                          {isMatch ? (
+                            <>
+                              <span className="text-xs text-emerald-700 font-bold flex items-center gap-1">
+                                <Check size={14} /> Nilai cocok 100%
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleLink(item)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-4 py-2 rounded-lg shadow-sm hover:shadow transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                              >
+                                <LinkIcon size={14} /> Pasangkan Data
+                              </button>
+                            </>
+                          ) : (
+                            <div className="text-[11px] text-gray-400 font-medium italic flex items-center justify-between w-full">
+                              <span>Nominal berbeda dengan mutasi</span>
+                              <span className="text-rose-500 font-bold text-xs bg-rose-50 border border-rose-100 px-2 py-0.5 rounded">Terkunci</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

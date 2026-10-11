@@ -1618,8 +1618,14 @@ export default function App() {
                      }
                  }}
                  onLinkRekon={async (bankRow, targetDate, targetType, targetGroupInfo) => {
-                     try {
-                         // 1. Construct new reports
+                      const bankAmount = Number(bankRow?.amount || 0);
+                      const groupNominal = Number(targetGroupInfo?.nominal || 0);
+                      if (bankAmount !== groupNominal) {
+                          alert(`Pemasangan Ditolak!\nNominal mutasi bank (Rp ${formatRp(bankAmount)}) tidak sesuai dengan nominal dashboard (Rp ${formatRp(groupNominal)}).\nNominal harus sama persis.`);
+                          return;
+                      }
+                      try {
+                          // 1. Construct new reports
                          const baseReports = stateRef.current.allReports;
                           const newReports = { ...baseReports };
                          const dayData = { ...(newReports[targetDate] || {}) };
