@@ -34,7 +34,8 @@ export default function MasterSettingsTab({
   updateItemName,
   deleteItem,
   addItem,
-  addCategory
+  addCategory,
+  handleForceSave
 }) {
   if (activeTab !== 'settings') return null;
 
@@ -135,9 +136,20 @@ export default function MasterSettingsTab({
 
           {activeMasterMenu === 'pejabat' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-              <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2">
-                <Edit size={20} className="text-blue-500" /> Pejabat Penandatangan
-              </h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                  <Edit size={20} className="text-blue-500" /> Pejabat Penandatangan
+                </h2>
+                {handleForceSave && (
+                  <button
+                    type="button"
+                    onClick={handleForceSave}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm"
+                  >
+                    <Cloud size={14} /> Simpan ke Cloud
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
                   <h3 className="font-semibold text-gray-700 text-sm border-b pb-2">Pihak Kiri (Penyetor)</h3>
@@ -218,6 +230,15 @@ export default function MasterSettingsTab({
                 <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                   <Settings size={20} className="text-blue-500" /> Database Kategori
                 </h2>
+                {handleForceSave && (
+                  <button
+                    type="button"
+                    onClick={handleForceSave}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm"
+                  >
+                    <Cloud size={14} /> Simpan ke Cloud
+                  </button>
+                )}
               </div>
               <div className="space-y-6">
                 {categories.map((cat, index) => (

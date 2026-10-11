@@ -303,7 +303,7 @@ export default function App() {
   const saveToFirebaseDirectly = (newReports, newBankRows) => {
     return saveState({
       ...(newReports !== undefined ? { allReports: newReports } : {}),
-      ...(newBankRows !== undefined ? { bankRows: newBankRows } : {})
+      bankRows: newBankRows !== undefined ? newBankRows : stateRef.current.bankRows
     }, { immediate: true });
   };
 
@@ -318,6 +318,15 @@ export default function App() {
       saveState({}, { immediate: true });
     }
   };
+
+  // Pastikan data pending tersimpan saat halaman ditutup atau di-refresh
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      flushPendingSave();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
   // ==============================================================
   // 🔴 LISTENER REAL-TIME FIRESTORE (DENGAN PROTEKSI CLIENT_ID)
@@ -491,8 +500,8 @@ export default function App() {
         [nextKey]: { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} }
       }
     };
-        setAllReports(newReports);
-    saveToFirebaseDirectly(newReports, bankRows);
+    setAllReports(newReports);
+    saveToFirebaseDirectly(newReports, stateRef.current.bankRows);
     setActiveLainIndex(nextIndex); setSelectedCatToAdd(''); setSelectedItemToAdd(''); setManualNominalToAdd(''); setLainItemDate(''); setLainItemNote('');
   };
 
@@ -501,11 +510,38 @@ export default function App() {
       const baseReports = stateRef.current.allReports;
       const dayData = { ...(baseReports[reportDate] || {}) };
       const keyToRemove = indexToRemove === 1 ? 'lain' : `lain_${indexToRemove}`;
+      const docToRemove = dayData[keyToRemove] || {};
+      const itemsToReset = Array.isArray(docToRemove.activeItems) ? docToRemove.activeItems : [];
+      
+      const rowIdsToPending = [];
+      itemsToReset.forEach(it => {
+        if (it && it.bankMatched) {
+          if (Array.isArray(it.bankMatchRowIds)) rowIdsToPending.push(...it.bankMatchRowIds);
+          else if (it.bankMatchRowId) rowIdsToPending.push(it.bankMatchRowId);
+        }
+      });
+      
+      const baseBankRows = stateRef.current.bankRows;
+      let newBankRows = baseBankRows;
+      if (rowIdsToPending.length > 0) {
+        newBankRows = baseBankRows.map(r => {
+          if (rowIdsToPending.includes(r.id)) {
+            const updated = { ...r, status: 'pending' };
+            delete updated.linkedTo;
+            delete updated.matchedTo;
+            return updated;
+          }
+          return r;
+        });
+        setBankRows(newBankRows);
+      }
+      
       delete dayData[keyToRemove];
       const newReports = { ...baseReports, [reportDate]: dayData };
-            setAllReports(newReports);
-      saveToFirebaseDirectly(newReports, bankRows);
+      setAllReports(newReports);
+      saveToFirebaseDirectly(newReports, newBankRows);
       if (activeLainIndex === indexToRemove) setActiveLainIndex(1);
+      showToast(`Dokumen Ke-${indexToRemove} berhasil dihapus.`);
     });
   };
 
@@ -566,8 +602,8 @@ export default function App() {
         };
     }
     if (newReports) {
-            setAllReports(newReports);
-      saveToFirebaseDirectly(newReports, bankRows);
+      setAllReports(newReports);
+      saveToFirebaseDirectly(newReports, stateRef.current.bankRows);
     }
   };
 
@@ -598,6 +634,32 @@ export default function App() {
       await signInWithEmailAndPassword(auth, user.email, resetDialog.password);
       const baseReports = stateRef.current.allReports;
       const dayData = baseReports[reportDate] || {};
+      const typeData = dayData[activeTypeKey] || {};
+      const itemsToReset = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
+      
+      const rowIdsToPending = [];
+      itemsToReset.forEach(it => {
+        if (it && it.bankMatched) {
+          if (Array.isArray(it.bankMatchRowIds)) rowIdsToPending.push(...it.bankMatchRowIds);
+          else if (it.bankMatchRowId) rowIdsToPending.push(it.bankMatchRowId);
+        }
+      });
+      
+      const baseBankRows = stateRef.current.bankRows;
+      let newBankRows = baseBankRows;
+      if (rowIdsToPending.length > 0) {
+        newBankRows = baseBankRows.map(r => {
+          if (rowIdsToPending.includes(r.id)) {
+            const updated = { ...r, status: 'pending' };
+            delete updated.linkedTo;
+            delete updated.matchedTo;
+            return updated;
+          }
+          return r;
+        });
+        setBankRows(newBankRows);
+      }
+
       const newReports = {
         ...baseReports,
         [reportDate]: {
@@ -605,9 +667,10 @@ export default function App() {
           [activeTypeKey]: { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} }
         }
       };
-            setAllReports(newReports);
-      saveToFirebaseDirectly(newReports, bankRows);
+      setAllReports(newReports);
+      saveToFirebaseDirectly(newReports, newBankRows);
       setResetDialog({ isOpen: false, password: '', error: '', isVerifying: false });
+      showToast('Laporan berhasil direset.');
     } catch (error) { setResetDialog(prev => ({ ...prev, isVerifying: false, error: 'Password salah! Penghapusan dibatalkan.' })); }
   };
 
@@ -633,7 +696,9 @@ export default function App() {
     const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
     const currentItems = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
     
-    if (!currentItems.find(i => getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote) === inputKey)) {
+    const existing = currentItems.find(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) === inputKey);
+
+    if (!existing) {
       const updatedTypeData = {
         ...typeData,
         activeItems: [...currentItems, newItem],
@@ -646,8 +711,29 @@ export default function App() {
           [activeTypeKey]: updatedTypeData
         }
       };
-            setAllReports(newReports);
-      saveToFirebaseDirectly(newReports, bankRows);
+      setAllReports(newReports);
+      saveToFirebaseDirectly(newReports, stateRef.current.bankRows);
+      showToast('Transaksi berhasil ditambahkan!');
+    } else {
+      if (initialNominal > 0) {
+        const currentAmount = typeData.formData?.[inputKey] || 0;
+        const updatedTypeData = {
+          ...typeData,
+          formData: { ...(typeData.formData || {}), [inputKey]: currentAmount + initialNominal }
+        };
+        const newReports = {
+          ...baseReports,
+          [reportDate]: {
+            ...dayData,
+            [activeTypeKey]: updatedTypeData
+          }
+        };
+        setAllReports(newReports);
+        saveToFirebaseDirectly(newReports, stateRef.current.bankRows);
+        showToast(`Item sudah ada. Nominal ditambahkan Rp ${formatRp(initialNominal)}!`);
+      } else {
+        showToast('Item sudah ada dalam daftar transaksi.');
+      }
     }
     
     const cat = categories.find(c => c.id === selectedCatToAdd);
@@ -692,11 +778,12 @@ export default function App() {
     const newActive = (typeData.activeItems || []).filter(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) !== keyToRemove);
     const newFormData = { ...(typeData.formData || {}) }; 
     delete newFormData[keyToRemove];
+    delete newFormData[keyToRemove + '_buktiUrl'];
     
     const updatedTypeData = { ...typeData, activeItems: newActive, formData: newFormData };
     const newReports = { ...baseReports, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
     
-        setAllReports(newReports);
+    setAllReports(newReports);
     saveToFirebaseDirectly(newReports, newBankRows);
     showToast('Item berhasil dihapus!');
   };
@@ -759,8 +846,9 @@ export default function App() {
           [activeTypeKey]: { ...typeData, activeItems: newActive, formData: newFormData }
         }
       };
-            setAllReports(newReports);
-      saveToFirebaseDirectly(newReports, bankRows);
+      setAllReports(newReports);
+      saveToFirebaseDirectly(newReports, stateRef.current.bankRows);
+      showToast('Keterangan berhasil diperbarui!');
     }
     setEditNoteModal({ isOpen: false, group: null, item: null, newNote: '' });
   };
@@ -834,6 +922,32 @@ export default function App() {
     const dayData = newReports[reportDate] || {}; 
     const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
     
+    const baseBankRows = stateRef.current.bankRows;
+    let newBankRows = baseBankRows;
+
+    // Jika user memilih timpa (overwrite), kembalikan mutasi bank yang sebelumnya terhubung ke pending
+    if (transitModal.isOverwriting && Array.isArray(typeData.activeItems)) {
+      const rowIdsToPending = [];
+      typeData.activeItems.forEach(it => {
+        if (it && it.bankMatched) {
+          if (Array.isArray(it.bankMatchRowIds)) rowIdsToPending.push(...it.bankMatchRowIds);
+          else if (it.bankMatchRowId) rowIdsToPending.push(it.bankMatchRowId);
+        }
+      });
+      if (rowIdsToPending.length > 0) {
+        newBankRows = baseBankRows.map(r => {
+          if (rowIdsToPending.includes(r.id)) {
+            const updated = { ...r, status: 'pending' };
+            delete updated.linkedTo;
+            delete updated.matchedTo;
+            return updated;
+          }
+          return r;
+        });
+        setBankRows(newBankRows);
+      }
+    }
+
     let newItems = transitModal.isOverwriting ? [] : [...(typeData.activeItems || [])];
     let newFormData = transitModal.isOverwriting ? {} : { ...(typeData.formData || {}) };
 
@@ -864,8 +978,8 @@ export default function App() {
     typeData.formData = newFormData;
     newReports[reportDate] = { ...dayData, [activeTypeKey]: typeData };
     
-        setAllReports(newReports);
-    saveToFirebaseDirectly(newReports, bankRows);
+    setAllReports(newReports);
+    saveToFirebaseDirectly(newReports, newBankRows);
     
     const is3a = transitModal.source === '3a';
     closeTransitModal();
@@ -954,15 +1068,54 @@ export default function App() {
     return { subtotals: subs, grandTotal: gt };
   }, [currentReport.formData, activeGroups]);
 
-  const addCategory = () => setCategories([...(categories||[]), { id: `cat_${Date.now()}`, name: 'Kategori Baru', type: 'utama', items: [] }]);
-  const updateCategory = (catId, key, value) => setCategories((categories||[]).map(c => c.id === catId ? { ...c, [key]: value } : c));
-  const deleteCategory = (catId) => { showConfirm('Hapus kategori ini? Data lama tidak akan hilang, tapi kategori tidak bisa dipilih lagi.', () => { setCategories((categories||[]).filter(c => c.id !== catId)); }); };
-  const moveCategory = (index, direction) => { const newCats = [...(categories || [])]; if (direction === 'up' && index > 0) [newCats[index - 1], newCats[index]] = [newCats[index], newCats[index - 1]]; else if (direction === 'down' && index < newCats.length - 1) [newCats[index + 1], newCats[index]] = [newCats[index], newCats[index + 1]]; setCategories(newCats); };
+  const addCategory = () => {
+    const newCats = [...(categories || []), { id: `cat_${Date.now()}`, name: 'Kategori Baru', type: 'utama', items: [] }];
+    saveState({ categories: newCats }, { immediate: true, showToastMessage: 'Kategori baru berhasil dibuat!' });
+  };
+  const updateCategory = (catId, key, value) => {
+    const newCats = (categories || []).map(c => c.id === catId ? { ...c, [key]: value } : c);
+    saveState({ categories: newCats }, { immediate: false });
+  };
+  const deleteCategory = (catId) => {
+    showConfirm('Hapus kategori ini? Data lama tidak akan hilang, tapi kategori tidak bisa dipilih lagi.', () => {
+      const newCats = (categories || []).filter(c => c.id !== catId);
+      saveState({ categories: newCats }, { immediate: true, showToastMessage: 'Kategori berhasil dihapus!' });
+    });
+  };
+  const moveCategory = (index, direction) => {
+    const newCats = [...(categories || [])];
+    if (direction === 'up' && index > 0) [newCats[index - 1], newCats[index]] = [newCats[index], newCats[index - 1]];
+    else if (direction === 'down' && index < newCats.length - 1) [newCats[index + 1], newCats[index]] = [newCats[index], newCats[index + 1]];
+    saveState({ categories: newCats }, { immediate: true });
+  };
 
-  const addItem = (catId) => setCategories((categories||[]).map(c => c.id === catId ? { ...c, items: [...(c.items||[]), { id: `item_${Date.now()}`, name: 'Item Baru' }] } : c));
-  const updateItemName = (catId, itemId, newName) => setCategories((categories||[]).map(c => c.id === catId ? { ...c, items: (c.items||[]).map(i => i.id === itemId ? { ...i, name: newName } : i) } : c));
-  const deleteItem = (catId, itemId) => setCategories((categories||[]).map(c => c.id === catId ? { ...c, items: (c.items||[]).filter(i => i.id !== itemId) } : c));
-  const moveItem = (catId, itemIndex, direction) => { const newCats = [...(categories || [])]; const catIndex = newCats.findIndex(c => c.id === catId); if (catIndex > -1) { const newItems = [...(newCats[catIndex].items || [])]; if (direction === 'up' && itemIndex > 0) [newItems[itemIndex - 1], newItems[itemIndex]] = [newItems[itemIndex], newItems[itemIndex - 1]]; else if (direction === 'down' && itemIndex < newItems.length - 1) [newItems[itemIndex + 1], newItems[itemIndex]] = [newItems[itemIndex], newItems[itemIndex + 1]]; newCats[catIndex] = { ...newCats[catIndex], items: newItems }; setCategories(newCats); } };
+  const addItem = (catId) => {
+    const newCats = (categories || []).map(c => c.id === catId ? { ...c, items: [...(c.items || []), { id: `item_${Date.now()}`, name: 'Item Baru' }] } : c);
+    saveState({ categories: newCats }, { immediate: true, showToastMessage: 'Sub-kategori berhasil ditambahkan!' });
+  };
+  const updateItemName = (catId, itemId, newName) => {
+    const newCats = (categories || []).map(c => c.id === catId ? { ...c, items: (c.items || []).map(i => i.id === itemId ? { ...i, name: newName } : i) } : c);
+    saveState({ categories: newCats }, { immediate: false });
+  };
+  const deleteItem = (catId, itemId) => {
+    const newCats = (categories || []).map(c => c.id === catId ? { ...c, items: (c.items || []).filter(i => i.id !== itemId) } : c);
+    saveState({ categories: newCats }, { immediate: true, showToastMessage: 'Sub-kategori berhasil dihapus!' });
+  };
+  const moveItem = (catId, itemIndex, direction) => {
+    const newCats = [...(categories || [])];
+    const catIndex = newCats.findIndex(c => c.id === catId);
+    if (catIndex > -1) {
+      const newItems = [...(newCats[catIndex].items || [])];
+      if (direction === 'up' && itemIndex > 0) [newItems[itemIndex - 1], newItems[itemIndex]] = [newItems[itemIndex], newItems[itemIndex - 1]];
+      else if (direction === 'down' && itemIndex < newItems.length - 1) [newItems[itemIndex + 1], newItems[itemIndex]] = [newItems[itemIndex], newItems[itemIndex + 1]];
+      newCats[catIndex] = { ...newCats[catIndex], items: newItems };
+      saveState({ categories: newCats }, { immediate: true });
+    }
+  };
+
+  const handleUpdateSignatures = (newSigs) => {
+    saveState({ signatures: newSigs }, { immediate: false });
+  };
 
 
 
@@ -1361,11 +1514,15 @@ export default function App() {
                          
                          targetGroupInfo.itemIndices.forEach(idx => {
                              if (newActiveItems[idx]) {
+                                 const it = newActiveItems[idx];
+                                 const existingRowIds = Array.isArray(it.bankMatchRowIds) ? it.bankMatchRowIds : (it.bankMatchRowId ? [it.bankMatchRowId] : []);
+                                 const updatedRowIds = existingRowIds.includes(bankRow.id) ? existingRowIds : [...existingRowIds, bankRow.id];
                                  newActiveItems[idx] = { 
-                                     ...newActiveItems[idx], 
+                                     ...it, 
                                      bankMatched: true, 
                                      bankMatchDate: bankRow.date,
-                                     bankMatchRowId: bankRow.id 
+                                     bankMatchRowId: bankRow.id,
+                                     bankMatchRowIds: updatedRowIds
                                  };
                              }
                          });
@@ -1541,7 +1698,8 @@ export default function App() {
         apiIpAddress={apiIpAddress}
         setApiIpAddress={setApiIpAddress}
         signatures={signatures}
-        setSignatures={setSignatures}
+        setSignatures={handleUpdateSignatures}
+        handleForceSave={handleForceSave}
         categories={categories}
         moveCategory={moveCategory}
         updateCategory={updateCategory}
