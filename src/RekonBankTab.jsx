@@ -1789,9 +1789,17 @@ export default function RekonBankTab({
 
               <div className="bg-red-50 border border-red-100 rounded-xl p-4 mb-2">
                 <h4 className="text-sm font-bold text-red-800 mb-1 flex items-center gap-1.5"><RotateCcw size={16}/> Salah Pasang?</h4>
-                <p className="text-[11px] text-red-700 font-medium mb-3">Jika mutasi ini salah dipasangkan, Anda dapat membatalkannya untuk mengembalikan mutasi ini menjadi <span className="font-bold">Pending</span>.</p>
+                <p className="text-[11px] text-red-700 font-medium mb-3">
+                  {editModal.row?.status === 'matched' || editModal.row?.isFromInputBaru || editModal.row?.inputBaruAllocations
+                    ? "Mutasi ini dibuat melalui 'Input Baru'. Jika dibatalkan, data pendapatan terkait di dashboard akan otomatis dihapus."
+                    : "Jika mutasi ini salah dipasangkan, Anda dapat membatalkannya untuk mengembalikan mutasi ini menjadi Pending."}
+                </p>
                 <button onClick={() => {
-                  if (confirm('Yakin ingin membatalkan status pasangan pada mutasi ini?')) {
+                  const isInputBaru = editModal.row?.status === 'matched' || editModal.row?.isFromInputBaru || editModal.row?.inputBaruAllocations;
+                  const confirmMsg = isInputBaru
+                    ? 'Yakin ingin membatalkan pasangan? Karena mutasi ini berasal dari "Input Baru", data pendapatan terkait di dashboard akan otomatis dihapus.'
+                    : 'Yakin ingin membatalkan status pasangan pada mutasi ini?';
+                  if (confirm(confirmMsg)) {
                     if (onUnlinkBankRow) onUnlinkBankRow(editModal.row);
                     setEditModal({isOpen:false, row:null, proof:'', proofUrl:''});
                   }

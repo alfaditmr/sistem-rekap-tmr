@@ -56,6 +56,94 @@ const callGeminiAPI = async (prompt, systemInstruction) => {
   }
 };
 
+// ==============================================================
+// 🔴 REKONSILIASI ITEM ORPHAN MUTASI BANK
+// Membersihkan item dashboard yang dibuat dari Input Baru jika mutasi bank-nya berstatus pending/dibatalkan,
+// atau melepaskan status pasangan jika data asli dashboard mutasinya telah dibatalkan.
+// ==============================================================
+export const reconcileOrphanBankItems = (reports, rows) => {
+  if (!reports || typeof reports !== 'object') return { cleanReports: reports, modified: false };
+  let modified = false;
+  const cleanReports = JSON.parse(JSON.stringify(reports));
+
+  const activeBankRows = (rows || []).filter(r => r && (r.status === 'matched' || r.status === 'linked'));
+  const activeBankRowIds = new Set(activeBankRows.map(r => r.id).filter(Boolean));
+  const activeBankDates = new Set(activeBankRows.map(r => r.date).filter(Boolean));
+
+  const pendingBankRows = (rows || []).filter(r => r && r.status === 'pending');
+  const pendingBankDates = new Set(pendingBankRows.map(r => r.date).filter(Boolean));
+  const pendingBankRowIds = new Set(pendingBankRows.map(r => r.id).filter(Boolean));
+
+  Object.keys(cleanReports).forEach(date => {
+    ['utama', 'lain'].forEach(docKey => {
+      const typeData = cleanReports[date]?.[docKey];
+      if (!typeData || !Array.isArray(typeData.activeItems)) return;
+
+      const remainingItems = [];
+      typeData.activeItems.forEach(item => {
+        if (!item) return;
+
+        const itemBankDate = item.bankMatchDate;
+        const itemRowId = item.bankMatchRowId;
+
+        // Cek apakah mutasi bank pendukungnya sudah pending atau tidak ada lagi di daftar aktif
+        const isMatchedToPending = (
+          (itemRowId && pendingBankRowIds.has(itemRowId)) ||
+          (itemBankDate && pendingBankDates.has(itemBankDate))
+        );
+        const isMissingFromActive = (
+          itemBankDate && !activeBankDates.has(itemBankDate) && (!itemRowId || !activeBankRowIds.has(itemRowId))
+        );
+
+        const isOrphan = isMatchedToPending || isMissingFromActive;
+
+        if (isOrphan) {
+          let itemKey = `${item.catId}_${item.itemId || item.id}`;
+          if (item.itemDate) itemKey += `_date_${item.itemDate}`;
+          if (item.itemNote) {
+            let h = 0; for (let j = 0; j < item.itemNote.length; j++) { h = ((h << 5) - h) + item.itemNote.charCodeAt(j); h = h & h; }
+            itemKey += `_note_${Math.abs(h)}`;
+          }
+
+          // Cek apakah item ini berasal dari "Input Baru" mutasi:
+          // 1. Memiliki tanda createdFromBank
+          // 2. Khusus kasus pedagang tikar yang dibatalkan (Sep 29, 2026 16:45:03 WIB)
+          // 3. Atau item direct tanpa master items yang terhubung ke bankDate pending
+          const isFromInputBaru = (
+            item.createdFromBank ||
+            (itemBankDate && itemBankDate.includes('Sep 29, 2026 16:45:03')) ||
+            (item.itemId === 'direct' && isMatchedToPending)
+          );
+
+          if (isFromInputBaru) {
+            // Hapus dari formData dan activeItems (karena asalnya dari Input Baru mutasi yang telah dibatalkan)
+            if (typeData.formData) {
+              delete typeData.formData[itemKey];
+              delete typeData.formData[itemKey + '_buktiUrl'];
+            }
+            modified = true;
+            return; // buang dari activeItems
+          } else {
+            // Jika data asli dashboard yang dipasangkan, hanya bersihkan status pairing
+            delete item.bankMatched;
+            delete item.bankMatchDate;
+            delete item.bankMatchRowId;
+            delete item.bankMatchRowIds;
+            modified = true;
+            remainingItems.push(item);
+          }
+        } else {
+          remainingItems.push(item);
+        }
+      });
+
+      typeData.activeItems = remainingItems;
+    });
+  });
+
+  return { cleanReports, modified };
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('input');
   const [topLevelRoute, setTopLevelRoute] = useState('home');
@@ -167,7 +255,12 @@ export default function App() {
   ]));
 
   const [targets, setTargets] = useState(() => getInitialState('tmr_v19_targets', {}));
-  const [allReports, setAllReports] = useState(() => getInitialState('tmr_v19_allReports', {}));
+  const [allReports, setAllReports] = useState(() => {
+    const rawRep = getInitialState('tmr_v19_allReports', {});
+    const rawBank = getInitialState('tmr_v19_bankRows', []);
+    const { cleanReports } = reconcileOrphanBankItems(rawRep, rawBank);
+    return cleanReports;
+  });
   const [apiIpAddress, setApiIpAddress] = useState(() => getInitialState('tmr_v19_api_ip', 'localhost'));
   const [activeMasterMenu, setActiveMasterMenu] = useState('menu');
 
@@ -380,6 +473,14 @@ export default function App() {
                 }
             }
 
+            const { cleanReports: reconciledReports, modified: wasReconciled } = reconcileOrphanBankItems(loadedReports, loadedBankRows);
+            if (wasReconciled) {
+                loadedReports = reconciledReports;
+                setTimeout(() => {
+                    saveToFirebaseDirectly(reconciledReports, loadedBankRows);
+                }, 200);
+            }
+
             stateRef.current = {
                 allReports: loadedReports,
                 bankRows: loadedBankRows,
@@ -430,14 +531,20 @@ export default function App() {
         const loadedSigs = data.signatures || {};
         const loadedCats = data.categories || [];
         const loadedTargets = data.targets || {};
-        const loadedReports = data.allReports || {};
+        let loadedReports = data.allReports || {};
         let loadedBankRows = data.bankRows || [];
+
+        const { cleanReports: cloudClean, modified: cloudMod } = reconcileOrphanBankItems(loadedReports, loadedBankRows);
+        if (cloudMod) {
+          loadedReports = cloudClean;
+          saveToFirebaseDirectly(cloudClean, loadedBankRows);
+        }
 
         safeSetLocalStorage('tmr_v19_allReports', loadedReports);
         safeSetLocalStorage('tmr_v19_bankRows', loadedBankRows);
         if (serverUpdated) safeSetLocalStorage('tmr_v19_lastUpdated', serverUpdated);
 
-                                        stateRef.current = {
+        stateRef.current = {
           allReports: loadedReports,
           bankRows: loadedBankRows,
           signatures: loadedSigs,
@@ -1375,9 +1482,10 @@ export default function App() {
 
                      try {
                          const baseReports = stateRef.current.allReports;
-                         const newReports = JSON.parse(JSON.stringify(baseReports));
-                         
-                         allocations.forEach(alloc => {
+                          const newReports = JSON.parse(JSON.stringify(baseReports));
+                          const createdAllocationsSummary = [];
+                          
+                          allocations.forEach(alloc => {
                              const allocYmd = alloc.targetDate || ymd;
                              const dayData = newReports[allocYmd] || {};
                              
@@ -1433,13 +1541,18 @@ export default function App() {
                                  return k === itemKey;
                              });
 
-                             if (existingIndex === -1) {
-                                 newItem.bankMatched = true;
-                                 newItem.bankMatchRowId = bankRow.id;
-                                 newItem.bankMatchDate = bankRow.date;
-                                 newItem.bankMatchRowIds = [bankRow.id];
-                                 typeData.activeItems.push(newItem);
-                             } else {
+                             const wasNew = (existingIndex === -1);
+                              if (wasNew) {
+                                  newItem.bankMatched = true;
+                                  newItem.bankMatchRowId = bankRow.id;
+                                  newItem.bankMatchDate = bankRow.date;
+                                  newItem.bankMatchRowIds = [bankRow.id];
+                                  newItem.createdFromBank = true;
+                                  newItem.originBankRowId = bankRow.id;
+                                  newItem.originBankDate = bankRow.date;
+                                  newItem.originBankAllocAmount = Number(alloc.amount || 0);
+                                  typeData.activeItems.push(newItem);
+                              } else {
                                  const item = typeData.activeItems[existingIndex];
                                  item.bankMatched = true;
                                  item.bankMatchRowId = bankRow.id;
@@ -1483,9 +1596,11 @@ export default function App() {
 
                           const baseBankRows = stateRef.current.bankRows;
                           const newBankRows = baseBankRows.map(r => r.id === bankRow.id ? { 
-                              ...r, 
-                              status: 'matched', 
-                              matchedTo: targetSummary,
+                               ...r, 
+                               status: 'matched', 
+                               isFromInputBaru: true,
+                               inputBaruAllocations: createdAllocationsSummary,
+                               matchedTo: targetSummary,
                               linkedTo: { date: primaryTargetDate, dates: distinctTargetDates, groupName: targetSummary, proofUrl: matchedProofUrl || r.proofUrl || '' },
                               proofUrl: matchedProofUrl || r.proofUrl || '',
                               apiRefId: matchedApiRefIds[0] || r.apiRefId || '',
@@ -1573,59 +1688,159 @@ export default function App() {
                      saveToFirebaseDirectly(stateRef.current.allReports, newBankRows);
                  }}
                  onUnlinkBankRow={(bankRow) => {
-                     try {
-                         const baseReports = stateRef.current.allReports;
-                         const newReports = JSON.parse(JSON.stringify(baseReports));
-                         Object.keys(newReports).forEach(date => {
-                             Object.keys(newReports[date]).forEach(type => {
-                                 if (newReports[date][type] && Array.isArray(newReports[date][type].activeItems)) {
-                                     newReports[date][type].activeItems = newReports[date][type].activeItems.map(item => {
-                                         if (item) {
-                                             if (Array.isArray(item.bankMatchRowIds)) {
-                                                 item.bankMatchRowIds = item.bankMatchRowIds.filter(id => id !== bankRow.id);
-                                                 if (item.bankMatchRowIds.length === 0) {
-                                                     delete item.bankMatched;
-                                                     delete item.bankMatchDate;
-                                                     delete item.bankMatchRowId;
-                                                 } else {
-                                                     item.bankMatchRowId = item.bankMatchRowIds[item.bankMatchRowIds.length - 1];
-                                                 }
-                                             } else if (item.bankMatchRowId === bankRow.id) {
-                                                 const newItem = { ...item };
-                                                 delete newItem.bankMatched;
-                                                 delete newItem.bankMatchDate;
-                                                 delete newItem.bankMatchRowId;
-                                                 return newItem;
-                                             }
-                                         }
-                                         return item;
-                                     });
-                                 }
-                             });
-                         });
+                      try {
+                          const baseReports = stateRef.current.allReports;
+                          const newReports = JSON.parse(JSON.stringify(baseReports));
+                          
+                          const isFromInputBaru = 
+                              bankRow.status === 'matched' || 
+                              !!bankRow.isFromInputBaru || 
+                              (Array.isArray(bankRow.inputBaruAllocations) && bankRow.inputBaruAllocations.length > 0) || 
+                              (!!bankRow.matchedTo && bankRow.status !== 'linked');
 
-                         const baseBankRows = stateRef.current.bankRows;
-                         const newBankRows = baseBankRows.map(r => {
-                             if (r.id === bankRow.id) {
-                                 const updated = { ...r, status: 'pending' };
-                                 delete updated.linkedTo;
-                                 delete updated.matchedTo;
-                                 return updated;
-                             }
-                             return r;
-                         });
-                         
-                         setAllReports(newReports);
-                         setBankRows(newBankRows);
-                         
-                         saveToFirebaseDirectly(newReports, newBankRows);
-                         showToast('Status pasangan mutasi bank berhasil dibatalkan!');
-                     } catch (err) {
-                         console.error("Error unlinking:", err);
-                         alert("Gagal membatalkan pasangan: " + err.message);
-                     }
-                 }}
-                 allReports={allReports}
+                          if (isFromInputBaru) {
+                              // ==============================================================
+                              // 🔴 JIKA MUTASI DIBUAT DARI "INPUT BARU":
+                              // Data pendapatan di dashboard harus DIHAPUS (nominal dikurangi/dihapus,
+                              // dan item dibuang dari activeItems).
+                              // ==============================================================
+                              if (Array.isArray(bankRow.inputBaruAllocations) && bankRow.inputBaruAllocations.length > 0) {
+                                  bankRow.inputBaruAllocations.forEach(alloc => {
+                                      const dayData = newReports[alloc.date];
+                                      if (!dayData || !dayData[alloc.docKey]) return;
+                                      const typeData = dayData[alloc.docKey];
+                                      
+                                      if (typeData.formData && typeData.formData[alloc.itemKey] !== undefined) {
+                                          const curr = Number(typeData.formData[alloc.itemKey] || 0);
+                                          const rem = curr - Number(alloc.amount || 0);
+                                          if (rem <= 0) {
+                                              delete typeData.formData[alloc.itemKey];
+                                              delete typeData.formData[alloc.itemKey + '_buktiUrl'];
+                                          } else {
+                                              typeData.formData[alloc.itemKey] = rem;
+                                          }
+                                      }
+
+                                      if (Array.isArray(typeData.activeItems)) {
+                                          typeData.activeItems = typeData.activeItems.filter(item => {
+                                              if (!item) return false;
+                                              let k = `${item.catId}_${item.itemId || item.id}`;
+                                              if (item.itemDate) k += `_date_${item.itemDate}`;
+                                              if (item.itemNote) {
+                                                  let h = 0; for(let j=0; j<item.itemNote.length; j++){ h=((h<<5)-h)+item.itemNote.charCodeAt(j); h=h&h; }
+                                                  k += `_note_${Math.abs(h)}`;
+                                              }
+                                              if (k === alloc.itemKey) {
+                                                  if (alloc.wasNewItem || !typeData.formData[alloc.itemKey] || item.createdFromBank) {
+                                                      return false;
+                                                  }
+                                                  delete item.bankMatched;
+                                                  delete item.bankMatchDate;
+                                                  delete item.bankMatchRowId;
+                                                  if (Array.isArray(item.bankMatchRowIds)) {
+                                                      item.bankMatchRowIds = item.bankMatchRowIds.filter(id => id !== bankRow.id);
+                                                  }
+                                              }
+                                              return true;
+                                          });
+                                      }
+                                  });
+                              } else {
+                                  // Fallback untuk mutasi Input Baru sebelumnya (seperti kasus Pedagang Tikar)
+                                  Object.keys(newReports).forEach(date => {
+                                      ['utama', 'lain'].forEach(type => {
+                                          const typeData = newReports[date]?.[type];
+                                          if (!typeData || !Array.isArray(typeData.activeItems)) return;
+                                          
+                                          typeData.activeItems = typeData.activeItems.filter(item => {
+                                              if (!item) return false;
+                                              const matchesId = item.bankMatchRowId === bankRow.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(bankRow.id)) || item.originBankRowId === bankRow.id;
+                                              const matchesDate = item.bankMatchDate === bankRow.date || item.originBankDate === bankRow.date;
+
+                                              if (matchesId || matchesDate) {
+                                                  let itemKey = `${item.catId}_${item.itemId || item.id}`;
+                                                  if (item.itemDate) itemKey += `_date_${item.itemDate}`;
+                                                  if (item.itemNote) {
+                                                      let h = 0; for(let j=0; j<item.itemNote.length; j++){ h=((h<<5)-h)+item.itemNote.charCodeAt(j); h=h&h; }
+                                                      itemKey += `_note_${Math.abs(h)}`;
+                                                  }
+                                                  if (typeData.formData) {
+                                                      delete typeData.formData[itemKey];
+                                                      delete typeData.formData[itemKey + '_buktiUrl'];
+                                                  }
+                                                  return false; // Hapus item dari activeItems
+                                              }
+                                              return true;
+                                          });
+                                      });
+                                  });
+                              }
+                          } else {
+                              // ==============================================================
+                              // 🔴 JIKA MUTASI DARI "PASANGKAN":
+                              // Data memang sudah ada di dashboard sebelum dipasangkan.
+                              // HANYA lepaskan status pasangan (bankMatched), TIDAK MENGHAPUS
+                              // item maupun nominal di formData!
+                              // ==============================================================
+                              Object.keys(newReports).forEach(date => {
+                                  Object.keys(newReports[date]).forEach(type => {
+                                      if (newReports[date][type] && Array.isArray(newReports[date][type].activeItems)) {
+                                          newReports[date][type].activeItems = newReports[date][type].activeItems.map(item => {
+                                              if (item) {
+                                                  const matchesId = item.bankMatchRowId === bankRow.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(bankRow.id));
+                                                  const matchesDate = item.bankMatchDate === bankRow.date;
+                                                  
+                                                  if (matchesId || matchesDate) {
+                                                      const newItem = { ...item };
+                                                      if (Array.isArray(newItem.bankMatchRowIds)) {
+                                                          newItem.bankMatchRowIds = newItem.bankMatchRowIds.filter(id => id !== bankRow.id);
+                                                          if (newItem.bankMatchRowIds.length === 0) {
+                                                              delete newItem.bankMatched;
+                                                              delete newItem.bankMatchDate;
+                                                              delete newItem.bankMatchRowId;
+                                                              delete newItem.bankMatchRowIds;
+                                                          } else {
+                                                              newItem.bankMatchRowId = newItem.bankMatchRowIds[newItem.bankMatchRowIds.length - 1];
+                                                          }
+                                                      } else {
+                                                          delete newItem.bankMatched;
+                                                          delete newItem.bankMatchDate;
+                                                          delete newItem.bankMatchRowId;
+                                                      }
+                                                      return newItem;
+                                                  }
+                                              }
+                                              return item;
+                                          });
+                                      }
+                                  });
+                              });
+                          }
+
+                          const baseBankRows = stateRef.current.bankRows;
+                          const newBankRows = baseBankRows.map(r => {
+                              if (r.id === bankRow.id || (r.date === bankRow.date && r.amount === bankRow.amount && r.description === bankRow.description)) {
+                                  const updated = { ...r, status: 'pending' };
+                                  delete updated.linkedTo;
+                                  delete updated.matchedTo;
+                                  delete updated.isFromInputBaru;
+                                  delete updated.inputBaruAllocations;
+                                  return updated;
+                              }
+                              return r;
+                          });
+                          
+                          setAllReports(newReports);
+                          setBankRows(newBankRows);
+                          
+                          saveToFirebaseDirectly(newReports, newBankRows);
+                          showToast('Status pasangan mutasi bank berhasil dibatalkan!');
+                      } catch (err) {
+                          console.error("Error unlinking:", err);
+                          alert("Gagal membatalkan pasangan: " + err.message);
+                      }
+                  }}
+                  allReports={allReports}
               />
           </div>
       )}
