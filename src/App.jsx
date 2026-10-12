@@ -66,6 +66,103 @@ export const reconcileOrphanBankItems = (reports, rows) => {
   let modified = false;
   const cleanReports = JSON.parse(JSON.stringify(reports));
 
+  // ==============================================================
+  // 1. AUTO-SPLIT DOKUMEN LAIN-LAIN (MULTI-TRANSAKSI / MULTI-KATEGORI)
+  // Jika di tanggal yang sama ada 2 atau lebih transaksi/kategori berbeda di satu dokumen (misal E-Car dan Listrik),
+  // pisahkan transaksi kedua ke Dokumen Ke-2 (lain_2), ketiga ke Dokumen Ke-3 (lain_3), dst.
+  // ==============================================================
+  Object.keys(cleanReports).forEach(date => {
+    const dayData = cleanReports[date];
+    if (!dayData || typeof dayData !== 'object') return;
+
+    const lainKeys = Object.keys(dayData).filter(k => k === 'lain' || k.startsWith('lain_'));
+    lainKeys.forEach(k => {
+      const docData = dayData[k];
+      if (!docData || !Array.isArray(docData.activeItems) || docData.activeItems.length <= 1) return;
+
+      const distinctCatIds = [];
+      docData.activeItems.forEach(item => {
+        if (item && item.catId && !distinctCatIds.includes(item.catId)) {
+          distinctCatIds.push(item.catId);
+        }
+      });
+
+      if (distinctCatIds.length > 1) {
+        const primaryCatId = distinctCatIds[0];
+        const keptItems = [];
+        const movedByCat = {};
+
+        docData.activeItems.forEach(item => {
+          if (item.catId === primaryCatId) {
+            keptItems.push(item);
+          } else {
+            if (!movedByCat[item.catId]) movedByCat[item.catId] = [];
+            movedByCat[item.catId].push(item);
+          }
+        });
+
+        docData.activeItems = keptItems;
+
+        Object.entries(movedByCat).forEach(([secCatId, secItems]) => {
+          // Cari indeks dokumen lain berikutnya yang masih kosong
+          const existingIndices = [1];
+          Object.keys(dayData).forEach(dk => {
+            if (dk.startsWith('lain_')) {
+              const num = parseInt(dk.split('_')[1], 10);
+              if (!isNaN(num) && !existingIndices.includes(num)) existingIndices.push(num);
+            }
+          });
+          const nextIdx = Math.max(...existingIndices) + 1;
+          const nextKey = `lain_${nextIdx}`;
+
+          const newDoc = {
+            sequence: '',
+            signatureDate: docData.signatureDate || date,
+            activeItems: secItems,
+            formData: {}
+          };
+
+          secItems.forEach(item => {
+            let itemKey = `${item.catId}_${item.itemId || item.id}`;
+            if (item.itemDate) itemKey += `_date_${item.itemDate}`;
+            if (item.itemNote) {
+              let h = 0; for (let j = 0; j < item.itemNote.length; j++) { h = ((h << 5) - h) + item.itemNote.charCodeAt(j); h = h & h; }
+              itemKey += `_note_${Math.abs(h)}`;
+            }
+
+            if (docData.formData && docData.formData[itemKey] !== undefined) {
+              newDoc.formData[itemKey] = docData.formData[itemKey];
+              delete docData.formData[itemKey];
+            }
+            if (docData.formData && docData.formData[itemKey + '_buktiUrl']) {
+              newDoc.formData[itemKey + '_buktiUrl'] = docData.formData[itemKey + '_buktiUrl'];
+              delete docData.formData[itemKey + '_buktiUrl'];
+            }
+
+            // Perbarui referensi docKey di inputBaruAllocations mutasi bank
+            if (rows && Array.isArray(rows)) {
+              rows.forEach(r => {
+                if (Array.isArray(r.inputBaruAllocations)) {
+                  r.inputBaruAllocations.forEach(alloc => {
+                    if (alloc.date === date && (alloc.docKey === k || alloc.docKey === 'lain') && alloc.itemKey === itemKey) {
+                      alloc.docKey = nextKey;
+                    }
+                  });
+                }
+              });
+            }
+          });
+
+          dayData[nextKey] = newDoc;
+          modified = true;
+        });
+      }
+    });
+  });
+
+  // ==============================================================
+  // 2. REKONSILIASI ITEM ORPHAN MUTASI BANK
+  // ==============================================================
   const activeBankRows = (rows || []).filter(r => r && (r.status === 'matched' || r.status === 'linked'));
   const activeBankRowIds = new Set(activeBankRows.map(r => r.id).filter(Boolean));
   const activeBankDates = new Set(activeBankRows.map(r => r.date).filter(Boolean));
@@ -75,7 +172,7 @@ export const reconcileOrphanBankItems = (reports, rows) => {
   const pendingBankRowIds = new Set(pendingBankRows.map(r => r.id).filter(Boolean));
 
   Object.keys(cleanReports).forEach(date => {
-    ['utama', 'lain'].forEach(docKey => {
+    Object.keys(cleanReports[date] || {}).forEach(docKey => {
       const typeData = cleanReports[date]?.[docKey];
       if (!typeData || !Array.isArray(typeData.activeItems)) return;
 
@@ -799,8 +896,39 @@ export default function App() {
     const initialNominal = Number(String(manualNominalToAdd).replace(/[^0-9]/g, '')) || 0;
     
     const baseReports = stateRef.current.allReports;
-    const dayData = baseReports[reportDate] || {};
-    const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
+    const dayData = { ...(baseReports[reportDate] || {}) };
+
+    let targetDocKey = activeTypeKey;
+    let targetLainIndex = activeLainIndex;
+
+    // Untuk STSU Lain-lain: jika dokumen yang aktif sudah terisi transaksi dari kategori berbeda,
+    // tempatkan transaksi baru ke dokumen berikutnya (Dokumen Ke-2, Dokumen Ke-3, dst.)
+    if (activeType === 'lain') {
+      const currentDoc = dayData[activeTypeKey];
+      const currentItems = Array.isArray(currentDoc?.activeItems) ? currentDoc.activeItems : [];
+      const hasDifferentCategory = currentItems.some(i => i.catId !== selectedCatToAdd);
+
+      if (hasDifferentCategory) {
+        let foundIndex = 1;
+        while (true) {
+          const k = foundIndex === 1 ? 'lain' : `lain_${foundIndex}`;
+          const doc = dayData[k];
+          if (!doc || !Array.isArray(doc.activeItems) || doc.activeItems.length === 0) {
+            targetLainIndex = foundIndex;
+            targetDocKey = k;
+            break;
+          }
+          if (doc.activeItems.every(i => i.catId === selectedCatToAdd)) {
+            targetLainIndex = foundIndex;
+            targetDocKey = k;
+            break;
+          }
+          foundIndex++;
+        }
+      }
+    }
+
+    const typeData = dayData[targetDocKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
     const currentItems = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
     
     const existing = currentItems.find(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) === inputKey);
@@ -815,12 +943,17 @@ export default function App() {
         ...baseReports,
         [reportDate]: {
           ...dayData,
-          [activeTypeKey]: updatedTypeData
+          [targetDocKey]: updatedTypeData
         }
       };
       setAllReports(newReports);
       saveToFirebaseDirectly(newReports, stateRef.current.bankRows);
-      showToast('Transaksi berhasil ditambahkan!');
+      if (targetLainIndex !== activeLainIndex) {
+        setActiveLainIndex(targetLainIndex);
+        showToast(`Dokumen Ke-${activeLainIndex} sudah terisi transaksi lain. Transaksi dibuatkan di Dokumen Ke-${targetLainIndex}!`);
+      } else {
+        showToast('Transaksi berhasil ditambahkan!');
+      }
     } else {
       if (initialNominal > 0) {
         const currentAmount = typeData.formData?.[inputKey] || 0;
@@ -832,13 +965,15 @@ export default function App() {
           ...baseReports,
           [reportDate]: {
             ...dayData,
-            [activeTypeKey]: updatedTypeData
+            [targetDocKey]: updatedTypeData
           }
         };
         setAllReports(newReports);
         saveToFirebaseDirectly(newReports, stateRef.current.bankRows);
+        if (targetLainIndex !== activeLainIndex) setActiveLainIndex(targetLainIndex);
         showToast(`Item sudah ada. Nominal ditambahkan Rp ${formatRp(initialNominal)}!`);
       } else {
+        if (targetLainIndex !== activeLainIndex) setActiveLainIndex(targetLainIndex);
         showToast('Item sudah ada dalam daftar transaksi.');
       }
     }
@@ -1499,7 +1634,26 @@ export default function App() {
 
                              let docKey = 'utama'; 
                              if (cat.type === 'lain') {
-                                 docKey = 'lain'; 
+                                 let targetIndex = 1;
+                                 while (true) {
+                                     const candidateKey = targetIndex === 1 ? 'lain' : `lain_${targetIndex}`;
+                                     const candidateDoc = dayData[candidateKey];
+                                     
+                                     if (!candidateDoc || !Array.isArray(candidateDoc.activeItems) || candidateDoc.activeItems.length === 0) {
+                                         docKey = candidateKey;
+                                         break;
+                                     }
+                                     
+                                     const allSameCategory = candidateDoc.activeItems.every(i => i.catId === cat.id);
+                                     const hasOtherBankMatch = candidateDoc.activeItems.some(i => i.bankMatchRowId && i.bankMatchRowId !== bankRow.id);
+                                     
+                                     if (allSameCategory && !hasOtherBankMatch) {
+                                         docKey = candidateKey;
+                                         break;
+                                     }
+                                     
+                                     targetIndex++;
+                                 }
                              }
 
                              if (!dayData[docKey]) {
@@ -1511,7 +1665,7 @@ export default function App() {
                              const typeData = dayData[docKey];
                              
                              const newItem = { catId: cat.id, itemId: theItemId };
-                             if (docKey === 'lain') {
+                             if (docKey === 'lain' || docKey.startsWith('lain_')) {
                                  newItem.itemDate = allocYmd; 
                                  if (alloc.description) newItem.itemNote = alloc.description.trim();
                              }
@@ -1579,6 +1733,14 @@ export default function App() {
                                      typeData.formData[itemKey + '_buktiUrl'] = proofUrl;
                                  }
                              }
+                             
+                             createdAllocationsSummary.push({
+                                 date: allocYmd,
+                                 docKey: docKey,
+                                 itemKey: itemKey,
+                                 amount: Number(alloc.amount || 0),
+                                 wasNewItem: wasNew
+                             });
                              
                              newReports[allocYmd] = dayData;
                          });
@@ -1750,11 +1912,14 @@ export default function App() {
                                               return true;
                                           });
                                       }
+                                      if (alloc.docKey.startsWith('lain_') && Array.isArray(typeData.activeItems) && typeData.activeItems.length === 0) {
+                                          delete dayData[alloc.docKey];
+                                      }
                                   });
                               } else {
                                   // Fallback untuk mutasi Input Baru sebelumnya (seperti kasus Pedagang Tikar)
                                   Object.keys(newReports).forEach(date => {
-                                      ['utama', 'lain'].forEach(type => {
+                                      Object.keys(newReports[date] || {}).forEach(type => {
                                           const typeData = newReports[date]?.[type];
                                           if (!typeData || !Array.isArray(typeData.activeItems)) return;
                                           
@@ -1778,6 +1943,10 @@ export default function App() {
                                               }
                                               return true;
                                           });
+
+                                          if (type.startsWith('lain_') && Array.isArray(typeData.activeItems) && typeData.activeItems.length === 0) {
+                                              delete newReports[date][type];
+                                          }
                                       });
                                   });
                               }
