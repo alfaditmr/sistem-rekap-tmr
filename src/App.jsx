@@ -57,6 +57,24 @@ const callGeminiAPI = async (prompt, systemInstruction) => {
 };
 
 // ==============================================================
+// 🔴 HELPER UNTUK MEMASTIKAN SETIAP BARIS MUTASI MEMILIKI ID UNIK & STABIL
+// ==============================================================
+export const ensureBankRowIds = (rows) => {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((r, idx) => {
+    if (!r || typeof r !== 'object') return r;
+    if (r.id) return r;
+    let h = 0;
+    const str = `${r.date || ''}_${r.amount || ''}_${r.description || ''}_${idx}`;
+    for (let i = 0; i < str.length; i++) {
+      h = ((h << 5) - h) + str.charCodeAt(i);
+      h = h & h;
+    }
+    return { ...r, id: `bank_${Math.abs(h)}_${idx}` };
+  });
+};
+
+// ==============================================================
 // 🔴 REKONSILIASI ITEM ORPHAN MUTASI BANK
 // Membersihkan item dashboard yang dibuat dari Input Baru jika mutasi bank-nya berstatus pending/dibatalkan,
 // atau melepaskan status pasangan jika data asli dashboard mutasinya telah dibatalkan.
@@ -161,15 +179,69 @@ export const reconcileOrphanBankItems = (reports, rows) => {
   });
 
   // ==============================================================
-  // 2. REKONSILIASI ITEM ORPHAN MUTASI BANK
+  // 2. REKONSILIASI ITEM ORPHAN MUTASI BANK & AUTO-HEAL MUTASI STATUS
   // ==============================================================
-  const activeBankRows = (rows || []).filter(r => r && (r.status === 'matched' || r.status === 'linked'));
+  const safeRows = ensureBankRowIds(rows || []);
+  let rowsModified = false;
+
+  // 2a. Ekstrak seluruh alokasi mutasi bank yang sedang aktif di laporan dashboard
+  const activeReportAllocations = [];
+  Object.keys(cleanReports).forEach(date => {
+    Object.keys(cleanReports[date] || {}).forEach(docKey => {
+      const typeData = cleanReports[date]?.[docKey];
+      if (!typeData || !Array.isArray(typeData.activeItems)) return;
+      typeData.activeItems.forEach(item => {
+        if (!item) return;
+        if (Array.isArray(item.bankAllocations) && item.bankAllocations.length > 0) {
+          item.bankAllocations.forEach(ba => {
+            if (ba && (ba.bankRowId || ba.bankDate)) {
+              activeReportAllocations.push({
+                rowId: ba.bankRowId,
+                date: ba.bankDate,
+                amount: Number(ba.amount || 0)
+              });
+            }
+          });
+        } else if (item.bankMatched && item.bankMatchDate) {
+          activeReportAllocations.push({
+            rowId: item.bankMatchRowId,
+            date: item.bankMatchDate,
+            amount: Number(item.originBankAllocAmount || 0)
+          });
+        }
+      });
+    });
+  });
+
+  // 2b. Auto-Heal: Jika ada baris mutasi bank yang sudah terpasang/tercatat di dashboard
+  // tapi statusnya masih 'pending' di bankRows, sembuhkan menjadi 'matched'
+  safeRows.forEach(r => {
+    if (r && r.status === 'pending') {
+      const isAllocatedInReport = activeReportAllocations.some(alloc => 
+        (r.id && alloc.rowId && r.id === alloc.rowId) ||
+        (alloc.amount > 0 && r.date === alloc.date && Number(r.amount) === alloc.amount)
+      );
+      if (isAllocatedInReport) {
+        r.status = 'matched';
+        r.isFromInputBaru = true;
+        rowsModified = true;
+      }
+    }
+  });
+
+  const activeBankRows = safeRows.filter(r => r && (r.status === 'matched' || r.status === 'linked'));
   const activeBankRowIds = new Set(activeBankRows.map(r => r.id).filter(Boolean));
   const activeBankDates = new Set(activeBankRows.map(r => r.date).filter(Boolean));
 
-  const pendingBankRows = (rows || []).filter(r => r && r.status === 'pending');
-  const pendingBankDates = new Set(pendingBankRows.map(r => r.date).filter(Boolean));
-  const pendingBankRowIds = new Set(pendingBankRows.map(r => r.id).filter(Boolean));
+  const isAllocationActive = (ba) => {
+    if (!ba) return false;
+    if (!ba.bankRowId && !ba.bankDate) return true;
+    if (ba.bankRowId && activeBankRowIds.has(ba.bankRowId)) return true;
+    if (ba.bankDate && ba.amount) {
+      return activeBankRows.some(r => r.date === ba.bankDate && Number(r.amount) === Number(ba.amount));
+    }
+    return false;
+  };
 
   Object.keys(cleanReports).forEach(date => {
     Object.keys(cleanReports[date] || {}).forEach(docKey => {
@@ -187,14 +259,16 @@ export const reconcileOrphanBankItems = (reports, rows) => {
         let isOrphan = false;
 
         if (itemRowIds.length > 0) {
-          // Jika item memiliki ID mutasi bank pendukung, cek apakah SEMUA mutasi pendukungnya berstatus pending atau tidak ada lagi di activeBankRows
-          const hasActiveRow = itemRowIds.some(id => activeBankRowIds.has(id));
+          // Cek apakah ada mutasi pendukung yang aktif (berdasarkan ID, tanggal, atau alokasi aktif)
+          const hasActiveAllocation = Array.isArray(item.bankAllocations) && item.bankAllocations.some(isAllocationActive);
+          const hasActiveRow = itemRowIds.some(id => activeBankRowIds.has(id)) || 
+            (item.bankMatchDate && activeBankDates.has(item.bankMatchDate)) ||
+            hasActiveAllocation;
           if (!hasActiveRow) {
             isOrphan = true;
           }
         } else if (item.bankMatchDate) {
           // Hanya jika tidak ada itemRowId sama sekali (legacy):
-          // Item hanya orphan jika tanggal tersebut sama sekali TIDAK MEMILIKI mutasi aktif
           if (!activeBankDates.has(item.bankMatchDate)) {
             isOrphan = true;
           }
@@ -209,9 +283,7 @@ export const reconcileOrphanBankItems = (reports, rows) => {
           }
 
           // Cek apakah item ini berasal dari "Input Baru" mutasi:
-          // 1. Memiliki tanda createdFromBank
-          // 2. Khusus kasus pedagang tikar yang dibatalkan (Sep 29, 2026 16:45:03 WIB)
-          // 3. Atau item direct tanpa master items yang terhubung ke bankDate pending
+          const itemBankDate = item.bankMatchDate || item.originBankDate || '';
           const isFromInputBaru = (
             item.createdFromBank ||
             (itemBankDate && itemBankDate.includes('Sep 29, 2026 16:45:03')) ||
@@ -240,7 +312,7 @@ export const reconcileOrphanBankItems = (reports, rows) => {
           // Jika item masih aktif tapi salah satu mutasi pendukungnya dibatalkan/pending:
           // Sinkronkan bankAllocations dan bankMatchRowIds agar konsisten
           if (Array.isArray(item.bankAllocations) && item.bankAllocations.length > 0) {
-            const validAllocations = item.bankAllocations.filter(ba => !ba.bankRowId || activeBankRowIds.has(ba.bankRowId));
+            const validAllocations = item.bankAllocations.filter(isAllocationActive);
             if (validAllocations.length !== item.bankAllocations.length) {
               item.bankAllocations = validAllocations;
               item.bankMatchRowIds = validAllocations.map(ba => ba.bankRowId).filter(Boolean);
@@ -268,7 +340,7 @@ export const reconcileOrphanBankItems = (reports, rows) => {
     });
   });
 
-  return { cleanReports, modified };
+  return { cleanReports, cleanRows: safeRows, modified: (modified || rowsModified) };
 };
 
 export default function App() {
@@ -306,7 +378,7 @@ export default function App() {
   const [bankRows, setBankRows] = useState(() => {
     try {
       const saved = localStorage.getItem('tmr_v19_bankRows');
-      return saved ? JSON.parse(saved) : [];
+      return saved ? ensureBankRowIds(JSON.parse(saved)) : [];
     } catch(e) { return []; }
   });
 
@@ -573,8 +645,8 @@ export default function App() {
                 if (data.lastWriterId === CLIENT_ID) {
                     return;
                 }
-                // Abaikan jika client ini baru saja melakukan simpan lokal (< 2.5 detik lalu)
-                if (Date.now() - lastLocalSaveTimeRef.current < 2500) {
+                // Abaikan jika client ini baru saja melakukan simpan lokal (< 4 detik lalu)
+                if (Date.now() - lastLocalSaveTimeRef.current < 4000) {
                     return;
                 }
                 // Abaikan jika masih ada penulisan lokal yang sedang dikirim
@@ -587,12 +659,12 @@ export default function App() {
             const loadedCats = data.categories || [];
             const loadedTargets = data.targets || {};
             let loadedReports = data.allReports || {};
-            let loadedBankRows = data.bankRows || [];
+            let loadedBankRows = ensureBankRowIds(data.bankRows || []);
 
             if (isFirst) {
                 const localBank = getInitialState('tmr_v19_bankRows', []);
                 if (loadedBankRows.length === 0 && Array.isArray(localBank) && localBank.length > 0) {
-                    loadedBankRows = localBank;
+                    loadedBankRows = ensureBankRowIds(localBank);
                 }
                 const localRep = getInitialState('tmr_v19_allReports', {});
                 if (Object.keys(loadedReports).length === 0 && Object.keys(localRep).length > 0) {
@@ -600,9 +672,10 @@ export default function App() {
                 }
             }
 
-            const { cleanReports: reconciledReports, modified: wasReconciled } = reconcileOrphanBankItems(loadedReports, loadedBankRows);
+            const { cleanReports: reconciledReports, cleanRows: reconciledRows, modified: wasReconciled } = reconcileOrphanBankItems(loadedReports, loadedBankRows);
             if (wasReconciled) {
                 loadedReports = reconciledReports;
+                loadedBankRows = reconciledRows || loadedBankRows;
                 setTimeout(() => {
                     saveToFirebaseDirectly(reconciledReports, loadedBankRows);
                 }, 200);
@@ -639,12 +712,13 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
-    const pullLatestFromCloud = async (showNotification = false) => {
+  const pullLatestFromCloud = async (showNotification = false) => {
     if (!user || !db) return;
 
-    // Proteksi: Jangan lakukan penimpaan otomatis jika user baru saja mengedit/menyimpan (< 2 detik lalu)
-    if (!showNotification && Date.now() - lastLocalSaveTimeRef.current < 2000) {
+    // Proteksi: Jangan lakukan penimpaan otomatis jika user baru saja mengedit/menyimpan (< 4 detik lalu)
+    if (Date.now() - lastLocalSaveTimeRef.current < 4000) {
       console.log("Skipping pullLatestFromCloud: local changes in progress");
+      if (showNotification) showToast("Data terbaru sudah tersimpan!");
       return;
     }
 
@@ -659,11 +733,12 @@ export default function App() {
         const loadedCats = data.categories || [];
         const loadedTargets = data.targets || {};
         let loadedReports = data.allReports || {};
-        let loadedBankRows = data.bankRows || [];
+        let loadedBankRows = ensureBankRowIds(data.bankRows || []);
 
-        const { cleanReports: cloudClean, modified: cloudMod } = reconcileOrphanBankItems(loadedReports, loadedBankRows);
+        const { cleanReports: cloudClean, cleanRows: cloudRows, modified: cloudMod } = reconcileOrphanBankItems(loadedReports, loadedBankRows);
         if (cloudMod) {
           loadedReports = cloudClean;
+          loadedBankRows = cloudRows || loadedBankRows;
           saveToFirebaseDirectly(cloudClean, loadedBankRows);
         }
 
@@ -1619,209 +1694,222 @@ export default function App() {
                      showToast(`Berhasil menyimpan ${newBankRows.length} data mutasi bank ke Cloud!`);
                  }}
                  onSaveRekon={(bankRow, allocations, apis) => {
-                     // 1. Format Tanggal
-                     let ymd = new Date().toISOString().split('T')[0];
-                     try {
-                         const cleanStr = (bankRow.date || '').replace(/WIB|WITA|WIT/i, '').trim();
-                         const d = new Date(cleanStr);
-                         if (!isNaN(d.getTime())) {
-                             const y = d.getFullYear();
-                             const m = String(d.getMonth() + 1).padStart(2, '0');
-                             const day = String(d.getDate()).padStart(2, '0');
-                             ymd = `${y}-${m}-${day}`;
-                         }
-                     } catch(e) {}
+                      // 1. Format Tanggal
+                      let ymd = new Date().toISOString().split('T')[0];
+                      try {
+                          const cleanStr = (bankRow.date || '').replace(/WIB|WITA|WIT/i, '').trim();
+                          const d = new Date(cleanStr);
+                          if (!isNaN(d.getTime())) {
+                              const y = d.getFullYear();
+                              const m = String(d.getMonth() + 1).padStart(2, '0');
+                              const day = String(d.getDate()).padStart(2, '0');
+                              ymd = `${y}-${m}-${day}`;
+                          }
+                      } catch(e) {}
 
-                     const distinctTargetDates = [...new Set(allocations.map(a => a.targetDate || ymd).filter(Boolean))];
-                     const primaryTargetDate = distinctTargetDates[0] || ymd;
+                      const distinctTargetDates = [...new Set(allocations.map(a => a.targetDate || ymd).filter(Boolean))];
+                      const primaryTargetDate = distinctTargetDates[0] || ymd;
 
-                     // Compute target summary for bankRows
-                     let targetSummary = allocations.map(a => {
-                         let n = '';
-                         if (a.categoryId) {
-                             const cat = categories.find(c => c.id === a.categoryId);
-                             if (cat) n += cat.name;
-                         }
-                         return `${n} (Rp ${formatRp(a.amount)})`;
-                     }).join(', ');
+                      // Compute target summary for bankRows
+                      let targetSummary = allocations.map(a => {
+                          let n = '';
+                          if (a.categoryId) {
+                              const cat = categories.find(c => c.id === a.categoryId);
+                              if (cat) n += cat.name;
+                          }
+                          return `${n} (Rp ${formatRp(a.amount)})`;
+                      }).join(', ');
 
-                     try {
-                         const baseReports = stateRef.current.allReports;
+                      try {
+                          const baseReports = stateRef.current.allReports;
                           const newReports = JSON.parse(JSON.stringify(baseReports));
                           const createdAllocationsSummary = [];
+
+                          const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
+                          const targetIndex = baseBankRows.findIndex(r => 
+                              (bankRow.id && r.id && r.id === bankRow.id) ||
+                              (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && r.description === bankRow.description)
+                          );
+                          const effectiveRowId = (targetIndex >= 0 && baseBankRows[targetIndex].id) 
+                              ? baseBankRows[targetIndex].id 
+                              : (bankRow.id || `bank_${Date.now()}`);
                           
                           allocations.forEach(alloc => {
-                             const allocYmd = alloc.targetDate || ymd;
-                             const dayData = newReports[allocYmd] || {};
-                             
-                             const cat = categories.find(c => c.id === alloc.categoryId);
-                             if (!cat) return; // Kategori wajib
-                             
-                             let theItemId = alloc.itemId;
-                             if (!theItemId || !cat.items || cat.items.length === 0) {
-                                 theItemId = 'direct';
-                             }
+                              const allocYmd = alloc.targetDate || ymd;
+                              const dayData = newReports[allocYmd] || {};
+                              
+                              const cat = categories.find(c => c.id === alloc.categoryId);
+                              if (!cat) return; // Kategori wajib
+                              
+                              let theItemId = alloc.itemId;
+                              if (!theItemId || !cat.items || cat.items.length === 0) {
+                                  theItemId = 'direct';
+                              }
 
-                             let docKey = 'utama'; 
-                             if (cat.type === 'lain') {
-                                 let targetIndex = 1;
-                                 while (true) {
-                                     const candidateKey = targetIndex === 1 ? 'lain' : `lain_${targetIndex}`;
-                                     const candidateDoc = dayData[candidateKey];
-                                     
-                                     if (!candidateDoc || !Array.isArray(candidateDoc.activeItems) || candidateDoc.activeItems.length === 0) {
-                                         docKey = candidateKey;
-                                         break;
-                                     }
-                                     
-                                     const allSameCategory = candidateDoc.activeItems.every(i => i.catId === cat.id);
-                                     const hasOtherBankMatch = candidateDoc.activeItems.some(i => i.bankMatchRowId && i.bankMatchRowId !== bankRow.id);
-                                     
-                                     if (allSameCategory && !hasOtherBankMatch) {
-                                         docKey = candidateKey;
-                                         break;
-                                     }
-                                     
-                                     targetIndex++;
-                                 }
-                             }
+                              let docKey = 'utama'; 
+                              if (cat.type === 'lain') {
+                                  let targetIndexDoc = 1;
+                                  while (true) {
+                                      const candidateKey = targetIndexDoc === 1 ? 'lain' : `lain_${targetIndexDoc}`;
+                                      const candidateDoc = dayData[candidateKey];
+                                      
+                                      if (!candidateDoc || !Array.isArray(candidateDoc.activeItems) || candidateDoc.activeItems.length === 0) {
+                                          docKey = candidateKey;
+                                          break;
+                                      }
+                                      
+                                      const allSameCategory = candidateDoc.activeItems.every(i => i.catId === cat.id);
+                                      const hasOtherBankMatch = candidateDoc.activeItems.some(i => i.bankMatchRowId && i.bankMatchRowId !== effectiveRowId);
+                                      
+                                      if (allSameCategory && !hasOtherBankMatch) {
+                                          docKey = candidateKey;
+                                          break;
+                                      }
+                                      
+                                      targetIndexDoc++;
+                                  }
+                              }
 
-                             if (!dayData[docKey]) {
-                                 dayData[docKey] = { sequence: '', signatureDate: allocYmd, activeItems: [], formData: {} };
-                             }
-                             if (!dayData[docKey].formData) dayData[docKey].formData = {};
-                             if (!Array.isArray(dayData[docKey].activeItems)) dayData[docKey].activeItems = [];
+                              if (!dayData[docKey]) {
+                                  dayData[docKey] = { sequence: '', signatureDate: allocYmd, activeItems: [], formData: {} };
+                              }
+                              if (!dayData[docKey].formData) dayData[docKey].formData = {};
+                              if (!Array.isArray(dayData[docKey].activeItems)) dayData[docKey].activeItems = [];
 
-                             const typeData = dayData[docKey];
-                             
-                             const newItem = { catId: cat.id, itemId: theItemId };
-                             if (docKey === 'lain' || docKey.startsWith('lain_')) {
-                                 newItem.itemDate = allocYmd; 
-                                 if (alloc.description) newItem.itemNote = alloc.description.trim();
-                             }
+                              const typeData = dayData[docKey];
+                              
+                              const newItem = { catId: cat.id, itemId: theItemId };
+                              if (docKey === 'lain' || docKey.startsWith('lain_')) {
+                                  newItem.itemDate = allocYmd; 
+                                  if (alloc.description) newItem.itemNote = alloc.description.trim();
+                              }
 
-                             let itemKey = `${newItem.catId}_${newItem.itemId}`;
-                             if (newItem.itemDate) itemKey += `_date_${newItem.itemDate}`;
-                             if (newItem.itemNote) { 
-                                 let hash = 0; 
-                                 for (let i = 0; i < newItem.itemNote.length; i++) { 
-                                     hash = ((hash << 5) - hash) + newItem.itemNote.charCodeAt(i); 
-                                     hash = hash & hash; 
-                                 } 
-                                 itemKey += `_note_${Math.abs(hash)}`; 
-                             }
-                             
-                             const currentAmount = typeData.formData[itemKey] || 0;
-                             typeData.formData[itemKey] = currentAmount + Number(alloc.amount || 0);
+                              let itemKey = `${newItem.catId}_${newItem.itemId}`;
+                              if (newItem.itemDate) itemKey += `_date_${newItem.itemDate}`;
+                              if (newItem.itemNote) { 
+                                  let hash = 0; 
+                                  for (let i = 0; i < newItem.itemNote.length; i++) { 
+                                      hash = ((hash << 5) - hash) + newItem.itemNote.charCodeAt(i); 
+                                      hash = hash & hash; 
+                                  } 
+                                  itemKey += `_note_${Math.abs(hash)}`; 
+                              }
+                              
+                              const currentAmount = typeData.formData[itemKey] || 0;
+                              typeData.formData[itemKey] = currentAmount + Number(alloc.amount || 0);
 
-                             const existingIndex = typeData.activeItems.findIndex(i => {
-                                 if (!i || typeof i !== 'object') return false;
-                                 let k = `${i.catId}_${i.itemId || i.id}`;
-                                 if (i.itemDate) k += `_date_${i.itemDate}`;
-                                 if (i.itemNote && typeof i.itemNote === 'string') {
-                                     let h = 0; for (let j=0; j<i.itemNote.length; j++) { h=((h<<5)-h)+i.itemNote.charCodeAt(j); h=h&h; }
-                                     k += `_note_${Math.abs(h)}`;
-                                 }
-                                 return k === itemKey;
-                             });
+                              const existingIndex = typeData.activeItems.findIndex(i => {
+                                  if (!i || typeof i !== 'object') return false;
+                                  let k = `${i.catId}_${i.itemId || i.id}`;
+                                  if (i.itemDate) k += `_date_${i.itemDate}`;
+                                  if (i.itemNote && typeof i.itemNote === 'string') {
+                                      let h = 0; for (let j=0; j<i.itemNote.length; j++) { h=((h<<5)-h)+i.itemNote.charCodeAt(j); h=h&h; }
+                                      k += `_note_${Math.abs(h)}`;
+                                  }
+                                  return k === itemKey;
+                              });
 
-                             const apiItem = apis.find(a => a.id === alloc.apiRefId);
-                             const proofUrl = apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
-                             const tenantLabel = apiItem ? (apiItem.nama_penyewa || apiItem.namaPerusahaan || '') : '';
-                             const locationLabel = apiItem ? (apiItem.lokasi_sewa || apiItem.namaProduk || '') : '';
-                             const displayDesc = tenantLabel
-                               ? (locationLabel && locationLabel !== tenantLabel ? `${tenantLabel} - ${locationLabel}` : tenantLabel)
-                               : (alloc.description || bankRow.description || 'Mutasi Bank');
+                              const apiItem = apis.find(a => a.id === alloc.apiRefId);
+                              const proofUrl = apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
+                              const tenantLabel = apiItem ? (apiItem.nama_penyewa || apiItem.namaPerusahaan || '') : '';
+                              const locationLabel = apiItem ? (apiItem.lokasi_sewa || apiItem.namaProduk || '') : '';
+                              const displayDesc = tenantLabel
+                                ? (locationLabel && locationLabel !== tenantLabel ? `${tenantLabel} - ${locationLabel}` : tenantLabel)
+                                : (alloc.description || bankRow.description || 'Mutasi Bank');
 
-                             const newAllocationDetail = {
-                                 bankRowId: bankRow.id,
-                                 bankDate: bankRow.date,
-                                 amount: Number(alloc.amount || 0),
-                                 desc: displayDesc,
-                                 tenant: tenantLabel,
-                                 location: locationLabel,
-                                 apiRefId: alloc.apiRefId || '',
-                                 proofUrl: proofUrl
-                             };
+                              const newAllocationDetail = {
+                                  bankRowId: effectiveRowId,
+                                  bankDate: bankRow.date,
+                                  amount: Number(alloc.amount || 0),
+                                  desc: displayDesc,
+                                  tenant: tenantLabel,
+                                  location: locationLabel,
+                                  apiRefId: alloc.apiRefId || '',
+                                  proofUrl: proofUrl
+                              };
 
-                             const wasNew = (existingIndex === -1);
-                             if (wasNew) {
-                                 newItem.bankMatched = true;
-                                 newItem.bankMatchRowId = bankRow.id;
-                                 newItem.bankMatchDate = bankRow.date;
-                                 newItem.bankMatchRowIds = [bankRow.id];
-                                 newItem.createdFromBank = true;
-                                 newItem.originBankRowId = bankRow.id;
-                                 newItem.originBankDate = bankRow.date;
-                                 newItem.originBankAllocAmount = Number(alloc.amount || 0);
-                                 newItem.bankAllocations = [newAllocationDetail];
-                                 if (alloc.apiRefId) newItem.apiRefId = alloc.apiRefId;
-                                 if (proofUrl) newItem.proofUrl = proofUrl;
-                                 typeData.activeItems.push(newItem);
-                             } else {
-                                 const item = typeData.activeItems[existingIndex];
-                                 item.bankMatched = true;
-                                 if (!Array.isArray(item.bankMatchRowIds)) {
-                                     item.bankMatchRowIds = item.bankMatchRowId ? [item.bankMatchRowId] : [];
-                                 }
-                                 if (!item.bankMatchRowIds.includes(bankRow.id)) {
-                                     item.bankMatchRowIds.push(bankRow.id);
-                                 }
-                                 item.bankMatchRowId = bankRow.id;
-                                 item.bankMatchDate = bankRow.date;
+                              const wasNew = (existingIndex === -1);
+                              if (wasNew) {
+                                  newItem.bankMatched = true;
+                                  newItem.bankMatchRowId = effectiveRowId;
+                                  newItem.bankMatchDate = bankRow.date;
+                                  newItem.bankMatchRowIds = [effectiveRowId];
+                                  newItem.createdFromBank = true;
+                                  newItem.originBankRowId = effectiveRowId;
+                                  newItem.originBankDate = bankRow.date;
+                                  newItem.originBankAllocAmount = Number(alloc.amount || 0);
+                                  newItem.bankAllocations = [newAllocationDetail];
+                                  if (alloc.apiRefId) newItem.apiRefId = alloc.apiRefId;
+                                  if (proofUrl) newItem.proofUrl = proofUrl;
+                                  typeData.activeItems.push(newItem);
+                              } else {
+                                  const item = typeData.activeItems[existingIndex];
+                                  item.bankMatched = true;
+                                  if (!Array.isArray(item.bankMatchRowIds)) {
+                                      item.bankMatchRowIds = item.bankMatchRowId ? [item.bankMatchRowId] : [];
+                                  }
+                                  if (!item.bankMatchRowIds.includes(effectiveRowId)) {
+                                      item.bankMatchRowIds.push(effectiveRowId);
+                                  }
+                                  item.bankMatchRowId = effectiveRowId;
+                                  item.bankMatchDate = bankRow.date;
 
-                                 if (!Array.isArray(item.bankAllocations)) {
-                                     item.bankAllocations = [];
-                                     if (currentAmount > 0) {
-                                         const existingApi = apis.find(a => a.id === item.apiRefId);
-                                         const priorTenant = existingApi ? (existingApi.nama_penyewa || existingApi.namaPerusahaan || '') : '';
-                                         const priorLoc = existingApi ? (existingApi.lokasi_sewa || existingApi.namaProduk || '') : '';
-                                         const priorLabel = priorTenant
-                                             ? (priorLoc && priorLoc !== priorTenant ? `${priorTenant} - ${priorLoc}` : priorTenant)
-                                             : (item.bankMatchDate ? `Mutasi (${item.bankMatchDate})` : 'Transaksi Sebelumnya');
-                                         item.bankAllocations.push({
-                                             bankRowId: item.originBankRowId || item.bankMatchRowId || 'prior_0',
-                                             bankDate: item.originBankDate || item.bankMatchDate || '',
-                                             amount: currentAmount,
-                                             desc: priorLabel,
-                                             tenant: priorTenant,
-                                             location: priorLoc,
-                                             apiRefId: item.apiRefId || '',
-                                             proofUrl: item.proofUrl || ''
-                                         });
-                                     }
-                                 }
+                                  if (!Array.isArray(item.bankAllocations)) {
+                                      item.bankAllocations = [];
+                                      if (currentAmount > 0) {
+                                          const existingApi = apis.find(a => a.id === item.apiRefId);
+                                          const priorTenant = existingApi ? (existingApi.nama_penyewa || existingApi.namaPerusahaan || '') : '';
+                                          const priorLoc = existingApi ? (existingApi.lokasi_sewa || existingApi.namaProduk || '') : '';
+                                          const priorLabel = priorTenant
+                                              ? (priorLoc && priorLoc !== priorTenant ? `${priorTenant} - ${priorLoc}` : priorTenant)
+                                              : (item.bankMatchDate ? `Mutasi (${item.bankMatchDate})` : 'Transaksi Sebelumnya');
+                                          item.bankAllocations.push({
+                                              bankRowId: item.originBankRowId || item.bankMatchRowId || 'prior_0',
+                                              bankDate: item.originBankDate || item.bankMatchDate || '',
+                                              amount: currentAmount,
+                                              desc: priorLabel,
+                                              tenant: priorTenant,
+                                              location: priorLoc,
+                                              apiRefId: item.apiRefId || '',
+                                              proofUrl: item.proofUrl || ''
+                                          });
+                                      }
+                                  }
 
-                                 const existingAllocIdx = item.bankAllocations.findIndex(ba => ba.bankRowId === bankRow.id);
-                                 if (existingAllocIdx >= 0) {
-                                     item.bankAllocations[existingAllocIdx].amount += Number(alloc.amount || 0);
-                                     if (newAllocationDetail.desc) item.bankAllocations[existingAllocIdx].desc = newAllocationDetail.desc;
-                                     if (newAllocationDetail.apiRefId) item.bankAllocations[existingAllocIdx].apiRefId = newAllocationDetail.apiRefId;
-                                     if (newAllocationDetail.proofUrl) item.bankAllocations[existingAllocIdx].proofUrl = newAllocationDetail.proofUrl;
-                                 } else {
-                                     item.bankAllocations.push(newAllocationDetail);
-                                 }
+                                  const existingAllocIdx = item.bankAllocations.findIndex(ba => 
+                                      ba.bankRowId === effectiveRowId || 
+                                      (ba.bankDate === bankRow.date && Number(ba.amount) === Number(alloc.amount))
+                                  );
+                                  if (existingAllocIdx >= 0) {
+                                      item.bankAllocations[existingAllocIdx].bankRowId = effectiveRowId;
+                                      item.bankAllocations[existingAllocIdx].amount = Number(alloc.amount || 0);
+                                      if (newAllocationDetail.desc) item.bankAllocations[existingAllocIdx].desc = newAllocationDetail.desc;
+                                      if (newAllocationDetail.apiRefId) item.bankAllocations[existingAllocIdx].apiRefId = newAllocationDetail.apiRefId;
+                                      if (newAllocationDetail.proofUrl) item.bankAllocations[existingAllocIdx].proofUrl = newAllocationDetail.proofUrl;
+                                  } else {
+                                      item.bankAllocations.push(newAllocationDetail);
+                                  }
 
-                                 if (alloc.apiRefId) item.apiRefId = alloc.apiRefId;
-                                 if (proofUrl) item.proofUrl = proofUrl;
-                             }
-                             
-                             if (proofUrl) {
-                                 typeData.formData[itemKey + '_buktiUrl'] = proofUrl;
-                             }
-                             
-                             createdAllocationsSummary.push({
-                                 date: allocYmd,
-                                 docKey: docKey,
-                                 itemKey: itemKey,
-                                 amount: Number(alloc.amount || 0),
-                                 wasNewItem: wasNew
-                             });
-                             
-                             newReports[allocYmd] = dayData;
-                         });
+                                  if (alloc.apiRefId) item.apiRefId = alloc.apiRefId;
+                                  if (proofUrl) item.proofUrl = proofUrl;
+                              }
+                              
+                              if (proofUrl) {
+                                  typeData.formData[itemKey + '_buktiUrl'] = proofUrl;
+                              }
+                              
+                              createdAllocationsSummary.push({
+                                  date: allocYmd,
+                                  docKey: docKey,
+                                  itemKey: itemKey,
+                                  amount: Number(alloc.amount || 0),
+                                  wasNewItem: wasNew
+                              });
+                              
+                              newReports[allocYmd] = dayData;
+                          });
 
-                         let matchedProofUrl = '';
+                          let matchedProofUrl = '';
                           let matchedApiRefIds = [];
                           allocations.forEach(alloc => {
                               if (alloc.apiRefId) {
@@ -1832,108 +1920,135 @@ export default function App() {
                               }
                           });
 
-                          const baseBankRows = stateRef.current.bankRows;
-                          const newBankRows = baseBankRows.map(r => r.id === bankRow.id ? { 
-                               ...r, 
-                               status: 'matched', 
-                               isFromInputBaru: true,
-                               inputBaruAllocations: createdAllocationsSummary,
-                               matchedTo: targetSummary,
-                              linkedTo: { date: primaryTargetDate, dates: distinctTargetDates, groupName: targetSummary, proofUrl: matchedProofUrl || r.proofUrl || '' },
-                              proofUrl: matchedProofUrl || r.proofUrl || '',
-                              apiRefId: matchedApiRefIds[0] || r.apiRefId || '',
-                              apiRefIds: matchedApiRefIds.length > 0 ? matchedApiRefIds : (r.apiRefIds || [])
-                          } : r);
-                         
-                         setAllReports(newReports);
-                         setBankRows(newBankRows);
-                         
-                         saveToFirebaseDirectly(newReports, newBankRows);
-                         showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
-                     } catch (err) {
-                         console.error("Error in onSaveRekon:", err);
-                         alert("Terjadi kesalahan saat menyimpan alokasi: " + err.message);
-                     }
-                 }}
-                 onLinkRekon={async (bankRow, targetDate, targetType, targetGroupInfo) => {
-                      const bankAmount = Number(bankRow?.amount || 0);
-                      const groupNominal = Number(targetGroupInfo?.nominal || 0);
-                      if (bankAmount !== groupNominal) {
-                          alert(`Pemasangan Ditolak!\nNominal mutasi bank (Rp ${formatRp(bankAmount)}) tidak sesuai dengan nominal dashboard (Rp ${formatRp(groupNominal)}).\nNominal harus sama persis.`);
-                          return;
-                      }
-                      try {
-                          // 1. Construct new reports
-                         const baseReports = stateRef.current.allReports;
-                          const newReports = { ...baseReports };
-                         const dayData = { ...(newReports[targetDate] || {}) };
-                         const typeData = { ...(dayData[targetType] || { formData: {}, activeItems: [] }) };
-                         const safeActiveItems = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
-                         const newActiveItems = [...safeActiveItems];
-                         
-                         targetGroupInfo.itemIndices.forEach(idx => {
-                             if (newActiveItems[idx]) {
-                                 const it = newActiveItems[idx];
-                                 const existingRowIds = Array.isArray(it.bankMatchRowIds) ? it.bankMatchRowIds : (it.bankMatchRowId ? [it.bankMatchRowId] : []);
-                                 const updatedRowIds = existingRowIds.includes(bankRow.id) ? existingRowIds : [...existingRowIds, bankRow.id];
-                                 newActiveItems[idx] = { 
-                                     ...it, 
-                                     bankMatched: true, 
-                                     bankMatchDate: bankRow.date,
-                                     bankMatchRowId: bankRow.id,
-                                     bankMatchRowIds: updatedRowIds
-                                 };
-                             }
-                         });
-                         
-                         dayData[targetType] = { ...typeData, activeItems: newActiveItems };
-                         newReports[targetDate] = dayData;
-                         
-                         // 2. Construct new bank rows
-                         let linkedProofUrl = '';
-                          targetGroupInfo.itemIndices.forEach(idx => {
-                              if (newActiveItems[idx]) {
-                                  const it = newActiveItems[idx];
-                                  let itemKey = `${it.catId}_${it.itemId || it.id}`;
-                                  if (it.itemDate) itemKey += `_date_${it.itemDate}`;
-                                  if (it.itemNote) {
-                                      let h = 0; for(let j=0; j<it.itemNote.length; j++){ h=((h<<5)-h)+it.itemNote.charCodeAt(j); h=h&h; }
-                                      itemKey += `_note_${Math.abs(h)}`;
-                                  }
-                                  const u = it.proofUrl || typeData.formData?.[itemKey + '_buktiUrl'];
-                                  if (u) linkedProofUrl = u;
+                          const newBankRows = baseBankRows.map((r, idx) => {
+                              const isTarget = (targetIndex >= 0 && idx === targetIndex) ||
+                                  (bankRow.id && r.id && r.id === bankRow.id) ||
+                                  (r.id && r.id === effectiveRowId) ||
+                                  (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && r.description === bankRow.description);
+                              if (isTarget) {
+                                  return { 
+                                      ...r, 
+                                      id: r.id || effectiveRowId,
+                                      status: 'matched', 
+                                      isFromInputBaru: true,
+                                      inputBaruAllocations: createdAllocationsSummary,
+                                      matchedTo: targetSummary,
+                                      linkedTo: { date: primaryTargetDate, dates: distinctTargetDates, groupName: targetSummary, proofUrl: matchedProofUrl || r.proofUrl || '' },
+                                      proofUrl: matchedProofUrl || r.proofUrl || '',
+                                      apiRefId: matchedApiRefIds[0] || r.apiRefId || '',
+                                      apiRefIds: matchedApiRefIds.length > 0 ? matchedApiRefIds : (r.apiRefIds || [])
+                                  };
                               }
+                              return r;
                           });
+                          
+                          setAllReports(newReports);
+                          setBankRows(newBankRows);
+                          
+                          saveToFirebaseDirectly(newReports, newBankRows);
+                          showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
+                      } catch (err) {
+                          console.error("Error in onSaveRekon:", err);
+                          alert("Terjadi kesalahan saat menyimpan alokasi: " + err.message);
+                      }
+                  }}
+                  onLinkRekon={async (bankRow, targetDate, targetType, targetGroupInfo) => {
+                       const bankAmount = Number(bankRow?.amount || 0);
+                       const groupNominal = Number(targetGroupInfo?.nominal || 0);
+                       if (bankAmount !== groupNominal) {
+                           alert(`Pemasangan Ditolak!\nNominal mutasi bank (Rp ${formatRp(bankAmount)}) tidak sesuai dengan nominal dashboard (Rp ${formatRp(groupNominal)}).\nNominal harus sama persis.`);
+                           return;
+                       }
+                       try {
+                           const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
+                           const targetIndex = baseBankRows.findIndex(r => 
+                               (bankRow.id && r.id && r.id === bankRow.id) ||
+                               (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && r.description === bankRow.description)
+                           );
+                           const effectiveRowId = (targetIndex >= 0 && baseBankRows[targetIndex].id) 
+                               ? baseBankRows[targetIndex].id 
+                               : (bankRow.id || `bank_${Date.now()}`);
 
-                          const baseBankRows = stateRef.current.bankRows;
-                          const newBankRows = baseBankRows.map(r => r.id === bankRow.id ? { 
-                              ...r, 
-                              status: 'linked', 
-                              linkedTo: { date: targetDate, groupName: targetGroupInfo.name, proofUrl: linkedProofUrl || r.proofUrl || '' },
-                              proofUrl: linkedProofUrl || r.proofUrl || ''
-                          } : r);
+                           // 1. Construct new reports
+                           const baseReports = stateRef.current.allReports;
+                           const newReports = { ...baseReports };
+                           const dayData = { ...(newReports[targetDate] || {}) };
+                           const typeData = { ...(dayData[targetType] || { formData: {}, activeItems: [] }) };
+                           const safeActiveItems = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
+                           const newActiveItems = [...safeActiveItems];
+                          
+                           targetGroupInfo.itemIndices.forEach(idx => {
+                               if (newActiveItems[idx]) {
+                                   const it = newActiveItems[idx];
+                                   const existingRowIds = Array.isArray(it.bankMatchRowIds) ? it.bankMatchRowIds : (it.bankMatchRowId ? [it.bankMatchRowId] : []);
+                                   const updatedRowIds = existingRowIds.includes(effectiveRowId) ? existingRowIds : [...existingRowIds, effectiveRowId];
+                                   newActiveItems[idx] = { 
+                                       ...it, 
+                                       bankMatched: true, 
+                                       bankMatchDate: bankRow.date,
+                                       bankMatchRowId: effectiveRowId,
+                                       bankMatchRowIds: updatedRowIds
+                                   };
+                               }
+                           });
+                          
+                           dayData[targetType] = { ...typeData, activeItems: newActiveItems };
+                           newReports[targetDate] = dayData;
+                          
+                           // 2. Construct new bank rows
+                           let linkedProofUrl = '';
+                           targetGroupInfo.itemIndices.forEach(idx => {
+                               if (newActiveItems[idx]) {
+                                   const it = newActiveItems[idx];
+                                   let itemKey = `${it.catId}_${it.itemId || it.id}`;
+                                   if (it.itemDate) itemKey += `_date_${it.itemDate}`;
+                                   if (it.itemNote) {
+                                       let h = 0; for(let j=0; j<it.itemNote.length; j++){ h=((h<<5)-h)+it.itemNote.charCodeAt(j); h=h&h; }
+                                       itemKey += `_note_${Math.abs(h)}`;
+                                   }
+                                   const u = it.proofUrl || typeData.formData?.[itemKey + '_buktiUrl'];
+                                   if (u) linkedProofUrl = u;
+                               }
+                           });
 
-                         // 3. Set states
-                         setAllReports(newReports);
-                         setBankRows(newBankRows);
-                         
-                         saveToFirebaseDirectly(newReports, newBankRows);
+                           const newBankRows = baseBankRows.map((r, idx) => {
+                               const isTarget = (targetIndex >= 0 && idx === targetIndex) ||
+                                   (bankRow.id && r.id && r.id === bankRow.id) ||
+                                   (r.id && r.id === effectiveRowId) ||
+                                   (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && r.description === bankRow.description);
+                               if (isTarget) {
+                                   return { 
+                                       ...r, 
+                                       id: r.id || effectiveRowId,
+                                       status: 'linked', 
+                                       linkedTo: { date: targetDate, groupName: targetGroupInfo.name, proofUrl: linkedProofUrl || r.proofUrl || '' },
+                                       proofUrl: linkedProofUrl || r.proofUrl || ''
+                                   };
+                               }
+                               return r;
+                           });
 
-                         showToast(`Berhasil memasangkan mutasi dengan pendapatan tanggal ${targetDate}!`);
-                     } catch (err) {
-                         console.error("Error in onLinkRekon:", err);
-                         alert("Gagal memasangkan data: " + err.message);
-                     }
-                 }}
-                 onUpdateBankRow={(rowId, updates) => {
-                     const baseBankRows = stateRef.current.bankRows;
-                     const newBankRows = baseBankRows.map(r => r.id === rowId ? { ...r, ...updates } : r);
-                     setBankRows(newBankRows);
-                     saveToFirebaseDirectly(stateRef.current.allReports, newBankRows);
-                 }}
-                 onUnlinkBankRow={(bankRow) => {
-                      try {
-                          const baseReports = stateRef.current.allReports;
+                           // 3. Set states
+                           setAllReports(newReports);
+                           setBankRows(newBankRows);
+                          
+                           saveToFirebaseDirectly(newReports, newBankRows);
+
+                           showToast(`Berhasil memasangkan mutasi dengan pendapatan tanggal ${targetDate}!`);
+                       } catch (err) {
+                           console.error("Error in onLinkRekon:", err);
+                           alert("Gagal memasangkan data: " + err.message);
+                       }
+                  }}
+                  onUpdateBankRow={(rowId, updates) => {
+                      const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
+                      const newBankRows = baseBankRows.map(r => r.id === rowId ? { ...r, ...updates } : r);
+                      setBankRows(newBankRows);
+                      saveToFirebaseDirectly(stateRef.current.allReports, newBankRows);
+                  }}
+                  onUnlinkBankRow={(bankRow) => {
+                     try {
+                         const baseReports = stateRef.current.allReports;
                           const newReports = JSON.parse(JSON.stringify(baseReports));
                           
                           const isFromInputBaru = 
@@ -2073,9 +2188,9 @@ export default function App() {
                               });
                           }
 
-                          const baseBankRows = stateRef.current.bankRows;
-                          const newBankRows = baseBankRows.map(r => {
-                              if (r.id === bankRow.id || (r.date === bankRow.date && r.amount === bankRow.amount && r.description === bankRow.description)) {
+                          const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
+                           const newBankRows = baseBankRows.map(r => {
+                               if (r.id === bankRow.id || (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && r.description === bankRow.description)) {
                                   const updated = { ...r, status: 'pending' };
                                   delete updated.linkedTo;
                                   delete updated.matchedTo;

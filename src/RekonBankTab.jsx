@@ -121,7 +121,7 @@ export default function RekonBankTab({
       map[ymd].rows.push(r);
       const amt = Number(r.amount) || 0;
       map[ymd].totalAmount += amt;
-      if (r.status === 'matched' || r.status === 'linked') {
+      if (r.status === 'matched' || r.status === 'linked' || !!r.matchedTo || !!r.linkedTo) {
         map[ymd].pairedCount += 1;
         map[ymd].pairedAmount += amt;
       } else {
@@ -220,10 +220,10 @@ export default function RekonBankTab({
   const displayedDateRows = useMemo(() => {
     if (!activeDateData) return [];
     if (dateStatusFilter === 'pending') {
-      return activeDateData.rows.filter(r => r.status === 'pending');
+      return activeDateData.rows.filter(r => r.status !== 'matched' && r.status !== 'linked' && !r.matchedTo && !r.linkedTo);
     }
     if (dateStatusFilter === 'paired') {
-      return activeDateData.rows.filter(r => r.status === 'matched' || r.status === 'linked');
+      return activeDateData.rows.filter(r => r.status === 'matched' || r.status === 'linked' || !!r.matchedTo || !!r.linkedTo);
     }
     return activeDateData.rows;
   }, [activeDateData, dateStatusFilter]);
@@ -806,9 +806,13 @@ export default function RekonBankTab({
             if (typeData && Array.isArray(typeData.activeItems)) {
               typeData.activeItems.forEach(item => {
                 const isRowMatch = item && item.bankMatched && (
-                  item.bankMatchRowId === row.id || 
-                  (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(row.id)) ||
-                  (Array.isArray(item.bankAllocations) && item.bankAllocations.some(ba => ba.bankRowId === row.id))
+                  (row.id && item.bankMatchRowId === row.id) || 
+                  (row.id && Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(row.id)) ||
+                  (Array.isArray(item.bankAllocations) && item.bankAllocations.some(ba => 
+                    (row.id && ba.bankRowId === row.id) ||
+                    (ba.bankDate === row.date && Number(ba.amount) === Number(row.amount))
+                  )) ||
+                  (item.bankMatchDate === row.date && Number(item.originBankAllocAmount || 0) === Number(row.amount))
                 );
                 if (isRowMatch) {
                   const cat = categories.find(c => c.id === item.catId);
@@ -901,7 +905,7 @@ export default function RekonBankTab({
 
   // Render Card Baris Mutasi
   const renderMutationCard = (row) => {
-    const isPaired = row.status === 'matched' || row.status === 'linked';
+    const isPaired = row.status === 'matched' || row.status === 'linked' || !!row.matchedTo || !!row.linkedTo;
     return (
       <div key={row.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 sm:p-5 border-b border-gray-100 hover:bg-blue-50/30 transition-colors last:border-b-0 gap-4">
         <div className="flex-1 min-w-0 pr-2">
