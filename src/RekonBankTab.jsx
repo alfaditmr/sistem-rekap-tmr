@@ -1079,11 +1079,18 @@ export default function RekonBankTab({
                 >
                   <div>
                     <div className="flex items-center justify-between mb-1.5 gap-1">
-                      <span className={'text-[10px] font-extrabold px-2 py-0.5 rounded-md border flex items-center gap-1 ' + badgeBg}>
-                        {isListrik && <Zap size={10} className="fill-amber-500 text-amber-500"/>}
-                        {isPromo && <Sparkles size={10} className="text-purple-500"/>}
-                        {item.tipe_transaksi || item.source}
-                      </span>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className={'text-[10px] font-extrabold px-2 py-0.5 rounded-md border flex items-center gap-1 ' + badgeBg}>
+                          {isListrik && <Zap size={10} className="fill-amber-500 text-amber-500"/>}
+                          {isPromo && <Sparkles size={10} className="text-purple-500"/>}
+                          {item.tipe_transaksi || item.source}
+                        </span>
+                        {item.listrik_tambahan && !isListrik && (
+                          <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5" title="Termasuk Biaya Listrik Tambahan">
+                            <Zap size={9} className="fill-amber-500 text-amber-500"/> +Listrik
+                          </span>
+                        )}
+                      </div>
                       
                       {isMatched ? (
                         <span className="text-[10px] font-black px-2 py-0.5 rounded-full border bg-emerald-600 text-white border-emerald-700 flex items-center gap-1 shadow-2xs"><CheckCircle size={10} className="text-emerald-100 fill-emerald-700"/> Sudah Dipasangkan</span>
