@@ -11,7 +11,8 @@ import {
   CheckCircle,
   ArrowUp,
   Save,
-  FileText
+  FileText,
+  Layers
 } from 'lucide-react';
 import {
   safeString,
@@ -539,6 +540,27 @@ export default function InputHarianTab({
                               </button>
                             )}
                           </div>
+
+                          {/* DETAIL TRANSAKSI GABUNGAN (NON-PRINTED) */}
+                          {Array.isArray(item.bankAllocations) && item.bankAllocations.length > 1 && (
+                            <div className="mt-2.5 p-2.5 bg-indigo-50/70 border border-indigo-100 rounded-xl print:hidden text-xs space-y-1.5 shadow-2xs w-full">
+                              <div className="text-[10px] font-black uppercase tracking-wider text-indigo-700 flex items-center gap-1">
+                                <Layers size={11} className="text-indigo-600" /> Rincian Transaksi ({item.bankAllocations.length} Mutasi):
+                              </div>
+                              <div className="space-y-1">
+                                {item.bankAllocations.map((alloc, aIdx) => (
+                                  <div key={aIdx} className="flex items-center justify-between text-slate-700 font-medium py-0.5 border-b border-indigo-100/60 last:border-0">
+                                    <span className="truncate pr-2 text-[11px] font-semibold text-slate-800" title={alloc.desc || alloc.tenant || ''}>
+                                      • {alloc.desc || alloc.tenant || `Transaksi ${aIdx + 1}`}
+                                    </span>
+                                    <span className="font-black shrink-0 text-indigo-900 text-xs">
+                                      Rp {formatRp(alloc.amount)}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="relative w-full sm:w-1/2 md:w-2/5 shrink-0 mt-2 sm:mt-0">

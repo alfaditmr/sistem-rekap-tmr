@@ -280,6 +280,9 @@ export default function RekonBankTab({
                 if (activeItem.apiRefId && String(activeItem.apiRefId) === itemId) {
                   return { isMatched: true, reportItem: activeItem, reportDate: ymd };
                 }
+                if (Array.isArray(activeItem.bankAllocations) && activeItem.bankAllocations.some(ba => String(ba.apiRefId) === itemId)) {
+                  return { isMatched: true, reportItem: activeItem, reportDate: ymd };
+                }
                 if (isUrlMatch(activeItem.proofUrl)) {
                   return { isMatched: true, reportItem: activeItem, reportDate: ymd };
                 }
@@ -804,7 +807,8 @@ export default function RekonBankTab({
               typeData.activeItems.forEach(item => {
                 const isRowMatch = item && item.bankMatched && (
                   item.bankMatchRowId === row.id || 
-                  (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(row.id))
+                  (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(row.id)) ||
+                  (Array.isArray(item.bankAllocations) && item.bankAllocations.some(ba => ba.bankRowId === row.id))
                 );
                 if (isRowMatch) {
                   const cat = categories.find(c => c.id === item.catId);
