@@ -542,7 +542,7 @@ export default function RekonBankTab({
     }));
   };
 
-  const saveSplit = async () => {
+  const saveSplit = () => {
     const totalAllocated = splitModal.allocations.reduce((sum, a) => sum + Number(a.amount || 0), 0);
     const bankRowAmount = Number(splitModal.bankRow?.amount || 0);
     if (Math.round(totalAllocated) !== Math.round(bankRowAmount)) {
@@ -561,11 +561,20 @@ export default function RekonBankTab({
       amount: Number(a.amount || 0)
     }));
 
-    if (onSaveRekon) {
-      await onSaveRekon(splitModal.bankRow, cleanAllocations, apiData);
-    }
+    const targetRow = splitModal.bankRow;
+    const currentApis = Array.isArray(apiData) ? apiData : [];
 
+    // 🔴 1. TUTUP MODAL SEKETIKA (0ms) - Bebas macet, UI langsung tertutup seketika
     setSplitModal({ isOpen: false, bankRow: null, allocations: [] });
+
+    // 🔴 2. Eksekusi penyimpanan data secara aman
+    if (onSaveRekon) {
+      try {
+        onSaveRekon(targetRow, cleanAllocations, currentApis);
+      } catch (err) {
+        console.error("Error calling onSaveRekon:", err);
+      }
+    }
   };
 
   const getItemsForCategory = (catId) => {

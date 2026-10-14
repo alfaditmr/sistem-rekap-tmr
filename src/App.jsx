@@ -1739,7 +1739,8 @@ export default function App() {
                      await saveToFirebaseDirectly(baseReports, newBankRows);
                      showToast(`Berhasil menyimpan ${newBankRows.length} data mutasi bank ke Cloud!`);
                  }}
-                 onSaveRekon={async (bankRow, allocations, apis) => {
+                 onSaveRekon={(bankRow, allocations, apis) => {
+                      const safeApis = Array.isArray(apis) ? apis : [];
                       // 1. Format Tanggal
                       let ymd = new Date().toISOString().split('T')[0];
                       try {
@@ -1856,7 +1857,7 @@ export default function App() {
                                   return k === itemKey;
                               });
 
-                              const apiItem = apis.find(a => a.id === alloc.apiRefId);
+                              const apiItem = safeApis.find(a => a.id === alloc.apiRefId);
                               const proofUrl = apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
                               const tenantLabel = apiItem ? (apiItem.nama_penyewa || apiItem.namaPerusahaan || '') : '';
                               const locationLabel = apiItem ? (apiItem.lokasi_sewa || apiItem.namaProduk || '') : '';
@@ -1900,7 +1901,7 @@ export default function App() {
                                   if (!Array.isArray(item.bankAllocations)) {
                                       item.bankAllocations = [];
                                       if (currentAmount > 0) {
-                                          const existingApi = apis.find(a => a.id === item.apiRefId);
+                                          const existingApi = safeApis.find(a => a.id === item.apiRefId);
                                           const priorTenant = existingApi ? (existingApi.nama_penyewa || existingApi.namaPerusahaan || '') : '';
                                           const priorLoc = existingApi ? (existingApi.lokasi_sewa || existingApi.namaProduk || '') : '';
                                           const priorLabel = priorTenant
@@ -1971,7 +1972,7 @@ export default function App() {
                           allocations.forEach(alloc => {
                               if (alloc.apiRefId) {
                                   matchedApiRefIds.push(alloc.apiRefId);
-                                  const apiItem = apis.find(a => a.id === alloc.apiRefId);
+                                  const apiItem = safeApis.find(a => a.id === alloc.apiRefId);
                                   const url = apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
                                   if (url) matchedProofUrl = url;
                               }
@@ -2002,7 +2003,7 @@ export default function App() {
                           setAllReports(newReports);
                           setBankRows(newBankRows);
                           
-                          await saveToFirebaseDirectly(newReports, newBankRows);
+                          saveToFirebaseDirectly(newReports, newBankRows);
                           showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
                       } catch (err) {
                           console.error("Error in onSaveRekon:", err);
