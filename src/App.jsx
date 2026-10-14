@@ -219,7 +219,7 @@ export const reconcileOrphanBankItems = (reports, rows) => {
     if (r && r.status === 'pending') {
       const isAllocatedInReport = activeReportAllocations.some(alloc => 
         (r.id && alloc.rowId && r.id === alloc.rowId) ||
-        (alloc.amount > 0 && r.date === alloc.date && Number(r.amount) === alloc.amount)
+        (alloc.date && r.date === alloc.date && (alloc.amount === Number(r.amount) || Number(r.amount) >= alloc.amount))
       );
       if (isAllocatedInReport) {
         r.status = 'matched';
@@ -236,9 +236,10 @@ export const reconcileOrphanBankItems = (reports, rows) => {
   const isAllocationActive = (ba) => {
     if (!ba) return false;
     if (!ba.bankRowId && !ba.bankDate) return true;
-    if (ba.bankRowId && activeBankRowIds.has(ba.bankRowId)) return true;
+    if (ba.bankRowId && (ba.bankRowId.startsWith('prior_') || activeBankRowIds.has(ba.bankRowId))) return true;
+    if (ba.bankDate && activeBankDates.has(ba.bankDate)) return true;
     if (ba.bankDate && ba.amount) {
-      return activeBankRows.some(r => r.date === ba.bankDate && Number(r.amount) === Number(ba.amount));
+      return activeBankRows.some(r => r.date === ba.bankDate && Number(r.amount) >= Number(ba.amount));
     }
     return false;
   };
@@ -326,7 +327,7 @@ export const reconcileOrphanBankItems = (reports, rows) => {
                 itemKey += `_note_${Math.abs(h)}`;
               }
               const newSum = validAllocations.reduce((sum, a) => sum + Number(a.amount || 0), 0);
-              if (typeData.formData) {
+              if (typeData.formData && newSum > 0) {
                 typeData.formData[itemKey] = newSum;
               }
               modified = true;
@@ -1728,7 +1729,8 @@ export default function App() {
                           const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
                           const targetIndex = baseBankRows.findIndex(r => 
                               (bankRow.id && r.id && r.id === bankRow.id) ||
-                              (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && r.description === bankRow.description)
+                              (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && (r.description || '').trim() === (bankRow.description || '').trim()) ||
+                              (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount))
                           );
                           const effectiveRowId = (targetIndex >= 0 && baseBankRows[targetIndex].id) 
                               ? baseBankRows[targetIndex].id 
@@ -1842,17 +1844,13 @@ export default function App() {
                                   if (alloc.apiRefId) newItem.apiRefId = alloc.apiRefId;
                                   if (proofUrl) newItem.proofUrl = proofUrl;
                                   typeData.activeItems.push(newItem);
+                                  typeData.formData[itemKey] = Number(alloc.amount || 0);
                               } else {
                                   const item = typeData.activeItems[existingIndex];
-                                  item.bankMatched = true;
-                                  if (!Array.isArray(item.bankMatchRowIds)) {
-                                      item.bankMatchRowIds = item.bankMatchRowId ? [item.bankMatchRowId] : [];
-                                  }
-                                  if (!item.bankMatchRowIds.includes(effectiveRowId)) {
-                                      item.bankMatchRowIds.push(effectiveRowId);
-                                  }
-                                  item.bankMatchRowId = effectiveRowId;
-                                  item.bankMatchDate = bankRow.date;
+                                  
+                                  // Tangkap ID & tanggal mutasi terdahulu SEBELUM diperbarui ke mutasi baru
+                                  const priorRowId = item.originBankRowId || item.bankMatchRowId || 'prior_0';
+                                  const priorDate = item.originBankDate || item.bankMatchDate || '';
 
                                   if (!Array.isArray(item.bankAllocations)) {
                                       item.bankAllocations = [];
@@ -1862,10 +1860,10 @@ export default function App() {
                                           const priorLoc = existingApi ? (existingApi.lokasi_sewa || existingApi.namaProduk || '') : '';
                                           const priorLabel = priorTenant
                                               ? (priorLoc && priorLoc !== priorTenant ? `${priorTenant} - ${priorLoc}` : priorTenant)
-                                              : (item.bankMatchDate ? `Mutasi (${item.bankMatchDate})` : 'Transaksi Sebelumnya');
+                                              : (priorDate ? `Mutasi (${priorDate})` : 'Transaksi Sebelumnya');
                                           item.bankAllocations.push({
-                                              bankRowId: item.originBankRowId || item.bankMatchRowId || 'prior_0',
-                                              bankDate: item.originBankDate || item.bankMatchDate || '',
+                                              bankRowId: priorRowId,
+                                              bankDate: priorDate,
                                               amount: currentAmount,
                                               desc: priorLabel,
                                               tenant: priorTenant,
@@ -1876,8 +1874,18 @@ export default function App() {
                                       }
                                   }
 
+                                  item.bankMatched = true;
+                                  if (!Array.isArray(item.bankMatchRowIds)) {
+                                      item.bankMatchRowIds = priorRowId ? [priorRowId] : [];
+                                  }
+                                  if (!item.bankMatchRowIds.includes(effectiveRowId)) {
+                                      item.bankMatchRowIds.push(effectiveRowId);
+                                  }
+                                  item.bankMatchRowId = effectiveRowId;
+                                  item.bankMatchDate = bankRow.date;
+
                                   const existingAllocIdx = item.bankAllocations.findIndex(ba => 
-                                      ba.bankRowId === effectiveRowId || 
+                                      (ba.bankRowId === effectiveRowId && ba.bankRowId !== 'prior_0' && ba.bankRowId !== priorRowId) || 
                                       (ba.bankDate === bankRow.date && Number(ba.amount) === Number(alloc.amount))
                                   );
                                   if (existingAllocIdx >= 0) {
@@ -1889,6 +1897,10 @@ export default function App() {
                                   } else {
                                       item.bankAllocations.push(newAllocationDetail);
                                   }
+
+                                  // Hitung total nominal mutasi terpasang untuk sub-kategori ini
+                                  const sumAlloc = item.bankAllocations.reduce((sum, ba) => sum + Number(ba.amount || 0), 0);
+                                  typeData.formData[itemKey] = sumAlloc > 0 ? sumAlloc : (currentAmount + Number(alloc.amount || 0));
 
                                   if (alloc.apiRefId) item.apiRefId = alloc.apiRefId;
                                   if (proofUrl) item.proofUrl = proofUrl;
@@ -1924,7 +1936,7 @@ export default function App() {
                               const isTarget = (targetIndex >= 0 && idx === targetIndex) ||
                                   (bankRow.id && r.id && r.id === bankRow.id) ||
                                   (r.id && r.id === effectiveRowId) ||
-                                  (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && r.description === bankRow.description);
+                                  (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount));
                               if (isTarget) {
                                   return { 
                                       ...r, 

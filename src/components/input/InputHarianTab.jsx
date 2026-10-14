@@ -603,7 +603,17 @@ export default function InputHarianTab({
                     {group.activeItems.some((i) => i.bankMatched) && (
                       <span className="text-[11px] font-bold text-green-700 bg-green-100 border border-green-200 px-2.5 py-1 rounded-full w-max flex items-center gap-1 shadow-sm">
                         <CheckCircle size={12} /> Masuk Bank:{' '}
-                        {group.activeItems.find((i) => i.bankMatched)?.bankMatchDate}
+                        {(() => {
+                          const dates = [];
+                          group.activeItems.forEach(i => {
+                            if (Array.isArray(i.bankAllocations) && i.bankAllocations.length > 0) {
+                              i.bankAllocations.forEach(ba => { if (ba.bankDate && !dates.includes(ba.bankDate)) dates.push(ba.bankDate); });
+                            } else if (i.bankMatchDate && !dates.includes(i.bankMatchDate)) {
+                              dates.push(i.bankMatchDate);
+                            }
+                          });
+                          return dates.length > 0 ? dates.join(', ') : (group.activeItems.find((i) => i.bankMatched)?.bankMatchDate || '');
+                        })()}
                       </span>
                     )}
                   </div>

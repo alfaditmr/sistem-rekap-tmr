@@ -544,8 +544,9 @@ export default function RekonBankTab({
 
   const saveSplit = () => {
     const totalAllocated = splitModal.allocations.reduce((sum, a) => sum + Number(a.amount || 0), 0);
-    if (totalAllocated !== splitModal.bankRow.amount) {
-      alert(`Total alokasi (Rp ${formatRp(totalAllocated)}) tidak sama dengan nominal bank (Rp ${formatRp(splitModal.bankRow.amount)})`);
+    const bankRowAmount = Number(splitModal.bankRow?.amount || 0);
+    if (Math.round(totalAllocated) !== Math.round(bankRowAmount)) {
+      alert(`Total alokasi (Rp ${formatRp(totalAllocated)}) tidak sama dengan nominal bank (Rp ${formatRp(bankRowAmount)})`);
       return;
     }
 
@@ -555,8 +556,13 @@ export default function RekonBankTab({
       return;
     }
     
+    const cleanAllocations = splitModal.allocations.map(a => ({
+      ...a,
+      amount: Number(a.amount || 0)
+    }));
+
     if (onSaveRekon) {
-      onSaveRekon(splitModal.bankRow, splitModal.allocations, apiData);
+      onSaveRekon(splitModal.bankRow, cleanAllocations, apiData);
     }
 
     setSplitModal({ isOpen: false, bankRow: null, allocations: [] });
@@ -810,9 +816,9 @@ export default function RekonBankTab({
                   (row.id && Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(row.id)) ||
                   (Array.isArray(item.bankAllocations) && item.bankAllocations.some(ba => 
                     (row.id && ba.bankRowId === row.id) ||
-                    (ba.bankDate === row.date && Number(ba.amount) === Number(row.amount))
+                    (ba.bankDate === row.date && (Number(ba.amount) === Number(row.amount) || Number(row.amount) >= Number(ba.amount)))
                   )) ||
-                  (item.bankMatchDate === row.date && Number(item.originBankAllocAmount || 0) === Number(row.amount))
+                  (item.bankMatchDate === row.date && (Number(item.originBankAllocAmount || 0) === Number(row.amount) || Number(row.amount) >= Number(item.originBankAllocAmount || 0)))
                 );
                 if (isRowMatch) {
                   const cat = categories.find(c => c.id === item.catId);
@@ -1498,7 +1504,7 @@ export default function RekonBankTab({
                           updateAllocation(alloc.id, 'apiRefId', selectedId);
                           if (itemFound) {
                             const itemNominal = itemFound.jumlahTransferNumeric || (typeof itemFound.jumlahTransfer === 'string' ? Number(itemFound.jumlahTransfer.replace(/[^0-9]/g, '')) : itemFound.jumlahTransfer) || 0;
-                            if (!alloc.amount || Number(alloc.amount) === splitModal.bankRow.amount || Number(alloc.amount) === 0) {
+                            if (!alloc.amount || Number(alloc.amount) === Number(splitModal.bankRow.amount) || Number(alloc.amount) === 0) {
                               updateAllocation(alloc.id, 'amount', itemNominal);
                             }
                             if (itemFound.tanggal_transfer) {
