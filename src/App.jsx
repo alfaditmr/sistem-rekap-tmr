@@ -198,7 +198,10 @@ export const reconcileOrphanBankItems = (reports, rows) => {
               activeReportAllocations.push({
                 rowId: ba.bankRowId,
                 date: ba.bankDate,
-                amount: Number(ba.amount || 0)
+                amount: Number(ba.amount || 0),
+                desc: ba.desc || ba.tenant || '',
+                proofUrl: ba.proofUrl || item.proofUrl || '',
+                apiRefId: ba.apiRefId || item.apiRefId || ''
               });
             }
           });
@@ -206,7 +209,9 @@ export const reconcileOrphanBankItems = (reports, rows) => {
           activeReportAllocations.push({
             rowId: item.bankMatchRowId,
             date: item.bankMatchDate,
-            amount: Number(item.originBankAllocAmount || 0)
+            amount: Number(item.originBankAllocAmount || 0),
+            proofUrl: item.proofUrl || '',
+            apiRefId: item.apiRefId || ''
           });
         }
       });
@@ -214,16 +219,21 @@ export const reconcileOrphanBankItems = (reports, rows) => {
   });
 
   // 2b. Auto-Heal: Jika ada baris mutasi bank yang sudah terpasang/tercatat di dashboard
-  // tapi statusnya masih 'pending' di bankRows, sembuhkan menjadi 'matched'
+  // tapi statusnya masih 'pending' di bankRows, sembuhkan menjadi 'matched' secara komprehensif
   safeRows.forEach(r => {
-    if (r && r.status === 'pending') {
-      const isAllocatedInReport = activeReportAllocations.some(alloc => 
-        (r.id && alloc.rowId && r.id === alloc.rowId) ||
-        (alloc.date && r.date === alloc.date && (alloc.amount === Number(r.amount) || Number(r.amount) >= alloc.amount))
-      );
-      if (isAllocatedInReport) {
+    if (!r) return;
+    const alloc = activeReportAllocations.find(a => 
+      (r.id && a.rowId && r.id === a.rowId) ||
+      (a.date && r.date === a.date && (Number(r.amount) === a.amount || Number(r.amount) >= a.amount)) ||
+      (a.date && r.date && (r.date.includes(a.date) || a.date.includes(r.date)) && Number(r.amount) === a.amount)
+    );
+    if (alloc) {
+      if (r.status !== 'matched' && r.status !== 'linked') {
         r.status = 'matched';
         r.isFromInputBaru = true;
+        if (!r.matchedTo && alloc.desc) r.matchedTo = alloc.desc;
+        if (!r.proofUrl && alloc.proofUrl) r.proofUrl = alloc.proofUrl;
+        if (!r.apiRefId && alloc.apiRefId) r.apiRefId = alloc.apiRefId;
         rowsModified = true;
       }
     }
@@ -238,10 +248,12 @@ export const reconcileOrphanBankItems = (reports, rows) => {
     if (!ba.bankRowId && !ba.bankDate) return true;
     if (ba.bankRowId && (ba.bankRowId.startsWith('prior_') || activeBankRowIds.has(ba.bankRowId))) return true;
     if (ba.bankDate && activeBankDates.has(ba.bankDate)) return true;
+    if (ba.bankRowId && safeRows.some(r => r.id === ba.bankRowId)) return true;
+    if (ba.bankDate && safeRows.some(r => r.date === ba.bankDate)) return true;
     if (ba.bankDate && ba.amount) {
-      return activeBankRows.some(r => r.date === ba.bankDate && Number(r.amount) >= Number(ba.amount));
+      return safeRows.some(r => (r.date === ba.bankDate || r.date.includes(ba.bankDate) || ba.bankDate.includes(r.date)) && Number(r.amount) >= Number(ba.amount));
     }
-    return false;
+    return true; // PERTAHANKAN ALOKASI: Laporan pendapatan adalah catatan resmi yang tidak boleh dihapus sepihak oleh sync
   };
 
   Object.keys(cleanReports).forEach(date => {
@@ -512,6 +524,7 @@ export default function App() {
   const lastLocalUpdatedRef = useRef('');
   const lastLocalSaveTimeRef = useRef(0);
   const cloudSaveTimerRef = useRef(null);
+  const isSavingRef = useRef(false);
 
   const getDocRef = () => { return doc(db, 'tmr_data', user ? user.uid : 'demo_rekapitulasi_laporan'); };
 
@@ -562,6 +575,7 @@ export default function App() {
 
     // 4. Sinkronkan ke Firestore Cloud
     const pushToFirestore = async () => {
+      isSavingRef.current = true;
       setSyncStatus('syncing');
       try {
         const payload = sanitizeForFirestore({
@@ -574,10 +588,14 @@ export default function App() {
           lastUpdated: nowIso
         });
         await setDoc(getDocRef(), payload);
+        lastLocalSaveTimeRef.current = Date.now();
+        lastLocalUpdatedRef.current = nowIso;
         setSyncStatus('synced');
       } catch (err) {
         console.error("Firestore push error:", err);
         setSyncStatus('offline');
+      } finally {
+        isSavingRef.current = false;
       }
     };
 
@@ -646,8 +664,12 @@ export default function App() {
                 if (data.lastWriterId === CLIENT_ID) {
                     return;
                 }
-                // Abaikan jika client ini baru saja melakukan simpan lokal (< 4 detik lalu)
-                if (Date.now() - lastLocalSaveTimeRef.current < 4000) {
+                // Abaikan jika sedang ada proses simpan lokal atau baru saja simpan (< 15 detik lalu)
+                if (isSavingRef.current || (Date.now() - lastLocalSaveTimeRef.current < 15000)) {
+                    return;
+                }
+                // Abaikan jika data server lebih lama atau sama dengan data lokal
+                if (data.lastUpdated && lastLocalUpdatedRef.current && data.lastUpdated <= lastLocalUpdatedRef.current) {
                     return;
                 }
                 // Abaikan jika masih ada penulisan lokal yang sedang dikirim
@@ -716,9 +738,16 @@ export default function App() {
   const pullLatestFromCloud = async (showNotification = false) => {
     if (!user || !db) return;
 
-    // Proteksi: Jangan lakukan penimpaan otomatis jika user baru saja mengedit/menyimpan (< 4 detik lalu)
-    if (Date.now() - lastLocalSaveTimeRef.current < 4000) {
-      console.log("Skipping pullLatestFromCloud: local changes in progress");
+    // Proteksi 1: Jangan lakukan penimpaan jika sedang ada simpan lokal berjalan
+    if (isSavingRef.current) {
+      console.log("Skipping pullLatestFromCloud: save in flight");
+      if (showNotification) showToast("Penyimpanan sedang berlangsung...");
+      return;
+    }
+
+    // Proteksi 2: Jangan lakukan penimpaan otomatis jika user baru saja mengedit/menyimpan (< 15 detik lalu)
+    if (Date.now() - lastLocalSaveTimeRef.current < 15000) {
+      console.log("Skipping pullLatestFromCloud: local changes in progress within 15s");
       if (showNotification) showToast("Data terbaru sudah tersimpan!");
       return;
     }
@@ -729,6 +758,22 @@ export default function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         const serverUpdated = data.lastUpdated || '';
+
+        // Proteksi 3: Jika data cloud berasal dari writer client ini sendiri, jangan timpa
+        if (data.lastWriterId === CLIENT_ID) {
+          console.log("Skipping pullLatestFromCloud: cloud document belongs to current tab");
+          setSyncStatus('synced');
+          if (showNotification) showToast("Data lokal sudah paling mutakhir!");
+          return;
+        }
+
+        // Proteksi 4: Jika serverUpdated lebih lama atau sama dengan pembaruan lokal, jangan timpa
+        if (serverUpdated && lastLocalUpdatedRef.current && serverUpdated <= lastLocalUpdatedRef.current) {
+          console.log("Skipping pullLatestFromCloud: cloud data is older or equal to local state");
+          setSyncStatus('synced');
+          if (showNotification) showToast("Data lokal sudah paling mutakhir!");
+          return;
+        }
         
         const loadedSigs = data.signatures || {};
         const loadedCats = data.categories || [];
@@ -777,7 +822,7 @@ export default function App() {
   useEffect(() => {
     const handleWakeup = () => {
       // Hanya sinkronkan saat tab kembali aktif dan user tidak sedang aktif menyimpan
-      if (document.visibilityState === 'visible' && user && db && (Date.now() - lastLocalSaveTimeRef.current > 4000)) {
+      if (document.visibilityState === 'visible' && user && db && !isSavingRef.current && (Date.now() - lastLocalSaveTimeRef.current > 15000)) {
         pullLatestFromCloud(false);
       }
     };
@@ -1694,7 +1739,7 @@ export default function App() {
                      await saveToFirebaseDirectly(baseReports, newBankRows);
                      showToast(`Berhasil menyimpan ${newBankRows.length} data mutasi bank ke Cloud!`);
                  }}
-                 onSaveRekon={(bankRow, allocations, apis) => {
+                 onSaveRekon={async (bankRow, allocations, apis) => {
                       // 1. Format Tanggal
                       let ymd = new Date().toISOString().split('T')[0];
                       try {
@@ -1957,7 +2002,7 @@ export default function App() {
                           setAllReports(newReports);
                           setBankRows(newBankRows);
                           
-                          saveToFirebaseDirectly(newReports, newBankRows);
+                          await saveToFirebaseDirectly(newReports, newBankRows);
                           showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
                       } catch (err) {
                           console.error("Error in onSaveRekon:", err);
@@ -2052,13 +2097,13 @@ export default function App() {
                            alert("Gagal memasangkan data: " + err.message);
                        }
                   }}
-                  onUpdateBankRow={(rowId, updates) => {
+                  onUpdateBankRow={async (rowId, updates) => {
                       const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
                       const newBankRows = baseBankRows.map(r => r.id === rowId ? { ...r, ...updates } : r);
                       setBankRows(newBankRows);
-                      saveToFirebaseDirectly(stateRef.current.allReports, newBankRows);
+                      await saveToFirebaseDirectly(stateRef.current.allReports, newBankRows);
                   }}
-                  onUnlinkBankRow={(bankRow) => {
+                  onUnlinkBankRow={async (bankRow) => {
                      try {
                          const baseReports = stateRef.current.allReports;
                           const newReports = JSON.parse(JSON.stringify(baseReports));
@@ -2216,7 +2261,7 @@ export default function App() {
                           setAllReports(newReports);
                           setBankRows(newBankRows);
                           
-                          saveToFirebaseDirectly(newReports, newBankRows);
+                          await saveToFirebaseDirectly(newReports, newBankRows);
                           showToast('Status pasangan mutasi bank berhasil dibatalkan!');
                       } catch (err) {
                           console.error("Error unlinking:", err);

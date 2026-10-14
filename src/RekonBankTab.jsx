@@ -542,7 +542,7 @@ export default function RekonBankTab({
     }));
   };
 
-  const saveSplit = () => {
+  const saveSplit = async () => {
     const totalAllocated = splitModal.allocations.reduce((sum, a) => sum + Number(a.amount || 0), 0);
     const bankRowAmount = Number(splitModal.bankRow?.amount || 0);
     if (Math.round(totalAllocated) !== Math.round(bankRowAmount)) {
@@ -562,7 +562,7 @@ export default function RekonBankTab({
     }));
 
     if (onSaveRekon) {
-      onSaveRekon(splitModal.bankRow, cleanAllocations, apiData);
+      await onSaveRekon(splitModal.bankRow, cleanAllocations, apiData);
     }
 
     setSplitModal({ isOpen: false, bankRow: null, allocations: [] });
