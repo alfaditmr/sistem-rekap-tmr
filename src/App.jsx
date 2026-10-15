@@ -503,6 +503,7 @@ export default function App() {
   useEffect(() => { safeSetLocalStorage('tmr_v19_categories', categories); }, [categories]);
   useEffect(() => { safeSetLocalStorage('tmr_v19_targets', targets); }, [targets]);
   useEffect(() => { safeSetLocalStorage('tmr_v19_allReports', allReports); }, [allReports]);
+  useEffect(() => { safeSetLocalStorage('tmr_v19_bankRows', bankRows); }, [bankRows]);
   useEffect(() => { safeSetLocalStorage('tmr_v19_api_ip', apiIpAddress); }, [apiIpAddress]);
 
   const CLIENT_ID = useRef('tmr_' + Math.random().toString(36).substring(2, 10)).current;
@@ -1782,234 +1783,243 @@ export default function App() {
                               ? baseBankRows[targetIndex].id 
                               : (bankRow.id || `bank_${Date.now()}`);
                           
-                          allocations.forEach(alloc => {
-                              const allocYmd = alloc.targetDate || ymd;
-                              const dayData = newReports[allocYmd] || {};
-                              
-                              const cat = categories.find(c => c.id === alloc.categoryId);
-                              if (!cat) return; // Kategori wajib
-                              
-                              let theItemId = alloc.itemId;
-                              if (!theItemId || !cat.items || cat.items.length === 0) {
-                                  theItemId = 'direct';
-                              }
+                           allocations.forEach(alloc => {
+                               const allocYmd = alloc.targetDate || ymd;
+                               if (!newReports[allocYmd]) {
+                                   newReports[allocYmd] = {};
+                               }
+                               const dayData = newReports[allocYmd];
+                               
+                               const cat = categories.find(c => c.id === alloc.categoryId);
+                               if (!cat) return; // Kategori wajib
+                               
+                               let theItemId = alloc.itemId;
+                               if (!theItemId || !cat.items || cat.items.length === 0) {
+                                   theItemId = 'direct';
+                               }
 
-                              let docKey = 'utama'; 
-                              if (cat.type === 'lain') {
-                                  let targetIndexDoc = 1;
-                                  while (true) {
-                                      const candidateKey = targetIndexDoc === 1 ? 'lain' : `lain_${targetIndexDoc}`;
-                                      const candidateDoc = dayData[candidateKey];
-                                      
-                                      if (!candidateDoc || !Array.isArray(candidateDoc.activeItems) || candidateDoc.activeItems.length === 0) {
-                                          docKey = candidateKey;
-                                          break;
-                                      }
-                                      
-                                      const allSameCategory = candidateDoc.activeItems.every(i => i.catId === cat.id);
-                                      const hasOtherBankMatch = candidateDoc.activeItems.some(i => i.bankMatchRowId && i.bankMatchRowId !== effectiveRowId);
-                                      
-                                      if (allSameCategory && !hasOtherBankMatch) {
-                                          docKey = candidateKey;
-                                          break;
-                                      }
-                                      
-                                      targetIndexDoc++;
-                                  }
-                              }
+                               let docKey = 'utama'; 
+                               if (cat.type === 'lain') {
+                                   let targetIndexDoc = 1;
+                                   while (true) {
+                                       const candidateKey = targetIndexDoc === 1 ? 'lain' : `lain_${targetIndexDoc}`;
+                                       const candidateDoc = dayData[candidateKey];
+                                       
+                                       if (!candidateDoc || !Array.isArray(candidateDoc.activeItems) || candidateDoc.activeItems.length === 0) {
+                                           docKey = candidateKey;
+                                           break;
+                                       }
+                                       
+                                       const allSameCategory = candidateDoc.activeItems.every(i => i.catId === cat.id);
+                                       const hasOtherBankMatch = candidateDoc.activeItems.some(i => i.bankMatchRowId && i.bankMatchRowId !== effectiveRowId);
+                                       
+                                       if (allSameCategory && !hasOtherBankMatch) {
+                                           docKey = candidateKey;
+                                           break;
+                                       }
+                                       
+                                       targetIndexDoc++;
+                                   }
+                               }
 
-                              if (!dayData[docKey]) {
-                                  dayData[docKey] = { sequence: '', signatureDate: allocYmd, activeItems: [], formData: {} };
-                              }
-                              if (!dayData[docKey].formData) dayData[docKey].formData = {};
-                              if (!Array.isArray(dayData[docKey].activeItems)) dayData[docKey].activeItems = [];
+                               if (!dayData[docKey]) {
+                                   dayData[docKey] = { sequence: '', signatureDate: allocYmd, activeItems: [], formData: {} };
+                               }
+                               if (!dayData[docKey].formData) dayData[docKey].formData = {};
+                               if (!Array.isArray(dayData[docKey].activeItems)) dayData[docKey].activeItems = [];
 
-                              const typeData = dayData[docKey];
-                              
-                              const newItem = { catId: cat.id, itemId: theItemId };
-                              if (docKey === 'lain' || docKey.startsWith('lain_')) {
-                                  newItem.itemDate = allocYmd; 
-                                  if (alloc.description) newItem.itemNote = alloc.description.trim();
-                              }
+                               const typeData = dayData[docKey];
 
-                              let itemKey = `${newItem.catId}_${newItem.itemId}`;
-                              if (newItem.itemDate) itemKey += `_date_${newItem.itemDate}`;
-                              if (newItem.itemNote) { 
-                                  let hash = 0; 
-                                  for (let i = 0; i < newItem.itemNote.length; i++) { 
-                                      hash = ((hash << 5) - hash) + newItem.itemNote.charCodeAt(i); 
-                                      hash = hash & hash; 
-                                  } 
-                                  itemKey += `_note_${Math.abs(hash)}`; 
-                              }
-                              
-                              const currentAmount = typeData.formData[itemKey] || 0;
-                              typeData.formData[itemKey] = currentAmount + Number(alloc.amount || 0);
+                               const apiItem = safeApis.find(a => a.id === alloc.apiRefId);
+                               const rawProofUrl = apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
+                               const isBase64Proof = (typeof rawProofUrl === 'string' && rawProofUrl.startsWith('data:image'));
+                               // Untuk menjaga performa dan batas 1MB Firestore, URL base64 disimpan pada mutasi bank saja
+                               const cleanProofUrl = isBase64Proof ? '' : rawProofUrl;
 
-                              const existingIndex = typeData.activeItems.findIndex(i => {
-                                  if (!i || typeof i !== 'object') return false;
-                                  let k = `${i.catId}_${i.itemId || i.id}`;
-                                  if (i.itemDate) k += `_date_${i.itemDate}`;
-                                  if (i.itemNote && typeof i.itemNote === 'string') {
-                                      let h = 0; for (let j=0; j<i.itemNote.length; j++) { h=((h<<5)-h)+i.itemNote.charCodeAt(j); h=h&h; }
-                                      k += `_note_${Math.abs(h)}`;
-                                  }
-                                  return k === itemKey;
-                              });
+                               const tenantLabel = apiItem ? (apiItem.nama_penyewa || apiItem.namaPerusahaan || '') : '';
+                               const locationLabel = apiItem ? (apiItem.lokasi_sewa || apiItem.namaProduk || '') : '';
+                               const displayDesc = tenantLabel
+                                 ? (locationLabel && locationLabel !== tenantLabel ? `${tenantLabel} - ${locationLabel}` : tenantLabel)
+                                 : (alloc.description || bankRow.description || 'Mutasi Bank');
 
-                              const apiItem = safeApis.find(a => a.id === alloc.apiRefId);
-                              const proofUrl = apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
-                              const tenantLabel = apiItem ? (apiItem.nama_penyewa || apiItem.namaPerusahaan || '') : '';
-                              const locationLabel = apiItem ? (apiItem.lokasi_sewa || apiItem.namaProduk || '') : '';
-                              const displayDesc = tenantLabel
-                                ? (locationLabel && locationLabel !== tenantLabel ? `${tenantLabel} - ${locationLabel}` : tenantLabel)
-                                : (alloc.description || bankRow.description || 'Mutasi Bank');
+                               const allocAmount = Number(alloc.amount || 0);
 
-                              const newAllocationDetail = {
-                                  bankRowId: effectiveRowId,
-                                  bankDate: bankRow.date,
-                                  amount: Number(alloc.amount || 0),
-                                  desc: displayDesc,
-                                  tenant: tenantLabel,
-                                  location: locationLabel,
-                                  apiRefId: alloc.apiRefId || '',
-                                  proofUrl: proofUrl
-                              };
+                               const newAllocationDetail = {
+                                   bankRowId: effectiveRowId,
+                                   bankDate: bankRow.date,
+                                   amount: allocAmount,
+                                   desc: displayDesc,
+                                   tenant: tenantLabel,
+                                   location: locationLabel,
+                                   apiRefId: alloc.apiRefId || '',
+                                   proofUrl: cleanProofUrl
+                               };
 
-                              const wasNew = (existingIndex === -1);
-                              if (wasNew) {
-                                  newItem.bankMatched = true;
-                                  newItem.bankMatchRowId = effectiveRowId;
-                                  newItem.bankMatchDate = bankRow.date;
-                                  newItem.bankMatchRowIds = [effectiveRowId];
-                                  newItem.createdFromBank = true;
-                                  newItem.originBankRowId = effectiveRowId;
-                                  newItem.originBankDate = bankRow.date;
-                                  newItem.originBankAllocAmount = Number(alloc.amount || 0);
-                                  newItem.bankAllocations = [newAllocationDetail];
-                                  if (alloc.apiRefId) newItem.apiRefId = alloc.apiRefId;
-                                  if (proofUrl) newItem.proofUrl = proofUrl;
-                                  typeData.activeItems.push(newItem);
-                                  typeData.formData[itemKey] = Number(alloc.amount || 0);
-                              } else {
-                                  const item = typeData.activeItems[existingIndex];
-                                  
-                                  // Tangkap ID & tanggal mutasi terdahulu SEBELUM diperbarui ke mutasi baru
-                                  const priorRowId = item.originBankRowId || item.bankMatchRowId || 'prior_0';
-                                  const priorDate = item.originBankDate || item.bankMatchDate || '';
+                               // 🔴 PENCARIAN ITEM SECARA IDENTITAS POS (KATEGORI & ITEM):
+                               // Tidak terpengaruh hash catatan lama sehingga akumulasi nominal 100% akurat
+                               let existingItem = typeData.activeItems.find(i => {
+                                   if (!i || typeof i !== 'object') return false;
+                                   const matchCat = (i.catId === cat.id);
+                                   const matchItem = (theItemId === 'direct')
+                                       ? (i.itemId === 'direct' || i.id === 'direct' || !i.itemId)
+                                       : (i.itemId === theItemId || i.id === theItemId);
+                                   return matchCat && matchItem;
+                               });
 
-                                  if (!Array.isArray(item.bankAllocations)) {
-                                      item.bankAllocations = [];
-                                      if (currentAmount > 0) {
-                                          const existingApi = safeApis.find(a => a.id === item.apiRefId);
-                                          const priorTenant = existingApi ? (existingApi.nama_penyewa || existingApi.namaPerusahaan || '') : '';
-                                          const priorLoc = existingApi ? (existingApi.lokasi_sewa || existingApi.namaProduk || '') : '';
-                                          const priorLabel = priorTenant
-                                              ? (priorLoc && priorLoc !== priorTenant ? `${priorTenant} - ${priorLoc}` : priorTenant)
-                                              : (priorDate ? `Mutasi (${priorDate})` : 'Transaksi Sebelumnya');
-                                          item.bankAllocations.push({
-                                              bankRowId: priorRowId,
-                                              bankDate: priorDate,
-                                              amount: currentAmount,
-                                              desc: priorLabel,
-                                              tenant: priorTenant,
-                                              location: priorLoc,
-                                              apiRefId: item.apiRefId || '',
-                                              proofUrl: item.proofUrl || ''
-                                          });
-                                      }
-                                  }
+                               let itemKey = '';
+                               const wasNew = !existingItem;
 
-                                  item.bankMatched = true;
-                                  if (!Array.isArray(item.bankMatchRowIds)) {
-                                      item.bankMatchRowIds = priorRowId ? [priorRowId] : [];
-                                  }
-                                  if (!item.bankMatchRowIds.includes(effectiveRowId)) {
-                                      item.bankMatchRowIds.push(effectiveRowId);
-                                  }
-                                  item.bankMatchRowId = effectiveRowId;
-                                  item.bankMatchDate = bankRow.date;
+                               if (existingItem) {
+                                   // Item sudah ada di laporan harian
+                                   itemKey = getActiveItemKey(existingItem.catId, existingItem.itemId || existingItem.id, existingItem.isSusulan, existingItem.validDate, existingItem.itemDate, existingItem.itemNote);
+                                   const priorNominal = Number(typeData.formData[itemKey] || typeData.formData[`${existingItem.catId}_${existingItem.itemId || existingItem.id}`] || 0);
 
-                                  const existingAllocIdx = item.bankAllocations.findIndex(ba => 
-                                      (ba.bankRowId === effectiveRowId && ba.bankRowId !== 'prior_0' && ba.bankRowId !== priorRowId) || 
-                                      (ba.bankDate === bankRow.date && Number(ba.amount) === Number(alloc.amount))
-                                  );
-                                  if (existingAllocIdx >= 0) {
-                                      item.bankAllocations[existingAllocIdx].bankRowId = effectiveRowId;
-                                      item.bankAllocations[existingAllocIdx].amount = Number(alloc.amount || 0);
-                                      if (newAllocationDetail.desc) item.bankAllocations[existingAllocIdx].desc = newAllocationDetail.desc;
-                                      if (newAllocationDetail.apiRefId) item.bankAllocations[existingAllocIdx].apiRefId = newAllocationDetail.apiRefId;
-                                      if (newAllocationDetail.proofUrl) item.bankAllocations[existingAllocIdx].proofUrl = newAllocationDetail.proofUrl;
-                                  } else {
-                                      item.bankAllocations.push(newAllocationDetail);
-                                  }
+                                   const priorRowId = existingItem.originBankRowId || existingItem.bankMatchRowId || 'prior_0';
+                                   const priorDate = existingItem.originBankDate || existingItem.bankMatchDate || '';
 
-                                  // Hitung total nominal mutasi terpasang untuk sub-kategori ini
-                                  const sumAlloc = item.bankAllocations.reduce((sum, ba) => sum + Number(ba.amount || 0), 0);
-                                  typeData.formData[itemKey] = sumAlloc > 0 ? sumAlloc : (currentAmount + Number(alloc.amount || 0));
+                                   if (!Array.isArray(existingItem.bankAllocations)) {
+                                       existingItem.bankAllocations = [];
+                                       if (priorNominal > 0) {
+                                           const existingApi = safeApis.find(a => a.id === existingItem.apiRefId);
+                                           const priorTenant = existingApi ? (existingApi.nama_penyewa || existingApi.namaPerusahaan || '') : (existingItem.itemNote || '');
+                                           const priorLoc = existingApi ? (existingApi.lokasi_sewa || existingApi.namaProduk || '') : '';
+                                           const priorLabel = priorTenant
+                                               ? (priorLoc && priorLoc !== priorTenant ? `${priorTenant} - ${priorLoc}` : priorTenant)
+                                               : (priorDate ? `Mutasi (${priorDate})` : 'Transaksi Sebelumnya');
+                                           existingItem.bankAllocations.push({
+                                               bankRowId: priorRowId,
+                                               bankDate: priorDate,
+                                               amount: priorNominal,
+                                               desc: priorLabel,
+                                               tenant: priorTenant,
+                                               location: priorLoc,
+                                               apiRefId: existingItem.apiRefId || '',
+                                               proofUrl: ''
+                                           });
+                                       }
+                                   }
 
-                                  if (alloc.apiRefId) item.apiRefId = alloc.apiRefId;
-                                  if (proofUrl) item.proofUrl = proofUrl;
-                              }
-                              
-                              if (proofUrl) {
-                                  typeData.formData[itemKey + '_buktiUrl'] = proofUrl;
-                              }
-                              
-                              createdAllocationsSummary.push({
-                                  date: allocYmd,
-                                  docKey: docKey,
-                                  itemKey: itemKey,
-                                  amount: Number(alloc.amount || 0),
-                                  wasNewItem: wasNew
-                              });
-                              
-                              newReports[allocYmd] = dayData;
-                          });
+                                   existingItem.bankMatched = true;
+                                   if (!Array.isArray(existingItem.bankMatchRowIds)) {
+                                       existingItem.bankMatchRowIds = priorRowId ? [priorRowId] : [];
+                                   }
+                                   if (!existingItem.bankMatchRowIds.includes(effectiveRowId)) {
+                                       existingItem.bankMatchRowIds.push(effectiveRowId);
+                                   }
+                                   existingItem.bankMatchRowId = effectiveRowId;
+                                   existingItem.bankMatchDate = bankRow.date;
 
-                          let matchedProofUrl = '';
-                          let matchedApiRefIds = [];
-                          allocations.forEach(alloc => {
-                              if (alloc.apiRefId) {
-                                  matchedApiRefIds.push(alloc.apiRefId);
-                                  const apiItem = safeApis.find(a => a.id === alloc.apiRefId);
-                                  const url = apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
-                                  if (url) matchedProofUrl = url;
-                              }
-                          });
+                                   const existingAllocIdx = existingItem.bankAllocations.findIndex(ba => 
+                                       (ba.bankRowId === effectiveRowId && ba.bankRowId !== 'prior_0' && ba.bankRowId !== priorRowId) || 
+                                       (ba.bankDate === bankRow.date && Number(ba.amount) === allocAmount)
+                                   );
 
-                          const newBankRows = baseBankRows.map((r, idx) => {
-                              const isTarget = (targetIndex >= 0 && idx === targetIndex) ||
-                                  (bankRow.id && r.id && r.id === bankRow.id) ||
-                                  (r.id && r.id === effectiveRowId) ||
-                                  (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount));
-                              if (isTarget) {
-                                  return { 
-                                      ...r, 
-                                      id: r.id || effectiveRowId,
-                                      status: 'matched', 
-                                      isFromInputBaru: true,
-                                      inputBaruAllocations: createdAllocationsSummary,
-                                      matchedTo: targetSummary,
-                                      linkedTo: { date: primaryTargetDate, dates: distinctTargetDates, groupName: targetSummary, proofUrl: matchedProofUrl || r.proofUrl || '' },
-                                      proofUrl: matchedProofUrl || r.proofUrl || '',
-                                      apiRefId: matchedApiRefIds[0] || r.apiRefId || '',
-                                      apiRefIds: matchedApiRefIds.length > 0 ? matchedApiRefIds : (r.apiRefIds || [])
-                                  };
-                              }
-                              return r;
-                          });
-                          
-                          setAllReports(newReports);
-                          setBankRows(newBankRows);
-                          
-                          saveToFirebaseDirectly(newReports, newBankRows);
-                          showToast(`Berhasil menyimpan data rekon ke laporan tanggal ${ymd}!`);
-                      } catch (err) {
-                          console.error("Error in onSaveRekon:", err);
-                          alert("Terjadi kesalahan saat menyimpan alokasi: " + err.message);
-                      }
-                  }}
+                                   if (existingAllocIdx >= 0) {
+                                       existingItem.bankAllocations[existingAllocIdx] = {
+                                           ...existingItem.bankAllocations[existingAllocIdx],
+                                           ...newAllocationDetail
+                                       };
+                                   } else {
+                                       existingItem.bankAllocations.push(newAllocationDetail);
+                                   }
+
+                                   // Total akumulasi seluruh alokasi mutasi yang terpasang
+                                   const sumAlloc = existingItem.bankAllocations.reduce((sum, ba) => sum + Number(ba.amount || 0), 0);
+                                   typeData.formData[itemKey] = sumAlloc > 0 ? sumAlloc : (priorNominal + allocAmount);
+
+                                   if (alloc.apiRefId) existingItem.apiRefId = alloc.apiRefId;
+                                   if (cleanProofUrl) existingItem.proofUrl = cleanProofUrl;
+
+                               } else {
+                                   // Item baru untuk laporan harian
+                                   const newItem = {
+                                       catId: cat.id,
+                                       itemId: theItemId,
+                                       bankMatched: true,
+                                       bankMatchRowId: effectiveRowId,
+                                       bankMatchDate: bankRow.date,
+                                       bankMatchRowIds: [effectiveRowId],
+                                       createdFromBank: true,
+                                       originBankRowId: effectiveRowId,
+                                       originBankDate: bankRow.date,
+                                       originBankAllocAmount: allocAmount,
+                                       bankAllocations: [newAllocationDetail],
+                                       ...(alloc.apiRefId ? { apiRefId: alloc.apiRefId } : {}),
+                                       ...(cleanProofUrl ? { proofUrl: cleanProofUrl } : {})
+                                   };
+
+                                   if (docKey === 'lain' || docKey.startsWith('lain_')) {
+                                       newItem.itemDate = allocYmd; 
+                                       if (alloc.description) newItem.itemNote = alloc.description.trim();
+                                   }
+
+                                   itemKey = getActiveItemKey(newItem.catId, newItem.itemId, newItem.isSusulan, newItem.validDate, newItem.itemDate, newItem.itemNote);
+                                   typeData.activeItems.push(newItem);
+                                   typeData.formData[itemKey] = allocAmount;
+                               }
+                               
+                               if (cleanProofUrl) {
+                                   typeData.formData[itemKey + '_buktiUrl'] = cleanProofUrl;
+                               }
+                               
+                               createdAllocationsSummary.push({
+                                   date: allocYmd,
+                                   docKey: docKey,
+                                   itemKey: itemKey,
+                                   amount: allocAmount,
+                                   wasNewItem: wasNew
+                               });
+                           });
+
+                           let matchedProofUrl = '';
+                           let matchedApiRefIds = [];
+                           allocations.forEach(alloc => {
+                               if (alloc.apiRefId) {
+                                   matchedApiRefIds.push(alloc.apiRefId);
+                                   const apiItem = safeApis.find(a => a.id === alloc.apiRefId);
+                                   const url = apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
+                                   if (url) matchedProofUrl = url;
+                               }
+                           });
+
+                           const newBankRows = baseBankRows.map((r, idx) => {
+                               const isTarget = (targetIndex >= 0 && idx === targetIndex) ||
+                                   (bankRow.id && r.id && r.id === bankRow.id) ||
+                                   (r.id && r.id === effectiveRowId) ||
+                                   (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount));
+                               if (isTarget) {
+                                   return { 
+                                       ...r, 
+                                       id: r.id || effectiveRowId,
+                                       status: 'matched', 
+                                       isFromInputBaru: true,
+                                       inputBaruAllocations: createdAllocationsSummary,
+                                       matchedTo: targetSummary,
+                                       linkedTo: { 
+                                           date: primaryTargetDate, 
+                                           dates: distinctTargetDates, 
+                                           groupName: targetSummary, 
+                                           proofUrl: matchedProofUrl || r.proofUrl || '' 
+                                       },
+                                       proofUrl: matchedProofUrl || r.proofUrl || '',
+                                       apiRefId: matchedApiRefIds[0] || r.apiRefId || '',
+                                       apiRefIds: matchedApiRefIds.length > 0 ? matchedApiRefIds : (r.apiRefIds || [])
+                                   };
+                               }
+                               return r;
+                           });
+                           
+                           // 🔴 PENYIMPANAN TERPUSAT & SINKRON KE SELURUH STATE, LOCALSTORAGE, DAN FIRESTORE CLOUD
+                           saveState({
+                               allReports: newReports,
+                               bankRows: newBankRows
+                           }, { immediate: true, showToastMessage: `Berhasil menyimpan alokasi rekon ke laporan tanggal ${primaryTargetDate}!` });
+
+                       } catch (err) {
+                           console.error("Error in onSaveRekon:", err);
+                           alert("Terjadi kesalahan saat menyimpan alokasi: " + err.message);
+                       }
+                   }}
                   onLinkRekon={async (bankRow, targetDate, targetType, targetGroupInfo) => {
                        const bankAmount = Number(bankRow?.amount || 0);
                        const groupNominal = Number(targetGroupInfo?.nominal || 0);
