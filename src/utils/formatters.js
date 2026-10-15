@@ -18,51 +18,15 @@ export const safeString = (val) => {
  */
 export const sanitizeForFirestore = (data) => {
   if (data === undefined) return null;
+  // Bersihkan nilai undefined dan string data URI base64 (gambar/dokumen) secara rekursif
+  // Base64 gambar tidak boleh masuk Firestore karena batas dokumen Firestore adalah 1.048.576 bytes (1 MB)
   const sanitized = JSON.parse(JSON.stringify(data, (key, value) => {
     if (value === undefined) return null;
+    if (typeof value === 'string' && (value.startsWith('data:image') || value.startsWith('data:application'))) {
+      return '';
+    }
     return value;
   }));
-
-  // Proteksi ukuran dokumen Firestore (Batas keras Firestore: 1.048.576 bytes / 1 MB)
-  try {
-    const jsonStr = JSON.stringify(sanitized);
-    if (jsonStr.length > 800000) {
-      // Jika mendekati 1MB, bersihkan data URI base64 dari laporan bersarang agar tidak gagal simpan
-      if (sanitized.allReports && typeof sanitized.allReports === 'object') {
-        Object.keys(sanitized.allReports).forEach(date => {
-          const day = sanitized.allReports[date];
-          if (day && typeof day === 'object') {
-            Object.keys(day).forEach(k => {
-              const doc = day[k];
-              if (doc && doc.formData) {
-                Object.keys(doc.formData).forEach(fk => {
-                  if (typeof doc.formData[fk] === 'string' && doc.formData[fk].startsWith('data:image')) {
-                    delete doc.formData[fk];
-                  }
-                });
-              }
-              if (doc && Array.isArray(doc.activeItems)) {
-                doc.activeItems.forEach(item => {
-                  if (item && typeof item.proofUrl === 'string' && item.proofUrl.startsWith('data:image')) {
-                    delete item.proofUrl;
-                  }
-                  if (item && Array.isArray(item.bankAllocations)) {
-                    item.bankAllocations.forEach(ba => {
-                      if (ba && typeof ba.proofUrl === 'string' && ba.proofUrl.startsWith('data:image')) {
-                        delete ba.proofUrl;
-                      }
-                    });
-                  }
-                });
-              }
-            });
-          }
-        });
-      }
-    }
-  } catch (e) {
-    console.warn("sanitizeForFirestore size guard warning:", e);
-  }
 
   return sanitized;
 };

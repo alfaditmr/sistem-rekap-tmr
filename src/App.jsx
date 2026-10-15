@@ -522,7 +522,7 @@ export default function App() {
     targets
   };
 
-  const lastLocalUpdatedRef = useRef('');
+  const lastLocalUpdatedRef = useRef(getInitialState('tmr_v19_lastUpdated', ''));
   const lastLocalSaveTimeRef = useRef(0);
   const cloudSaveTimerRef = useRef(null);
   const isSavingRef = useRef(false);
@@ -595,6 +595,7 @@ export default function App() {
       } catch (err) {
         console.error("Firestore push error:", err);
         setSyncStatus('offline');
+        showToast("Peringatan: Gagal sinkron ke Cloud: " + (err.message || err));
       } finally {
         isSavingRef.current = false;
       }
@@ -686,13 +687,25 @@ export default function App() {
             let loadedBankRows = ensureBankRowIds(data.bankRows || []);
 
             if (isFirst) {
+                const localUpdated = getInitialState('tmr_v19_lastUpdated', '');
                 const localBank = getInitialState('tmr_v19_bankRows', []);
-                if (loadedBankRows.length === 0 && Array.isArray(localBank) && localBank.length > 0) {
-                    loadedBankRows = ensureBankRowIds(localBank);
-                }
                 const localRep = getInitialState('tmr_v19_allReports', {});
-                if (Object.keys(loadedReports).length === 0 && Object.keys(localRep).length > 0) {
-                    loadedReports = localRep;
+
+                // Jika data lokal lebih baru dari data server, pertahankan data lokal dan sinkronkan ke Cloud
+                if (localUpdated && data.lastUpdated && localUpdated > data.lastUpdated) {
+                    console.log("Local storage is newer than cloud. Preserving local state and pushing to cloud...");
+                    if (Object.keys(localRep).length > 0) loadedReports = localRep;
+                    if (Array.isArray(localBank) && localBank.length > 0) loadedBankRows = ensureBankRowIds(localBank);
+                    setTimeout(() => {
+                        saveToFirebaseDirectly(loadedReports, loadedBankRows);
+                    }, 500);
+                } else {
+                    if (loadedBankRows.length === 0 && Array.isArray(localBank) && localBank.length > 0) {
+                        loadedBankRows = ensureBankRowIds(localBank);
+                    }
+                    if (Object.keys(loadedReports).length === 0 && Object.keys(localRep).length > 0) {
+                        loadedReports = localRep;
+                    }
                 }
             }
 

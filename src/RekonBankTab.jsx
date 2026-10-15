@@ -250,8 +250,12 @@ export default function RekonBankTab({
     const isUrlMatch = (target) => {
       if (!target || typeof target !== 'string') return false;
       const t = target.trim();
-      if (!t) return false;
-      if (urls.some(u => u === t || t.includes(u) || u.includes(t))) return true;
+      if (!t || t.length < 5) return false;
+      // Jangan gunakan substring includes pada data URI base64 agar tidak terjadi false match antar gambar
+      if (t.startsWith('data:') || urls.some(u => u.startsWith('data:'))) {
+        return urls.some(u => u === t);
+      }
+      if (urls.some(u => u === t || (u.length > 25 && t.length > 25 && (t.includes(u) || u.includes(t))))) return true;
       const targetDriveId = extractDriveId(t);
       if (targetDriveId && itemDriveIds.includes(targetDriveId)) return true;
       return false;
@@ -895,7 +899,8 @@ export default function RekonBankTab({
       <div className="text-xs text-indigo-700 bg-indigo-50/80 px-3.5 py-2.5 rounded-xl border border-indigo-100 font-medium flex flex-col gap-1.5 min-w-[210px] shadow-2xs">
         <span className="text-[11px] text-gray-500 font-normal">Telah dipasangkan dengan:</span>
         {uniqueDetails.map((detail, idx) => {
-          const activeProof = detail.proofUrl || row.proofUrl || (row.transferProof && (row.transferProof.startsWith('http') || row.transferProof.startsWith('data:')) ? row.transferProof : '');
+          const apiItem = (row.apiRefId || detail.apiRefId) ? apiData.find(a => String(a.id) === String(row.apiRefId || detail.apiRefId)) : null;
+          const activeProof = detail.proofUrl || row.proofUrl || apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || (row.transferProof && (row.transferProof.startsWith('http') || row.transferProof.startsWith('data:')) ? row.transferProof : '');
           return (
             <div key={idx} className="flex flex-col gap-1">
               <span className="font-bold text-indigo-900 leading-snug">
