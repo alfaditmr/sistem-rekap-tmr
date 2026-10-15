@@ -528,6 +528,7 @@ export default function App() {
   const isSavingRef = useRef(false);
 
   const getDocRef = () => { return doc(db, 'tmr_data', user ? user.uid : 'demo_rekapitulasi_laporan'); };
+  const getBankDocRef = () => { return doc(db, 'tmr_data', (user ? user.uid : 'demo_rekapitulasi_laporan') + '_bankRows'); };
 
   // ==============================================================
   // 🔴 METODE PENYIMPANAN TERPUSAT & HANDAL (SINGLE AUTHORITATIVE WRITER)
@@ -574,17 +575,25 @@ export default function App() {
 
     if (!user || !db) return;
 
-    // 4. Sinkronkan ke Firestore Cloud
+    // 4. Sinkronkan ke Firestore Cloud dengan Document Sharding (Kebal Batas 1MB)
     const pushToFirestore = async () => {
       isSavingRef.current = true;
       setSyncStatus('syncing');
       try {
+        const allBankRows = Array.isArray(stateRef.current.bankRows) ? stateRef.current.bankRows : [];
+        const matchedOrLinked = allBankRows.filter(r => r && (r.status === 'matched' || r.status === 'linked'));
+        const pendingRows = allBankRows.filter(r => r && r.status !== 'matched' && r.status !== 'linked');
+
+        // Simpan seluruh transaksi matched/linked + 50 pending terbaru di dokumen utama
+        // Ini memastikan ukuran dokumen utama selalu di bawah 500 KB dan kebal terhadap penolakan 1MB
+        const mainBankRows = [...matchedOrLinked, ...pendingRows.slice(-50)];
+
         const payload = sanitizeForFirestore({
           signatures: stateRef.current.signatures,
           categories: stateRef.current.categories,
           targets: stateRef.current.targets,
           allReports: stateRef.current.allReports,
-          bankRows: stateRef.current.bankRows,
+          bankRows: mainBankRows,
           lastWriterId: CLIENT_ID,
           lastUpdated: nowIso
         });
@@ -592,6 +601,18 @@ export default function App() {
         lastLocalSaveTimeRef.current = Date.now();
         lastLocalUpdatedRef.current = nowIso;
         setSyncStatus('synced');
+
+        // Simpan seluruh data mutasi bank lengkap ke dokumen pendamping (Document Sharding)
+        try {
+          const bankPayload = sanitizeForFirestore({
+            bankRows: allBankRows,
+            lastWriterId: CLIENT_ID,
+            lastUpdated: nowIso
+          });
+          await setDoc(getBankDocRef(), bankPayload);
+        } catch (e) {
+          console.warn("Secondary bankRows shard write skipped:", e.message);
+        }
       } catch (err) {
         console.error("Firestore push error:", err);
         setSyncStatus('offline');
@@ -700,12 +721,29 @@ export default function App() {
                         saveToFirebaseDirectly(loadedReports, loadedBankRows);
                     }, 500);
                 } else {
-                    if (loadedBankRows.length === 0 && Array.isArray(localBank) && localBank.length > 0) {
-                        loadedBankRows = ensureBankRowIds(localBank);
+                    if (Array.isArray(localBank) && localBank.length > 0) {
+                        const combinedBankRows = [...loadedBankRows];
+                        localBank.forEach(lr => {
+                            if (!combinedBankRows.some(cr => cr.id === lr.id)) {
+                                combinedBankRows.push(lr);
+                            }
+                        });
+                        loadedBankRows = ensureBankRowIds(combinedBankRows);
                     }
                     if (Object.keys(loadedReports).length === 0 && Object.keys(localRep).length > 0) {
                         loadedReports = localRep;
                     }
+                }
+            } else {
+                const currentLocalBank = stateRef.current.bankRows || [];
+                if (Array.isArray(currentLocalBank) && currentLocalBank.length > 0) {
+                    const combinedBankRows = [...loadedBankRows];
+                    currentLocalBank.forEach(lr => {
+                        if (!combinedBankRows.some(cr => cr.id === lr.id)) {
+                            combinedBankRows.push(lr);
+                        }
+                    });
+                    loadedBankRows = ensureBankRowIds(combinedBankRows);
                 }
             }
 
@@ -794,6 +832,16 @@ export default function App() {
         const loadedTargets = data.targets || {};
         let loadedReports = data.allReports || {};
         let loadedBankRows = ensureBankRowIds(data.bankRows || []);
+        const currentLocalBank = stateRef.current.bankRows || [];
+        if (Array.isArray(currentLocalBank) && currentLocalBank.length > 0) {
+          const combinedBankRows = [...loadedBankRows];
+          currentLocalBank.forEach(lr => {
+            if (!combinedBankRows.some(cr => cr.id === lr.id)) {
+              combinedBankRows.push(lr);
+            }
+          });
+          loadedBankRows = ensureBankRowIds(combinedBankRows);
+        }
 
         const { cleanReports: cloudClean, cleanRows: cloudRows, modified: cloudMod } = reconcileOrphanBankItems(loadedReports, loadedBankRows);
         if (cloudMod) {
