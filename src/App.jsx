@@ -183,6 +183,204 @@ export const reconcileOrphanBankItems = (reports, rows) => {
   // ==============================================================
   const safeRows = ensureBankRowIds(rows || []);
   let rowsModified = false;
+  // ==============================================================
+  // 1b. AUTO-MERGE DOKUMEN LAIN-LAIN DENGAN KATEGORI SAMA
+  // Jika di tanggal yang sama ada 2 atau lebih dokumen lain (misal lain dan lain_2)
+  // yang memiliki kategori yang sama (misal sama-sama Listrik), gabungkan ke dokumen pertama!
+  // Nominalnya digabungkan dan sumber alokasi mutasinya (bankAllocations) disatukan.
+  // ==============================================================
+  const extractItemAllocations = (item, docFormData) => {
+    if (!item) return [];
+    if (Array.isArray(item.bankAllocations) && item.bankAllocations.length > 0) {
+      return item.bankAllocations.map(ba => {
+        let desc = ba.desc || ba.tenant || "";
+        if (!desc || desc === "Mutasi Bank" || desc === "Transaksi Sebelumnya") {
+          const matchedRow = safeRows.find(r => 
+            (ba.bankRowId && r.id === ba.bankRowId) ||
+            (ba.bankDate && r.date === ba.bankDate && Number(r.amount) >= Number(ba.amount))
+          );
+          if (matchedRow) {
+            desc = matchedRow.tenant 
+              ? (matchedRow.location && matchedRow.location !== matchedRow.tenant ? `${matchedRow.tenant} - ${matchedRow.location}` : matchedRow.tenant)
+              : (matchedRow.description || (matchedRow.date ? `Mutasi (${matchedRow.date})` : "Mutasi Bank"));
+          }
+        }
+        return {
+          ...ba,
+          desc: desc || "Mutasi Bank"
+        };
+      });
+    }
+    let itemKey = `${item.catId}_${item.itemId || item.id}`;
+    if (item.itemDate) itemKey += `_date_${item.itemDate}`;
+    if (item.itemNote) {
+      let h = 0; for (let j = 0; j < item.itemNote.length; j++) { h = ((h << 5) - h) + item.itemNote.charCodeAt(j); h = h & h; }
+      itemKey += `_note_${Math.abs(h)}`;
+    }
+    const nominal = Number(docFormData?.[itemKey] || docFormData?.[itemKey.split("_note_")[0]] || docFormData?.[itemKey.split("_date_")[0]] || docFormData?.[item.catId + "_" + (item.itemId || item.id)] || item.originBankAllocAmount || 0);
+    if (nominal > 0 || item.bankMatchDate || item.bankMatchRowId) {
+      const matchedRow = safeRows.find(r => 
+        (item.bankMatchRowId && r.id === item.bankMatchRowId) ||
+        (item.bankMatchDate && r.date === item.bankMatchDate && Number(r.amount) >= nominal)
+      );
+      const desc = matchedRow?.tenant 
+        ? (matchedRow.location && matchedRow.location !== matchedRow.tenant ? `${matchedRow.tenant} - ${matchedRow.location}` : matchedRow.tenant)
+        : (item.itemNote || matchedRow?.description || (item.bankMatchDate ? `Mutasi (${item.bankMatchDate})` : "Mutasi Bank"));
+
+      return [{
+        bankRowId: item.originBankRowId || item.bankMatchRowId || "prior_0",
+        bankDate: item.originBankDate || item.bankMatchDate || "",
+        amount: nominal,
+        desc: desc,
+        tenant: matchedRow?.tenant || "",
+        location: matchedRow?.location || "",
+        proofUrl: item.proofUrl || matchedRow?.proofUrl || ""
+      }];
+    }
+    return [];
+  };
+
+  Object.keys(cleanReports).forEach(date => {
+    const dayData = cleanReports[date];
+    if (!dayData || typeof dayData !== "object") return;
+
+    const lainKeys = Object.keys(dayData)
+      .filter(k => k === "lain" || k.startsWith("lain_"))
+      .sort((a, b) => {
+        const numA = a === "lain" ? 1 : parseInt(a.split("_")[1], 10) || 1;
+        const numB = b === "lain" ? 1 : parseInt(b.split("_")[1], 10) || 1;
+        return numA - numB;
+      });
+
+    if (lainKeys.length <= 1) return;
+
+    const catToTargetKey = {};
+
+    lainKeys.forEach(k => {
+      const docData = dayData[k];
+      if (!docData || !Array.isArray(docData.activeItems) || docData.activeItems.length === 0) return;
+
+      const firstItem = docData.activeItems[0];
+      const docCatId = firstItem?.catId;
+      if (!docCatId) return;
+
+      if (!catToTargetKey[docCatId]) {
+        catToTargetKey[docCatId] = k;
+      } else {
+        const targetKey = catToTargetKey[docCatId];
+        const targetDoc = dayData[targetKey];
+        if (!targetDoc) return;
+        if (!targetDoc.formData) targetDoc.formData = {};
+        if (!Array.isArray(targetDoc.activeItems)) targetDoc.activeItems = [];
+
+        docData.activeItems.forEach(sourceItem => {
+          if (!sourceItem) return;
+
+          let targetItem = targetDoc.activeItems.find(ti => 
+            ti && ti.catId === sourceItem.catId && 
+            ((ti.itemId || "direct") === (sourceItem.itemId || "direct"))
+          );
+
+          const getIK = (it) => {
+            let ik = `${it.catId}_${it.itemId || it.id}`;
+            if (it.itemDate) ik += `_date_${it.itemDate}`;
+            if (it.itemNote) {
+              let h = 0; for (let j = 0; j < it.itemNote.length; j++) { h = ((h << 5) - h) + it.itemNote.charCodeAt(j); h = h & h; }
+              ik += `_note_${Math.abs(h)}`;
+            }
+            return ik;
+          };
+
+          const sourceKey = getIK(sourceItem);
+          const sourceNominal = Number(docData.formData?.[sourceKey] || docData.formData?.[sourceKey.split("_note_")[0]] || docData.formData?.[sourceKey.split("_date_")[0]] || docData.formData?.[sourceItem.catId + "_" + (sourceItem.itemId || sourceItem.id)] || 0);
+          const sourceProof = docData.formData?.[sourceKey + "_buktiUrl"] || sourceItem.proofUrl || "";
+
+          if (targetItem) {
+            if (!Array.isArray(targetItem.bankAllocations) || targetItem.bankAllocations.length === 0) {
+              targetItem.bankAllocations = extractItemAllocations(targetItem, targetDoc.formData);
+            }
+
+            const sourceAllocs = extractItemAllocations(sourceItem, docData.formData);
+
+            sourceAllocs.forEach(sa => {
+              const alreadyExists = targetItem.bankAllocations.some(ba => 
+                (sa.bankRowId && ba.bankRowId === sa.bankRowId && ba.bankRowId !== "prior_0") ||
+                (sa.bankDate && ba.bankDate === sa.bankDate && Number(ba.amount) === Number(sa.amount))
+              );
+              if (!alreadyExists) {
+                targetItem.bankAllocations.push(sa);
+              }
+            });
+
+            if (!Array.isArray(targetItem.bankMatchRowIds)) {
+              targetItem.bankMatchRowIds = targetItem.bankMatchRowId ? [targetItem.bankMatchRowId] : [];
+            }
+            const sRowIds = Array.isArray(sourceItem.bankMatchRowIds) 
+              ? sourceItem.bankMatchRowIds 
+              : (sourceItem.bankMatchRowId ? [sourceItem.bankMatchRowId] : []);
+            sRowIds.forEach(id => {
+              if (id && !targetItem.bankMatchRowIds.includes(id)) targetItem.bankMatchRowIds.push(id);
+            });
+            targetItem.bankMatched = true;
+
+            const targetIK = getIK(targetItem);
+            const sumNominal = targetItem.bankAllocations.reduce((acc, ba) => acc + Number(ba.amount || 0), 0);
+            targetDoc.formData[targetIK] = sumNominal;
+            if (sourceProof && !targetDoc.formData[targetIK + "_buktiUrl"]) {
+              targetDoc.formData[targetIK + "_buktiUrl"] = sourceProof;
+            }
+          } else {
+            targetDoc.activeItems.push(sourceItem);
+            targetDoc.formData[sourceKey] = sourceNominal;
+            if (sourceProof) targetDoc.formData[sourceKey + "_buktiUrl"] = sourceProof;
+          }
+
+          if (safeRows && Array.isArray(safeRows)) {
+            safeRows.forEach(r => {
+              if (Array.isArray(r.inputBaruAllocations)) {
+                r.inputBaruAllocations.forEach(alloc => {
+                  if (alloc.date === date && alloc.docKey === k) {
+                    alloc.docKey = targetKey;
+                  }
+                });
+              }
+            });
+          }
+        });
+
+        delete dayData[k];
+        modified = true;
+      }
+    });
+
+    const remainingLainKeys = Object.keys(dayData)
+      .filter(k => k === "lain" || k.startsWith("lain_"))
+      .sort((a, b) => {
+        const numA = a === "lain" ? 1 : parseInt(a.split("_")[1], 10) || 1;
+        const numB = b === "lain" ? 1 : parseInt(b.split("_")[1], 10) || 1;
+        return numA - numB;
+      });
+
+    remainingLainKeys.forEach((oldKey, idx) => {
+      const expectedKey = idx === 0 ? "lain" : `lain_${idx + 1}`;
+      if (oldKey !== expectedKey) {
+        dayData[expectedKey] = dayData[oldKey];
+        delete dayData[oldKey];
+        if (safeRows && Array.isArray(safeRows)) {
+          safeRows.forEach(r => {
+            if (Array.isArray(r.inputBaruAllocations)) {
+              r.inputBaruAllocations.forEach(alloc => {
+                if (alloc.date === date && alloc.docKey === oldKey) {
+                  alloc.docKey = expectedKey;
+                }
+              });
+            }
+          });
+        }
+        modified = true;
+      }
+    });
+  });
 
   // 2a. Ekstrak seluruh alokasi mutasi bank yang sedang aktif di laporan dashboard
   const activeReportAllocations = [];
@@ -1884,9 +2082,8 @@ export default function App() {
                                        }
                                        
                                        const allSameCategory = candidateDoc.activeItems.every(i => i.catId === cat.id);
-                                       const hasOtherBankMatch = candidateDoc.activeItems.some(i => i.bankMatchRowId && i.bankMatchRowId !== effectiveRowId);
                                        
-                                       if (allSameCategory && !hasOtherBankMatch) {
+                                       if (allSameCategory) {
                                            docKey = candidateKey;
                                            break;
                                        }
