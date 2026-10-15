@@ -25,7 +25,20 @@ export default function RekonBankTab({
   const [selectedBankDates, setSelectedBankDates] = useState([]);
   const [editModal, setEditModal] = useState({ isOpen: false, row: null, proof: '', proofUrl: '' });
   const [apiFilterStatus, setApiFilterStatus] = useState('all');
-  const [apiData, setApiData] = useState([]);
+  const [apiData, setApiData] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tmr_apiData');
+      return saved ? JSON.parse(saved) : [];
+    } catch(e) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('tmr_apiData', JSON.stringify(apiData));
+    } catch(e) {}
+  }, [apiData]);
   const [loadingApi, setLoadingApi] = useState(false);
   const [apiDate, setApiDate] = useState(new Date().toISOString().split('T')[0]);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
@@ -239,7 +252,7 @@ export default function RekonBankTab({
     ].filter(u => typeof u === 'string' && u.trim().length > 0).map(u => u.trim());
     
     const extractDriveId = (u) => {
-      if (!u || typeof u !== 'string') return '';
+      if (!u || typeof u !== 'string' || u.startsWith('data:')) return '';
       const m = u.match(/[-\w]{25,}/);
       return m ? m[0] : '';
     };
@@ -1083,7 +1096,7 @@ export default function RekonBankTab({
                 </button>
               </div>
             </div>
-            <button onClick={() => setApiData([])} className="text-xs text-indigo-400 hover:text-rose-600 font-bold transition-colors self-end sm:self-auto">
+            <button onClick={() => { setApiData([]); try { localStorage.removeItem('tmr_apiData'); } catch(e){} }} className="text-xs text-indigo-400 hover:text-rose-600 font-bold transition-colors self-end sm:self-auto">
               Bersihkan Data API
             </button>
           </div>
