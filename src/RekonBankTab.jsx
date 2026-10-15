@@ -828,8 +828,44 @@ export default function RekonBankTab({
     let dynamicName = row.linkedTo?.groupName;
     const matchedDetails = [];
 
-    // 1. Prioritaskan mencari di allReports (sumber data dashboard utama yang paling akurat)
-    if (allReports) {
+    // 1. Jika baris mutasi berstatus 'linked' dengan target grup yang telah dipilih,
+    // gunakan informasi linkedTo secara langsung (akurat 100% dan tidak tertukar dengan baris mutasi lain)
+    if (row.status === 'linked' && dynamicName && row.linkedTo?.date) {
+      const parts = dynamicName.split(',');
+      parts.forEach(p => {
+        let cleanName = p.replace(/\s*\(Rp\s*[\d\.,\s]+\)/gi, '').trim();
+        const foundCat = categories.find(c => cleanName.toLowerCase().startsWith(c.name.toLowerCase()));
+        if (foundCat) cleanName = foundCat.name;
+        if (cleanName) {
+          let proofUrl = row.linkedTo.proofUrl || row.proofUrl || '';
+          if (!proofUrl && allReports && allReports[row.linkedTo.date]) {
+            Object.keys(allReports[row.linkedTo.date]).forEach(type => {
+              const td = allReports[row.linkedTo.date][type];
+              if (td && Array.isArray(td.activeItems)) {
+                td.activeItems.forEach(item => {
+                  if (item && item.bankMatched && (
+                    (row.id && (item.bankMatchRowId === row.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(row.id))))
+                  )) {
+                    let itemKey = `${item.catId}_${item.itemId || item.id}`;
+                    if (item.itemDate) itemKey += `_date_${item.itemDate}`;
+                    if (item.itemNote) {
+                      let h = 0; for(let j=0; j<item.itemNote.length; j++){ h=((h<<5)-h)+item.itemNote.charCodeAt(j); h=h&h; }
+                      itemKey += `_note_${Math.abs(h)}`;
+                    }
+                    const pu = item.proofUrl || td.formData?.[itemKey + '_buktiUrl'];
+                    if (pu) proofUrl = pu;
+                  }
+                });
+              }
+            });
+          }
+          matchedDetails.push({ date: row.linkedTo.date, name: cleanName, proofUrl });
+        }
+      });
+    }
+
+    // 2. Jika bukan status 'linked' (misal: 'matched' dari alokasi detail / Input Baru), cari di allReports
+    if (matchedDetails.length === 0 && allReports) {
       Object.keys(allReports).forEach(ymd => {
         const dayData = allReports[ymd];
         if (dayData && typeof dayData === 'object') {
@@ -838,13 +874,12 @@ export default function RekonBankTab({
             if (typeData && Array.isArray(typeData.activeItems)) {
               typeData.activeItems.forEach(item => {
                 const isRowMatch = item && item.bankMatched && (
-                  (row.id && item.bankMatchRowId === row.id) || 
-                  (row.id && Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(row.id)) ||
+                  (row.id && (item.bankMatchRowId === row.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(row.id)))) || 
                   (Array.isArray(item.bankAllocations) && item.bankAllocations.some(ba => 
                     (row.id && ba.bankRowId === row.id) ||
-                    (ba.bankDate === row.date && (Number(ba.amount) === Number(row.amount) || Number(row.amount) >= Number(ba.amount)))
+                    (!row.id && !ba.bankRowId && ba.bankDate === row.date && Number(ba.amount) === Number(row.amount) && Number(row.amount) > 0)
                   )) ||
-                  (item.bankMatchDate === row.date && (Number(item.originBankAllocAmount || 0) === Number(row.amount) || Number(row.amount) >= Number(item.originBankAllocAmount || 0)))
+                  ((!row.id || !item.bankMatchRowId) && item.bankMatchDate === row.date && Number(item.originBankAllocAmount || 0) > 0 && Number(item.originBankAllocAmount) === Number(row.amount))
                 );
                 if (isRowMatch) {
                   const cat = categories.find(c => c.id === item.catId);
@@ -863,7 +898,7 @@ export default function RekonBankTab({
       });
     }
 
-    // 2. Jika tidak ditemukan di allReports, gunakan linkedTo (fallback)
+    // 3. Fallback jika tidak ditemukan di allReports, gunakan dynamicName / linkedTo
     if (matchedDetails.length === 0 && dynamicName && row.linkedTo?.date) {
       const parts = dynamicName.split(',');
       parts.forEach(p => {
@@ -876,7 +911,7 @@ export default function RekonBankTab({
       });
     }
 
-    // 3. Fallback ke matchedTo
+    // 4. Fallback ke matchedTo
     if (matchedDetails.length === 0 && row.matchedTo) {
       const targetDate = row.linkedTo?.date || (row.date ? row.date.split(" ")[0] : "");
       const parts = row.matchedTo.split(',');

@@ -224,8 +224,8 @@ export const reconcileOrphanBankItems = (reports, rows) => {
     if (!r) return;
     const alloc = activeReportAllocations.find(a => 
       (r.id && a.rowId && r.id === a.rowId) ||
-      (a.date && r.date === a.date && (Number(r.amount) === a.amount || Number(r.amount) >= a.amount)) ||
-      (a.date && r.date && (r.date.includes(a.date) || a.date.includes(r.date)) && Number(r.amount) === a.amount)
+      (a.amount > 0 && a.date && r.date === a.date && Number(r.amount) === a.amount) ||
+      (a.amount > 0 && a.date && r.date && (r.date.includes(a.date) || a.date.includes(r.date)) && Number(r.amount) === a.amount)
     );
     if (alloc) {
       if (r.status !== 'matched' && r.status !== 'linked') {
@@ -2128,7 +2128,8 @@ export default function App() {
                                        bankMatched: true, 
                                        bankMatchDate: bankRow.date,
                                        bankMatchRowId: effectiveRowId,
-                                       bankMatchRowIds: updatedRowIds
+                                       bankMatchRowIds: updatedRowIds,
+                                        originBankAllocAmount: groupNominal
                                    };
                                }
                            });
@@ -2262,8 +2263,8 @@ export default function App() {
                                           
                                           typeData.activeItems = typeData.activeItems.filter(item => {
                                               if (!item) return false;
-                                              const matchesId = item.bankMatchRowId === bankRow.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(bankRow.id)) || item.originBankRowId === bankRow.id;
-                                              const matchesDate = item.bankMatchDate === bankRow.date || item.originBankDate === bankRow.date;
+                                              const matchesId = (bankRow.id && (item.bankMatchRowId === bankRow.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(bankRow.id)) || item.originBankRowId === bankRow.id));
+                                              const matchesDate = !bankRow.id && !item.bankMatchRowId && (item.bankMatchDate === bankRow.date || item.originBankDate === bankRow.date);
 
                                               if (matchesId || matchesDate) {
                                                   let itemKey = `${item.catId}_${item.itemId || item.id}`;
@@ -2299,8 +2300,8 @@ export default function App() {
                                       if (newReports[date][type] && Array.isArray(newReports[date][type].activeItems)) {
                                           newReports[date][type].activeItems = newReports[date][type].activeItems.map(item => {
                                               if (item) {
-                                                  const matchesId = item.bankMatchRowId === bankRow.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(bankRow.id));
-                                                  const matchesDate = item.bankMatchDate === bankRow.date;
+                                                  const matchesId = (bankRow.id && (item.bankMatchRowId === bankRow.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(bankRow.id))));
+                                                  const matchesDate = !bankRow.id && !item.bankMatchRowId && item.bankMatchDate === bankRow.date;
                                                   
                                                   if (matchesId || matchesDate) {
                                                       const newItem = { ...item };
