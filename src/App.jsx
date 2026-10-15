@@ -833,6 +833,18 @@ export default function App() {
     }
   };
 
+  const handleManualSync = async () => {
+    if (syncStatus === 'syncing') return;
+    showToast("Menyinkronkan data dengan Cloud...");
+    try {
+      await saveState({}, { immediate: true });
+      await pullLatestFromCloud(true);
+    } catch(err) {
+      console.error("Manual sync error:", err);
+      pullLatestFromCloud(true);
+    }
+  };
+
   useEffect(() => {
     const handleWakeup = () => {
       // Hanya sinkronkan saat tab kembali aktif dan user tidak sedang aktif menyimpan
@@ -1696,7 +1708,7 @@ export default function App() {
             <Calculator size={24} /> <span className="hidden lg:inline">Sistem Rekap STSU</span>
             <button 
               type="button" 
-              onClick={() => pullLatestFromCloud(true)} 
+              onClick={handleManualSync} 
               className="ml-0 sm:ml-4 flex items-center gap-1.5 text-[10px] sm:text-xs font-bold px-2.5 py-1 bg-green-800 hover:bg-green-900 border border-green-600 rounded-lg shadow-inner cursor-pointer transition-all hover:scale-105 active:scale-95" 
               title="Klik untuk menyinkronkan data terbaru dari Cloud secara instan"
             >
@@ -1741,7 +1753,7 @@ export default function App() {
           <div className="no-print w-full bg-gray-50 min-h-screen">
               <RekonBankTab 
                  syncStatus={syncStatus}
-                 onRefreshCloud={() => pullLatestFromCloud(true)}
+                 onRefreshCloud={handleManualSync}
                  bankRows={bankRows}
                  setBankRows={setBankRows}
                  formatRp={formatRp} 
