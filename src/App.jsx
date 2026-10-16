@@ -183,6 +183,54 @@ export const reconcileOrphanBankItems = (reports, rows) => {
   // ==============================================================
   const safeRows = ensureBankRowIds(rows || []);
   let rowsModified = false;
+
+  // ==============================================================
+  // 1c. AUTO-DEDUPLIKASI BANK ROWS YANG IDENTIK
+  // Jika ada mutasi bank dengan tanggal, nominal, dan kode transaksi (description) yang persis sama,
+  // gabungkan / pertahankan yang memiliki metadata paling lengkap (tenant, buktiUrl, matchedTo spesifik).
+  // ==============================================================
+  const uniqueBankRows = [];
+  const seenBankKeys = new Map();
+
+  safeRows.forEach(r => {
+    if (!r) return;
+    const cleanDate = (r.date || '').trim();
+    const cleanAmount = Number(r.amount || 0);
+    const cleanDesc = (r.description || '').trim();
+    const key = `${cleanDate}__${cleanAmount}__${cleanDesc}`;
+
+    if (!seenBankKeys.has(key)) {
+      seenBankKeys.set(key, r);
+      uniqueBankRows.push(r);
+    } else {
+      const existing = seenBankKeys.get(key);
+      const existingScore = (existing.tenant ? 2 : 0) + (existing.proofUrl ? 1 : 0) + (existing.apiRefId ? 1 : 0) + (existing.matchedTo && !existing.matchedTo.includes('Pemakaian fasilitas TMR') ? 2 : 0);
+      const currentScore = (r.tenant ? 2 : 0) + (r.proofUrl ? 1 : 0) + (r.apiRefId ? 1 : 0) + (r.matchedTo && !r.matchedTo.includes('Pemakaian fasilitas TMR') ? 2 : 0);
+
+      if (currentScore > existingScore) {
+        const idx = uniqueBankRows.findIndex(item => item.id === existing.id);
+        if (idx >= 0) {
+          uniqueBankRows[idx] = { ...existing, ...r };
+          seenBankKeys.set(key, uniqueBankRows[idx]);
+        }
+      } else {
+        if (!existing.proofUrl && r.proofUrl) existing.proofUrl = r.proofUrl;
+        if (!existing.tenant && r.tenant) existing.tenant = r.tenant;
+        if (!existing.location && r.location) existing.location = r.location;
+        if (!existing.apiRefId && r.apiRefId) existing.apiRefId = r.apiRefId;
+        if ((!existing.matchedTo || existing.matchedTo.includes('Pemakaian fasilitas TMR')) && r.matchedTo && !r.matchedTo.includes('Pemakaian fasilitas TMR')) {
+          existing.matchedTo = r.matchedTo;
+        }
+      }
+      rowsModified = true;
+    }
+  });
+
+  if (uniqueBankRows.length !== safeRows.length) {
+    safeRows.length = 0;
+    safeRows.push(...uniqueBankRows);
+  }
+
   // ==============================================================
   // 1b. AUTO-MERGE DOKUMEN LAIN-LAIN DENGAN KATEGORI SAMA
   // Jika di tanggal yang sama ada 2 atau lebih dokumen lain (misal lain dan lain_2)

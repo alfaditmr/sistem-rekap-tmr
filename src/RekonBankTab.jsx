@@ -501,11 +501,13 @@ export default function RekonBankTab({
         const combined = [...currentRows];
         let newAdded = 0;
 
+        const clean = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
         formattedRows.forEach((r, idx) => {
           const isDup = combined.some(existing => 
-            existing.date === r.date && 
-            existing.amount === r.amount && 
-            existing.description === r.description
+            clean(existing.date) === clean(r.date) && 
+            Number(existing.amount) === Number(r.amount) && 
+            clean(existing.description) === clean(r.description)
           );
           if (!isDup) {
             combined.push({
@@ -528,6 +530,61 @@ export default function RekonBankTab({
         alert(`Berhasil memuat file CSV!\n${newAdded} data mutasi baru ditambahkan (Total: ${finalRows.length} mutasi).\nData langsung disimpan permanen ke Cloud.`);
       }
     });
+  };
+
+  // ==============================================================
+  // 🔴 OPERASI PENGHAPUSAN MUTASI BANK FLEKSIBEL (SATUAN / PER TANGGAL / SEMUA)
+  // ==============================================================
+  const handleDeleteSingleRow = (rowToDelete) => {
+    if (!rowToDelete) return;
+    const confirmMsg = `Hapus baris mutasi bank ini?\n\nTanggal: ${rowToDelete.date}\nKeterangan: ${rowToDelete.description}\nNominal: Rp ${formatRp(rowToDelete.amount)}\n\n(Catatan: Data input laporan STSU harian tetap aman tersimpan).`;
+    if (window.confirm(confirmMsg)) {
+      const updated = bankRows.filter(r => r.id !== rowToDelete.id);
+      if (onSaveBankRows) onSaveBankRows(updated);
+      else setBankRows(updated);
+    }
+  };
+
+  const handleDeleteDateGroup = (targetDateStr) => {
+    if (!targetDateStr) return;
+    const count = bankRows.filter(r => (r.date || '').includes(targetDateStr)).length;
+    const confirmMsg = `Hapus seluruh data mutasi bank untuk tanggal ${targetDateStr} (${count} mutasi)?\n\n(Catatan: Data input laporan STSU harian tetap aman tersimpan).`;
+    if (window.confirm(confirmMsg)) {
+      const updated = bankRows.filter(r => !(r.date || '').includes(targetDateStr));
+      if (onSaveBankRows) onSaveBankRows(updated);
+      else setBankRows(updated);
+      if (selectedBankDates.includes(targetDateStr)) {
+        setSelectedBankDates(prev => prev.filter(d => d !== targetDateStr));
+      }
+    }
+  };
+
+  const handleDeleteFilteredDates = () => {
+    const activeDates = selectedBankDates.filter(d => d && d !== 'Semua');
+    if (activeDates.length === 0) {
+      alert("Pilih tanggal mutasi pada filter terlebih dahulu untuk menghapus mutasi pada tanggal tersebut.");
+      return;
+    }
+    const count = filteredBankRows.length;
+    const confirmMsg = `Hapus ${count} data mutasi bank pada tanggal terpilih (${activeDates.join(', ')})?\n\n(Catatan: Data input laporan STSU harian tetap aman tersimpan).`;
+    if (window.confirm(confirmMsg)) {
+      const updated = bankRows.filter(r => !activeDates.some(d => (r.date || '').includes(d)));
+      if (onSaveBankRows) onSaveBankRows(updated);
+      else setBankRows(updated);
+      setSelectedBankDates([]);
+    }
+  };
+
+  const handleToolbarDelete = () => {
+    const isDateFiltered = selectedBankDates.length > 0 && selectedBankDates[0] !== 'Semua';
+    if (isDateFiltered) {
+      handleDeleteFilteredDates();
+    } else {
+      if (window.confirm(`Hapus SEMUA data CSV mutasi bank (${bankRows.length} data mutasi)?\n\nPeringatan: Seluruh data mutasi di semua tanggal akan dibersihkan.`)) {
+        if (onSaveBankRows) onSaveBankRows([]);
+        else setBankRows([]);
+      }
+    }
   };
 
   const openSplitModal = (row) => {
@@ -1017,6 +1074,14 @@ export default function RekonBankTab({
               </button>
             </>
           )}
+          <button 
+            type="button"
+            onClick={() => handleDeleteSingleRow(row)} 
+            className="text-gray-400 hover:text-red-600 hover:bg-red-50 bg-white border border-gray-200 hover:border-red-200 shadow-2xs p-2 rounded-lg flex items-center justify-center transition-colors self-start" 
+            title="Hapus baris mutasi ini"
+          >
+            <Trash2 size={16}/>
+          </button>
         </div>
       </div>
     );
@@ -1092,9 +1157,19 @@ export default function RekonBankTab({
             <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
           </label>
 
-          {/* Clear CSV */}
-          <button onClick={() => { if(window.confirm('Hapus semua data CSV mutasi bank?')) { if (onSaveBankRows) onSaveBankRows([]); else setBankRows([]); } }} className="bg-red-50 text-red-600 hover:bg-red-100 p-2 rounded-xl transition-colors border border-red-100" title="Bersihkan Semua Data Mutasi">
+          {/* Clear CSV / Filtered */}
+          <button 
+            type="button"
+            onClick={handleToolbarDelete} 
+            className="bg-red-50 text-red-600 hover:bg-red-100 p-2 rounded-xl transition-colors border border-red-100 flex items-center gap-1.5 shadow-2xs" 
+            title={selectedBankDates.length > 0 && selectedBankDates[0] !== 'Semua' 
+              ? `Hapus mutasi tanggal terpilih (${selectedBankDates.join(', ')})` 
+              : "Bersihkan Semua Data Mutasi"}
+          >
             <Trash2 size={17} />
+            {selectedBankDates.length > 0 && selectedBankDates[0] !== 'Semua' && (
+              <span className="text-xs font-bold hidden md:inline">Hapus Tanggal Terpilih</span>
+            )}
           </button>
         </div>
       </div>
@@ -1437,6 +1512,14 @@ export default function RekonBankTab({
                   >
                     <CheckCircle size={12}/> Sudah Dipasangkan ({activeDateData.pairedCount})
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteDateGroup(selectedDate)}
+                    className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 border border-red-200 flex items-center gap-1 transition-colors ml-1"
+                    title={`Hapus seluruh ${activeDateData.rows.length} mutasi tanggal ini`}
+                  >
+                    <Trash2 size={12}/> Hapus Tanggal Ini
+                  </button>
                 </div>
               )}
             </div>
@@ -1480,9 +1563,21 @@ export default function RekonBankTab({
                 selectedDates={selectedBankDates} 
                 onChange={setSelectedBankDates} 
               />
-              <div className="text-sm text-gray-500 sm:ml-auto text-right">
-                <div>Menampilkan {filteredBankRows.length} dari {bankRows.length} data mutasi</div>
-                <div className="text-xs font-bold mt-1 uppercase tracking-wide text-gray-400">
+              <div className="text-sm text-gray-500 sm:ml-auto text-right flex flex-col sm:items-end gap-1">
+                <div className="flex items-center gap-2">
+                  <span>Menampilkan {filteredBankRows.length} dari {bankRows.length} data mutasi</span>
+                  {selectedBankDates.length > 0 && selectedBankDates[0] !== 'Semua' && (
+                    <button 
+                      type="button"
+                      onClick={handleDeleteFilteredDates}
+                      className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-2xs transition-colors ml-2"
+                      title={`Hapus seluruh mutasi untuk tanggal ${selectedBankDates.join(', ')}`}
+                    >
+                      <Trash2 size={13} /> Hapus Tanggal Ini ({filteredBankRows.length})
+                    </button>
+                  )}
+                </div>
+                <div className="text-xs font-bold mt-0.5 uppercase tracking-wide text-gray-400">
                   Total Filter: <span className="text-blue-600 text-base font-black">Rp {formatRp(filteredBankRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0))}</span>
                 </div>
               </div>
@@ -1492,10 +1587,20 @@ export default function RekonBankTab({
           <div className="space-y-6">
             {groupedBankRows.map(([dateGroup, data]) => (
               <div key={dateGroup} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-                  <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-                    <Database size={18} className="text-gray-400"/> {dateGroup}
-                  </h3>
+                <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
+                      <Database size={18} className="text-gray-400"/> {dateGroup}
+                    </h3>
+                    <button 
+                      type="button"
+                      onClick={() => handleDeleteDateGroup(dateGroup)}
+                      className="text-xs text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                      title={`Hapus seluruh ${data.rows.length} mutasi pada tanggal ${dateGroup}`}
+                    >
+                      <Trash2 size={12} /> Hapus Mutasi Tanggal Ini
+                    </button>
+                  </div>
                   <div className="text-right">
                     <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-0.5">Total Pemasukan</div>
                     <div className="font-black text-blue-700 text-lg">Rp {formatRp(data.total)}</div>
