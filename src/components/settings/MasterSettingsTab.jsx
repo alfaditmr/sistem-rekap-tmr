@@ -36,11 +36,7 @@ export default function MasterSettingsTab({
   deleteItem,
   addItem,
   addCategory,
-  handleForceSave,
-  handleForcePushToCloud,
-  handleManualSync,
-  syncStatus,
-  currentUser
+  handleForceSave
 }) {
   if (activeTab !== 'settings') return null;
 
@@ -53,20 +49,7 @@ export default function MasterSettingsTab({
             Sistem Informasi Manajemen Pendapatan Taman Margasatwa Ragunan
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-4xl">
-            <button
-              onClick={() => setActiveMasterMenu('cloud')}
-              className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4 group"
-            >
-              <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Cloud size={32} />
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-800 text-base mb-1">Database Cloud</h3>
-                <p className="text-xs text-gray-500">Koneksi real-time terpusat antar PC admin.</p>
-              </div>
-            </button>
-
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-3xl">
             <button
               onClick={() => setActiveMasterMenu('kategori')}
               className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4 group"
@@ -117,78 +100,6 @@ export default function MasterSettingsTab({
           >
             <ChevronLeft size={16} /> Kembali ke Menu Master
           </button>
-
-          {activeMasterMenu === 'cloud' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
-                <div>
-                  <h2 className="text-xl font-black text-gray-800 flex items-center gap-2">
-                    <Cloud size={24} className="text-emerald-600" /> Database Cloud Terpusat (Firebase)
-                  </h2>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Arsitektur Terpusat: Seluruh input, rekonsiliasi, dan pencatatan tersimpan langsung di Cloud Firestore.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
-                    syncStatus === 'synced' ? 'bg-emerald-100 text-emerald-800' :
-                    syncStatus === 'syncing' ? 'bg-blue-100 text-blue-800 animate-pulse' :
-                    'bg-rose-100 text-rose-800'
-                  }`}>
-                    <span className={`w-2 h-2 rounded-full ${syncStatus === 'synced' ? 'bg-emerald-600' : syncStatus === 'syncing' ? 'bg-blue-600' : 'bg-rose-600'}`}></span>
-                    {syncStatus === 'synced' ? 'Terhubung Real-Time' : syncStatus === 'syncing' ? 'Menyinkronkan...' : 'Offline'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                  <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Dokumen Database Pusat</div>
-                  <div className="font-mono text-sm font-bold text-indigo-700 bg-white px-3 py-1.5 rounded border border-slate-200 inline-block">
-                    tmr_data / tmr_rekapitulasi_pusat
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Semua PC admin menggunakan dokumen tunggal ini sehingga tidak ada lagi perbedaan data antar PC.
-                  </p>
-                </div>
-
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                  <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Akun Login Saat Ini</div>
-                  <div className="text-sm font-bold text-gray-800">
-                    {currentUser?.email || 'Admin Terautentikasi'}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    UID: <span className="font-mono text-[11px] text-gray-600">{currentUser?.uid || '-'}</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-4 pt-2">
-                <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Aksi Sinkronisasi Data</h3>
-                
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <button
-                    type="button"
-                    onClick={handleManualSync}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 text-sm"
-                  >
-                    <RefreshCw size={16} /> Tarik & Samakan dari Server Pusat
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleForcePushToCloud}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 text-sm"
-                  >
-                    <Cloud size={16} /> Jadikan PC Ini Master di Server Pusat
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 italic">
-                  💡 Gunakan tombol <strong>"Jadikan PC Ini Master"</strong> jika Anda telah menyelesaikan penginputan/rekonsiliasi di PC ini dan ingin memastikan data di server pusat persis sama dengan yang ada di PC ini.
-                </p>
-              </div>
-            </div>
-          )}
 
           {activeMasterMenu === 'koneksi' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">

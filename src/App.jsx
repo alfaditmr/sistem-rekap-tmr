@@ -891,15 +891,6 @@ export default function App() {
     return saveState({}, { immediate: true, showToastMessage: 'Data berhasil disimpan dan disinkronkan ke Database Pusat!' });
   };
 
-  const handleForcePushToCloud = () => {
-    showConfirm(
-      "Apakah Anda yakin ingin MENGUNGGAH & MENJADIKAN data di PC ini sebagai Master Utama di Database Pusat?\n\nSemua PC lain yang terhubung akan langsung mengikuti dan disamakan dengan data di layar Anda saat ini.",
-      async () => {
-        await saveState({}, { immediate: true, showToastMessage: "Data PC ini berhasil dijadikan Master Utama di Server Pusat!" });
-      }
-    );
-  };
-
   const flushPendingSave = () => {
     if (cloudSaveTimerRef.current) {
       clearTimeout(cloudSaveTimerRef.current);
@@ -1846,6 +1837,23 @@ export default function App() {
     );
   }
 
+  if (!dbReady) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-green-800 to-green-950 text-white p-4">
+        <div className="bg-white/10 backdrop-blur-md border border-white/20 p-8 rounded-3xl shadow-2xl flex flex-col items-center max-w-sm w-full text-center animate-in fade-in zoom-in duration-300">
+          <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-4 text-emerald-300 animate-pulse">
+            <Cloud size={36} />
+          </div>
+          <h2 className="text-xl font-black mb-1 tracking-tight">Menghubungkan ke Cloud...</h2>
+          <p className="text-xs text-green-100/80 mb-4">Memuat data terpusat real-time Taman Margasatwa Ragunan</p>
+          <div className="flex items-center gap-2 text-xs text-emerald-300 bg-white/10 px-3.5 py-1.5 rounded-full font-mono font-medium">
+            <RefreshCw size={13} className="animate-spin" /> Sinkronisasi Database Pusat
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 font-sans pb-36 relative">
       <style>{`
@@ -1980,15 +1988,27 @@ export default function App() {
         <div className="max-w-6xl mx-auto px-4 flex justify-between items-center h-16">
           <div className="font-bold text-lg flex items-center gap-2 mr-4 shrink-0">
             <Calculator size={24} /> <span className="hidden lg:inline">Sistem Rekap STSU</span>
-            <button 
-              type="button" 
-              onClick={handleManualSync} 
-              className="ml-0 sm:ml-4 flex items-center gap-1.5 text-[10px] sm:text-xs font-bold px-2.5 py-1 bg-green-800 hover:bg-green-900 border border-green-600 rounded-lg shadow-inner cursor-pointer transition-all hover:scale-105 active:scale-95" 
-              title="Klik untuk menyinkronkan data terbaru dari Cloud secara instan"
+            <div 
+              className="ml-0 sm:ml-4 flex items-center gap-1.5 text-[10px] sm:text-xs font-bold px-2.5 py-1 bg-green-900/60 border border-green-500/40 rounded-lg shadow-inner select-none" 
+              title={syncStatus === 'synced' ? 'Semua data tersimpan otomatis di Database Cloud Pusat' : syncStatus === 'syncing' ? 'Menyinkronkan ke Cloud...' : 'Koneksi Offline'}
             >
-              {syncStatus === 'syncing' ? <RefreshCw className="animate-spin text-white" size={14}/> : syncStatus === 'synced' ? <Cloud size={14} className="text-blue-300"/> : <CloudOff size={14} className="text-red-300"/>}
-              <span className="hidden md:inline">{syncStatus === 'syncing' ? 'Menyinkronkan...' : syncStatus === 'synced' ? 'Tersimpan (Klik Sync)' : 'Mode Offline'}</span>
-            </button>
+              {syncStatus === 'syncing' ? (
+                <>
+                  <RefreshCw className="animate-spin text-amber-300" size={13}/>
+                  <span className="hidden md:inline text-amber-200">Menyimpan...</span>
+                </>
+              ) : syncStatus === 'synced' ? (
+                <>
+                  <Cloud size={13} className="text-emerald-300"/>
+                  <span className="hidden md:inline text-emerald-100">Tersimpan di Cloud</span>
+                </>
+              ) : (
+                <>
+                  <CloudOff size={13} className="text-red-300"/>
+                  <span className="hidden md:inline text-red-200">Mode Offline</span>
+                </>
+              )}
+            </div>
           </div>
           <div className="flex space-x-1 sm:space-x-2 shrink-0 overflow-x-auto no-scrollbar items-center">
             <button onClick={() => handleTabSwitch('kalender')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'kalender' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Kalender</span></button>
@@ -2028,7 +2048,6 @@ export default function App() {
               <RekonBankTab 
                  syncStatus={syncStatus}
                  onRefreshCloud={handleManualSync}
-                 onForcePushCloud={handleForcePushToCloud}
                  bankRows={bankRows}
                  setBankRows={setBankRows}
                  allReports={allReports}
@@ -2654,10 +2673,6 @@ export default function App() {
         signatures={signatures}
         setSignatures={handleUpdateSignatures}
         handleForceSave={handleForceSave}
-        handleForcePushToCloud={handleForcePushToCloud}
-        handleManualSync={handleManualSync}
-        syncStatus={syncStatus}
-        currentUser={user}
         categories={categories}
         moveCategory={moveCategory}
         updateCategory={updateCategory}
