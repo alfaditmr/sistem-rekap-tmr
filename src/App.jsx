@@ -829,6 +829,28 @@ export default function App() {
   const previousReportMonthsRef = useRef({});
   const previousConfigRef = useRef('');
   const lastFullBackupTimeRef = useRef(0);
+  const bankPartitionsCacheRef = useRef({});
+  const reportPartitionsCacheRef = useRef({});
+  const masterBackupTimerRef = useRef(null);
+
+  // Cadangan master cold-storage berjalan di latar belakang saat idle (60 detik)
+  // Menjaga agar jaringan HP/PC tetap 100% bebas hambatan (< 0.5s) saat interaksi
+  const scheduleMasterColdBackup = (delayMs = 60000) => {
+    if (masterBackupTimerRef.current) clearTimeout(masterBackupTimerRef.current);
+    masterBackupTimerRef.current = setTimeout(() => {
+      if (!user || !db || isSavingRef.current) return;
+      const allBankRows = Array.isArray(stateRef.current.bankRows) ? stateRef.current.bankRows : [];
+      setDoc(getDocRef(), sanitizeForFirestore({
+        signatures: stateRef.current.signatures,
+        categories: stateRef.current.categories,
+        targets: stateRef.current.targets,
+        allReports: stateRef.current.allReports,
+        bankRows: allBankRows,
+        lastWriterId: CLIENT_ID,
+        lastUpdated: new Date().toISOString()
+      })).catch(e => console.warn("Cold storage idle backup warning:", e.message));
+    }, delayMs);
+  };
 
   // ==============================================================
   // 🔴 METODE PENYIMPANAN TERPUSAT KE FIREBASE (CRUD REAL-TIME SINGLE SOURCE OF TRUTH)
@@ -980,24 +1002,16 @@ export default function App() {
           }
         }
 
+        // Update cache partisi lokal
+        bankPartitionsCacheRef.current = newBankPartitions;
+        reportPartitionsCacheRef.current = newReportPartitions;
+
         lastLocalSaveTimeRef.current = Date.now();
         lastLocalUpdatedRef.current = nowIso;
         setSyncStatus('synced');
 
-        // Cadangan master cold-storage di latar belakang secara non-blocking (tidak menahan UI)
-        const nowTime = Date.now();
-        if (nowTime - lastFullBackupTimeRef.current > 20000 || options.immediate) {
-          lastFullBackupTimeRef.current = nowTime;
-          setDoc(getDocRef(), sanitizeForFirestore({
-            signatures: stateRef.current.signatures,
-            categories: stateRef.current.categories,
-            targets: stateRef.current.targets,
-            allReports: stateRef.current.allReports,
-            bankRows: allBankRows,
-            lastWriterId: CLIENT_ID,
-            lastUpdated: nowIso
-          })).catch(e => console.warn("Cold storage backup non-blocking warning:", e.message));
-        }
+        // Jadwalkan cadangan master hanya saat sistem idle (tidak membebani jalur real-time HP/PC)
+        scheduleMasterColdBackup(60000);
       } catch (err) {
         console.error("Firestore partitioned push error:", err);
         setSyncStatus('offline');
@@ -1015,7 +1029,7 @@ export default function App() {
     if (options.immediate) {
       await pushToFirestore();
     } else {
-      cloudSaveTimerRef.current = setTimeout(pushToFirestore, 250);
+      cloudSaveTimerRef.current = setTimeout(pushToFirestore, 100);
     }
   };
 
@@ -1023,10 +1037,11 @@ export default function App() {
     return saveState({
       ...(newReports !== undefined ? { allReports: newReports } : {}),
       bankRows: newBankRows !== undefined ? newBankRows : stateRef.current.bankRows
-    }, { immediate: false, ...options });
+    }, { immediate: true, ...options });
   };
 
   const handleForceSave = () => {
+    scheduleMasterColdBackup(0);
     return saveState({}, { immediate: true, showToastMessage: 'Data berhasil disimpan dan disinkronkan ke Database Pusat!' });
   };
 
@@ -1210,6 +1225,9 @@ export default function App() {
         const bankPartitions = partitionBankRowsByMonth(loadedBankRows);
         const repPartitions = partitionReportsByMonth(loadedReports);
 
+        bankPartitionsCacheRef.current = bankPartitions;
+        reportPartitionsCacheRef.current = repPartitions;
+
         previousBankMonthsRef.current = {};
         Object.keys(bankPartitions).forEach(m => {
           previousBankMonthsRef.current[m] = JSON.stringify(bankPartitions[m]);
@@ -1273,7 +1291,6 @@ export default function App() {
         unsubBankCollection = onSnapshot(collection(db, 'tmr_bank_months'), (snapshot) => {
           if (snapshot.metadata?.hasPendingWrites) return;
           let hasExternalChange = false;
-          const currentPartitions = partitionBankRowsByMonth(stateRef.current.bankRows);
 
           snapshot.docChanges().forEach(change => {
             const data = change.doc.data();
@@ -1281,25 +1298,25 @@ export default function App() {
 
             const monthKey = change.doc.id;
             if (change.type === 'removed') {
-              delete currentPartitions[monthKey];
+              delete bankPartitionsCacheRef.current[monthKey];
               hasExternalChange = true;
             } else if (change.type === 'added' || change.type === 'modified') {
-              currentPartitions[monthKey] = data.bankRows || [];
+              bankPartitionsCacheRef.current[monthKey] = data.bankRows || [];
               hasExternalChange = true;
             }
           });
 
           if (hasExternalChange) {
             const mergedRows = [];
-            Object.keys(currentPartitions).sort().forEach(m => {
-              mergedRows.push(...currentPartitions[m]);
+            Object.keys(bankPartitionsCacheRef.current).sort().forEach(m => {
+              mergedRows.push(...(bankPartitionsCacheRef.current[m] || []));
             });
             const safeRows = ensureBankRowIds(mergedRows);
             stateRef.current.bankRows = safeRows;
             setBankRows(safeRows);
             safeSetLocalStorage('tmr_v19_bankRows', safeRows);
-            Object.keys(currentPartitions).forEach(m => {
-              previousBankMonthsRef.current[m] = JSON.stringify(currentPartitions[m]);
+            snapshot.docChanges().forEach(change => {
+              previousBankMonthsRef.current[change.doc.id] = JSON.stringify(change.doc.data().bankRows || []);
             });
             setSyncStatus('synced');
           }
@@ -1311,7 +1328,6 @@ export default function App() {
         unsubReportsCollection = onSnapshot(collection(db, 'tmr_report_months'), (snapshot) => {
           if (snapshot.metadata?.hasPendingWrites) return;
           let hasExternalChange = false;
-          const currentPartitions = partitionReportsByMonth(stateRef.current.allReports);
 
           snapshot.docChanges().forEach(change => {
             const data = change.doc.data();
@@ -1319,24 +1335,24 @@ export default function App() {
 
             const monthKey = change.doc.id;
             if (change.type === 'removed') {
-              delete currentPartitions[monthKey];
+              delete reportPartitionsCacheRef.current[monthKey];
               hasExternalChange = true;
             } else if (change.type === 'added' || change.type === 'modified') {
-              currentPartitions[monthKey] = data.reports || {};
+              reportPartitionsCacheRef.current[monthKey] = data.reports || {};
               hasExternalChange = true;
             }
           });
 
           if (hasExternalChange) {
             const mergedReports = {};
-            Object.keys(currentPartitions).sort().forEach(m => {
-              Object.assign(mergedReports, currentPartitions[m]);
+            Object.keys(reportPartitionsCacheRef.current).sort().forEach(m => {
+              Object.assign(mergedReports, reportPartitionsCacheRef.current[m] || {});
             });
             stateRef.current.allReports = mergedReports;
             setAllReports(mergedReports);
             safeSetLocalStorage('tmr_v19_allReports', mergedReports);
-            Object.keys(currentPartitions).forEach(m => {
-              previousReportMonthsRef.current[m] = JSON.stringify(currentPartitions[m]);
+            snapshot.docChanges().forEach(change => {
+              previousReportMonthsRef.current[change.doc.id] = JSON.stringify(change.doc.data().reports || {});
             });
             setSyncStatus('synced');
           }
@@ -1465,6 +1481,8 @@ export default function App() {
       // Perbarui hash tracking
       const bankPartitions = partitionBankRowsByMonth(loadedBankRows);
       const repPartitions = partitionReportsByMonth(loadedReports);
+      bankPartitionsCacheRef.current = bankPartitions;
+      reportPartitionsCacheRef.current = repPartitions;
       previousBankMonthsRef.current = {};
       Object.keys(bankPartitions).forEach(m => {
         previousBankMonthsRef.current[m] = JSON.stringify(bankPartitions[m]);
@@ -1502,12 +1520,16 @@ export default function App() {
   useEffect(() => {
     const handleWakeup = () => {
       // Saat tab kembali dibuka/difokuskan, sinkronkan data terbaru dari server
-      if (document.visibilityState === 'visible' && user && db && !isSavingRef.current) {
+      if ((document.visibilityState === 'visible' || document.hasFocus()) && user && db && !isSavingRef.current) {
         pullLatestFromCloud();
       }
     };
     document.addEventListener('visibilitychange', handleWakeup);
-    return () => document.removeEventListener('visibilitychange', handleWakeup);
+    window.addEventListener('focus', handleWakeup);
+    return () => {
+      document.removeEventListener('visibilitychange', handleWakeup);
+      window.removeEventListener('focus', handleWakeup);
+    };
   }, [user]);
 
 
