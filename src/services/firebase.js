@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously } from "firebase/auth";
-import { getFirestore, doc, setDoc, updateDoc, getDoc, onSnapshot } from "firebase/firestore";
+import { getFirestore, doc, setDoc, updateDoc, getDoc, onSnapshot, collection, getDocs, writeBatch, deleteDoc } from "firebase/firestore";
 
 // ==========================================
 // 🔴 KONFIGURASI DATABASE FIREBASE USER
@@ -38,5 +38,9 @@ export {
   setDoc,
   updateDoc,
   getDoc,
-  onSnapshot
+  onSnapshot,
+  collection,
+  getDocs,
+  writeBatch,
+  deleteDoc
 };

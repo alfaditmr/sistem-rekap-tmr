@@ -170,3 +170,22 @@ export const formatDetailsTooltip = (total, detailsObj = {}) => {
   });
   return str.trim();
 };
+
+export const parseYmd = (dateStr) => {
+  if (!dateStr || typeof dateStr !== 'string') return '';
+  try {
+    const cleanStr = dateStr.replace(/WIB|WITA|WIT/i, '').trim();
+    const d = new Date(cleanStr);
+    if (!isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+    const dmy = cleanStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (dmy) {
+      return `${dmy[3]}-${String(dmy[2]).padStart(2, '0')}-${String(dmy[1]).padStart(2, '0')}`;
+    }
+  } catch(e) {}
+  return '';
+};
