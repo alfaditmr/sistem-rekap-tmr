@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Papa from 'papaparse';
 import { 
   Upload, RefreshCw, Link as LinkIcon, CheckCircle, AlertCircle, Plus, Trash, Database, 
-  Filter, Trash2, Edit, RotateCcw, Zap, Sparkles, Calendar, ChevronLeft, ChevronRight, ListFilter, Check 
+  Filter, Trash2, Edit, RotateCcw, Zap, Sparkles, Calendar, ChevronLeft, ChevronRight, ListFilter, Check, Cloud 
 } from 'lucide-react';
 import MultiDateCalendar from './MultiDateCalendar';
 
@@ -19,7 +19,8 @@ export default function RekonBankTab({
   onUnlinkBankRow, 
   onSaveBankRows, 
   syncStatus, 
-  onRefreshCloud 
+  onRefreshCloud,
+  onForcePushCloud 
 }) {
   const [viewMode, setViewMode] = useState('calendar'); // 'calendar' | 'list'
   const [selectedBankDates, setSelectedBankDates] = useState([]);
@@ -1144,12 +1145,24 @@ export default function RekonBankTab({
           <button 
             type="button" 
             onClick={() => onRefreshCloud && onRefreshCloud()} 
-            className="bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 transition-colors shadow-2xs text-xs sm:text-sm"
-            title="Tarik pembaruan data rekon dan mutasi terbaru dari PC lain / Cloud"
+            className="bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 transition-colors shadow-2xs text-xs sm:text-sm cursor-pointer"
+            title="Tarik dan samakan data mutasi & rekon langsung dari Server Pusat"
           >
             <RefreshCw size={15} className={syncStatus === 'syncing' ? 'animate-spin text-indigo-600' : 'text-indigo-600'} />
             <span className="hidden sm:inline">Sinkron Cloud</span>
           </button>
+
+          {onForcePushCloud && (
+            <button
+              type="button"
+              onClick={onForcePushCloud}
+              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 transition-colors shadow-2xs text-xs sm:text-sm cursor-pointer"
+              title="Unggah data di layar PC ini dan jadikan Master di Server Pusat (semua PC lain akan langsung disamakan)"
+            >
+              <Cloud size={15} className="text-emerald-600" />
+              <span className="hidden lg:inline">Jadikan Master</span>
+            </button>
+          )}
 
           {/* Upload CSV */}
           <label className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm text-xs sm:text-sm">

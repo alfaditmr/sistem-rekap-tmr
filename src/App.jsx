@@ -773,11 +773,16 @@ export default function App() {
   const cloudSaveTimerRef = useRef(null);
   const isSavingRef = useRef(false);
 
-  const getDocRef = () => { return doc(db, 'tmr_data', user ? user.uid : 'demo_rekapitulasi_laporan'); };
-  const getBankDocRef = () => { return doc(db, 'tmr_data', (user ? user.uid : 'demo_rekapitulasi_laporan') + '_bankRows'); };
+  // ==============================================================
+  // 🔴 CENTRALIZED CLOUD DATABASE REFERENCE (SHARED ACROSS ALL PCS & ADMINS)
+  // Seluruh PC admin (kasir, rekon, bendahara) terhubung ke dokumen pusat yang sama
+  // ==============================================================
+  const CENTRAL_DOC_ID = 'tmr_rekapitulasi_pusat';
+  const getDocRef = () => { return doc(db, 'tmr_data', CENTRAL_DOC_ID); };
+  const getBankDocRef = () => { return doc(db, 'tmr_data', CENTRAL_DOC_ID + '_bankRows'); };
 
   // ==============================================================
-  // 🔴 METODE PENYIMPANAN TERPUSAT & HANDAL (SINGLE AUTHORITATIVE WRITER)
+  // 🔴 METODE PENYIMPANAN TERPUSAT KE FIREBASE (CRUD REAL-TIME SINGLE SOURCE OF TRUTH)
   // ==============================================================
   const saveState = async (updates = {}, options = { immediate: false, showToastMessage: null }) => {
     const current = stateRef.current;
@@ -787,7 +792,7 @@ export default function App() {
     const nextCats = updates.categories !== undefined ? updates.categories : current.categories;
     const nextTargets = updates.targets !== undefined ? updates.targets : current.targets;
 
-    // 1. Sinkronkan stateRef secara instan (0ms)
+    // 1. Sinkronkan stateRef secara instan
     stateRef.current = {
       allReports: nextReports,
       bankRows: nextBankRows,
@@ -807,7 +812,7 @@ export default function App() {
     lastLocalUpdatedRef.current = nowIso;
     lastLocalSaveTimeRef.current = Date.now();
 
-    // 3. Simpan ke LocalStorage seketika (0ms tahan refresh & offline)
+    // 3. Simpan ke LocalStorage seketika hanya sebagai cache tampilan / cadangan offline
     if (updates.allReports !== undefined) safeSetLocalStorage('tmr_v19_allReports', nextReports);
     if (updates.bankRows !== undefined) safeSetLocalStorage('tmr_v19_bankRows', nextBankRows);
     if (updates.signatures !== undefined) safeSetLocalStorage('tmr_v19_signatures', nextSigs);
@@ -821,25 +826,20 @@ export default function App() {
 
     if (!user || !db) return;
 
-    // 4. Sinkronkan ke Firestore Cloud dengan Document Sharding (Kebal Batas 1MB)
+    // 4. Sinkronkan ke Firestore Database Pusat secara utuh (Semua baris mutasi bank tersimpan lengkap)
     const pushToFirestore = async () => {
       isSavingRef.current = true;
       setSyncStatus('syncing');
       try {
         const allBankRows = Array.isArray(stateRef.current.bankRows) ? stateRef.current.bankRows : [];
-        const matchedOrLinked = allBankRows.filter(r => r && (r.status === 'matched' || r.status === 'linked'));
-        const pendingRows = allBankRows.filter(r => r && r.status !== 'matched' && r.status !== 'linked');
 
-        // Simpan seluruh transaksi matched/linked + 50 pending terbaru di dokumen utama
-        // Ini memastikan ukuran dokumen utama selalu di bawah 500 KB dan kebal terhadap penolakan 1MB
-        const mainBankRows = [...matchedOrLinked, ...pendingRows.slice(-50)];
-
+        // Simpan dokumen utama ke Firebase dengan seluruh mutasi bank lengkap tanpa pemotongan
         const payload = sanitizeForFirestore({
           signatures: stateRef.current.signatures,
           categories: stateRef.current.categories,
           targets: stateRef.current.targets,
           allReports: stateRef.current.allReports,
-          bankRows: mainBankRows,
+          bankRows: allBankRows,
           lastWriterId: CLIENT_ID,
           lastUpdated: nowIso
         });
@@ -848,7 +848,7 @@ export default function App() {
         lastLocalUpdatedRef.current = nowIso;
         setSyncStatus('synced');
 
-        // Simpan seluruh data mutasi bank lengkap ke dokumen pendamping (Document Sharding)
+        // Simpan juga salinan mutasi bank lengkap ke dokumen pendamping (Document Sharding Backup)
         try {
           const bankPayload = sanitizeForFirestore({
             bankRows: allBankRows,
@@ -876,7 +876,7 @@ export default function App() {
     if (options.immediate) {
       await pushToFirestore();
     } else {
-      cloudSaveTimerRef.current = setTimeout(pushToFirestore, 500);
+      cloudSaveTimerRef.current = setTimeout(pushToFirestore, 400);
     }
   };
 
@@ -888,7 +888,16 @@ export default function App() {
   };
 
   const handleForceSave = () => {
-    return saveState({}, { immediate: true, showToastMessage: 'Data berhasil disimpan ke Cloud!' });
+    return saveState({}, { immediate: true, showToastMessage: 'Data berhasil disimpan dan disinkronkan ke Database Pusat!' });
+  };
+
+  const handleForcePushToCloud = () => {
+    showConfirm(
+      "Apakah Anda yakin ingin MENGUNGGAH & MENJADIKAN data di PC ini sebagai Master Utama di Database Pusat?\n\nSemua PC lain yang terhubung akan langsung mengikuti dan disamakan dengan data di layar Anda saat ini.",
+      async () => {
+        await saveState({}, { immediate: true, showToastMessage: "Data PC ini berhasil dijadikan Master Utama di Server Pusat!" });
+      }
+    );
   };
 
   const flushPendingSave = () => {
@@ -909,7 +918,8 @@ export default function App() {
   }, []);
 
   // ==============================================================
-  // 🔴 LISTENER REAL-TIME FIRESTORE (DENGAN PROTEKSI CLIENT_ID)
+  // 🔴 LISTENER REAL-TIME FIRESTORE MASTER (FIREBASE SEBAGAI SINGLE SOURCE OF TRUTH)
+  // Data server adalah otoritas tertinggi - Tidak ada penolakan atau perbandingan lokal yang merusak sinkronisasi
   // ==============================================================
   useEffect(() => {
     if (!user || !db) return;
@@ -917,91 +927,37 @@ export default function App() {
     
     let isInitialLoad = true;
     
-    const unsubscribe = onSnapshot(getDocRef(), (docSnap) => {
-        const isFirst = isInitialLoad;
-        if (isInitialLoad) {
-            isInitialLoad = false;
-            setDbReady(true);
+    const unsubscribe = onSnapshot(getDocRef(), async (docSnap) => {
+        if (docSnap.metadata?.hasPendingWrites) {
+            // Abaikan write lokal yang masih berjalan optimistik
+            return;
         }
 
         if (docSnap.exists()) {
             const data = docSnap.data();
 
-            if (!isFirst) {
-                // PENGAMAN UTAMA: Jika snapshot ini berasal dari penulisan client/tab ini sendiri,
-                // ABAIKAN SEPENUHNYA! State lokal sudah paling mutakhir dan tidak boleh ditimpa.
-                if (data.lastWriterId === CLIENT_ID) {
-                    return;
-                }
-                // Abaikan jika sedang ada proses simpan lokal atau baru saja simpan (< 15 detik lalu)
-                if (isSavingRef.current || (Date.now() - lastLocalSaveTimeRef.current < 15000)) {
-                    return;
-                }
-                // Abaikan jika data server lebih lama atau sama dengan data lokal
-                if (data.lastUpdated && lastLocalUpdatedRef.current && data.lastUpdated <= lastLocalUpdatedRef.current) {
-                    return;
-                }
-                // Abaikan jika masih ada penulisan lokal yang sedang dikirim
-                if (docSnap.metadata?.hasPendingWrites) {
-                    return;
-                }
+            // PENGAMAN UTAMA: Jika snapshot ini berasal dari penulisan client/tab ini sendiri,
+            // abaikan agar tidak terjadi re-render / overwrite input lokal yang sedang aktif diketik
+            if (data.lastWriterId === CLIENT_ID) {
+                setDbReady(true);
+                setSyncStatus('synced');
+                return;
             }
 
+            // Otoritas Server: Ambil data langsung dari Firestore Cloud tanpa penggabungan lokal
             const loadedSigs = data.signatures || {};
             const loadedCats = data.categories || [];
             const loadedTargets = data.targets || {};
             let loadedReports = data.allReports || {};
             let loadedBankRows = ensureBankRowIds(data.bankRows || []);
 
-            if (isFirst) {
-                const localUpdated = getInitialState('tmr_v19_lastUpdated', '');
-                const localBank = getInitialState('tmr_v19_bankRows', []);
-                const localRep = getInitialState('tmr_v19_allReports', {});
-
-                // Jika data lokal lebih baru dari data server, pertahankan data lokal dan sinkronkan ke Cloud
-                if (localUpdated && data.lastUpdated && localUpdated > data.lastUpdated) {
-                    console.log("Local storage is newer than cloud. Preserving local state and pushing to cloud...");
-                    if (Object.keys(localRep).length > 0) loadedReports = localRep;
-                    if (Array.isArray(localBank) && localBank.length > 0) loadedBankRows = ensureBankRowIds(localBank);
-                    setTimeout(() => {
-                        saveToFirebaseDirectly(loadedReports, loadedBankRows);
-                    }, 500);
-                } else {
-                    if (Array.isArray(localBank) && localBank.length > 0) {
-                        const combinedBankRows = [...loadedBankRows];
-                        localBank.forEach(lr => {
-                            if (!combinedBankRows.some(cr => cr.id === lr.id)) {
-                                combinedBankRows.push(lr);
-                            }
-                        });
-                        loadedBankRows = ensureBankRowIds(combinedBankRows);
-                    }
-                    if (Object.keys(loadedReports).length === 0 && Object.keys(localRep).length > 0) {
-                        loadedReports = localRep;
-                    }
-                }
-            } else {
-                const currentLocalBank = stateRef.current.bankRows || [];
-                if (Array.isArray(currentLocalBank) && currentLocalBank.length > 0) {
-                    const combinedBankRows = [...loadedBankRows];
-                    currentLocalBank.forEach(lr => {
-                        if (!combinedBankRows.some(cr => cr.id === lr.id)) {
-                            combinedBankRows.push(lr);
-                        }
-                    });
-                    loadedBankRows = ensureBankRowIds(combinedBankRows);
-                }
-            }
-
             const { cleanReports: reconciledReports, cleanRows: reconciledRows, modified: wasReconciled } = reconcileOrphanBankItems(loadedReports, loadedBankRows);
             if (wasReconciled) {
                 loadedReports = reconciledReports;
                 loadedBankRows = reconciledRows || loadedBankRows;
-                setTimeout(() => {
-                    saveToFirebaseDirectly(reconciledReports, loadedBankRows);
-                }, 200);
             }
 
+            // Update memori dan React state seketika
             stateRef.current = {
                 allReports: loadedReports,
                 bankRows: loadedBankRows,
@@ -1010,6 +966,7 @@ export default function App() {
                 targets: loadedTargets
             };
 
+            // Mirror ke localStorage sebagai read-only cache
             safeSetLocalStorage('tmr_v19_allReports', loadedReports);
             safeSetLocalStorage('tmr_v19_bankRows', loadedBankRows);
             safeSetLocalStorage('tmr_v19_signatures', loadedSigs);
@@ -1022,8 +979,73 @@ export default function App() {
             setTargets(loadedTargets);
             setAllReports(loadedReports);
             setBankRows(loadedBankRows);
+            setDbReady(true);
+            setSyncStatus('synced');
+        } else {
+            // Jika dokumen pusat belum pernah dibuat di Firestore (migrasi pertama kali):
+            console.log("Central doc does not exist yet. Checking legacy documents to migrate...");
+            try {
+                let initReports = {};
+                let initBankRows = [];
+                let initSigs = stateRef.current.signatures;
+                let initCats = stateRef.current.categories;
+                let initTargets = stateRef.current.targets;
+
+                // 1. Coba baca dari dokumen legacy user.uid jika ada
+                if (user?.uid) {
+                    try {
+                        const legacySnap = await getDoc(doc(db, 'tmr_data', user.uid));
+                        if (legacySnap.exists()) {
+                            const ld = legacySnap.data();
+                            if (ld.allReports) initReports = ld.allReports;
+                            if (ld.bankRows) initBankRows = ld.bankRows;
+                            if (ld.signatures) initSigs = ld.signatures;
+                            if (ld.categories) initCats = ld.categories;
+                            if (ld.targets) initTargets = ld.targets;
+                        }
+                    } catch(e) {}
+                }
+
+                // 2. Coba baca dari dokumen demo jika dokumen user.uid kosong
+                if (Object.keys(initReports).length === 0) {
+                    try {
+                        const demoSnap = await getDoc(doc(db, 'tmr_data', 'demo_rekapitulasi_laporan'));
+                        if (demoSnap.exists()) {
+                            const dd = demoSnap.data();
+                            if (dd.allReports) initReports = dd.allReports;
+                            if (dd.bankRows) initBankRows = dd.bankRows;
+                            if (dd.signatures) initSigs = dd.signatures;
+                            if (dd.categories) initCats = dd.categories;
+                            if (dd.targets) initTargets = dd.targets;
+                        }
+                    } catch(e) {}
+                }
+
+                // 3. Fallback gunakan state lokal saat ini
+                if (Object.keys(initReports).length === 0) {
+                    initReports = stateRef.current.allReports || {};
+                }
+                if (initBankRows.length === 0) {
+                    initBankRows = stateRef.current.bankRows || [];
+                }
+
+                const initialPayload = sanitizeForFirestore({
+                    signatures: initSigs,
+                    categories: initCats,
+                    targets: initTargets,
+                    allReports: initReports,
+                    bankRows: initBankRows,
+                    lastWriterId: CLIENT_ID,
+                    lastUpdated: new Date().toISOString()
+                });
+                await setDoc(getDocRef(), initialPayload);
+                console.log("Migrated initial dataset to central Firestore document successfully!");
+            } catch(e) {
+                console.error("Migration error:", e);
+            }
+            setDbReady(true);
+            setSyncStatus('synced');
         }
-        setSyncStatus('synced');
     }, (error) => {
         console.error("Firebase Snapshot Error:", error);
         setDbReady(true);
@@ -1033,71 +1055,36 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
+  // ==============================================================
+  // 🔴 AMBIL DATA TERBARU DARI SERVER PUSAT (MANUAL PULL)
+  // Menjamin 100% data di layar sama persis dengan yang ada di Firestore Cloud
+  // ==============================================================
   const pullLatestFromCloud = async (showNotification = false) => {
     if (!user || !db) return;
-
-    // Proteksi 1: Jangan lakukan penimpaan jika sedang ada simpan lokal berjalan
-    if (isSavingRef.current) {
-      console.log("Skipping pullLatestFromCloud: save in flight");
-      if (showNotification) showToast("Penyimpanan sedang berlangsung...");
-      return;
-    }
-
-    // Proteksi 2: Jangan lakukan penimpaan otomatis jika user baru saja mengedit/menyimpan (< 15 detik lalu)
-    if (Date.now() - lastLocalSaveTimeRef.current < 15000) {
-      console.log("Skipping pullLatestFromCloud: local changes in progress within 15s");
-      if (showNotification) showToast("Data terbaru sudah tersimpan!");
-      return;
-    }
-
     setSyncStatus('syncing');
     try {
       const docSnap = await getDoc(getDocRef());
       if (docSnap.exists()) {
         const data = docSnap.data();
         const serverUpdated = data.lastUpdated || '';
-
-        // Proteksi 3: Jika data cloud berasal dari writer client ini sendiri, jangan timpa
-        if (data.lastWriterId === CLIENT_ID) {
-          console.log("Skipping pullLatestFromCloud: cloud document belongs to current tab");
-          setSyncStatus('synced');
-          if (showNotification) showToast("Data lokal sudah paling mutakhir!");
-          return;
-        }
-
-        // Proteksi 4: Jika serverUpdated lebih lama atau sama dengan pembaruan lokal, jangan timpa
-        if (serverUpdated && lastLocalUpdatedRef.current && serverUpdated <= lastLocalUpdatedRef.current) {
-          console.log("Skipping pullLatestFromCloud: cloud data is older or equal to local state");
-          setSyncStatus('synced');
-          if (showNotification) showToast("Data lokal sudah paling mutakhir!");
-          return;
-        }
         
         const loadedSigs = data.signatures || {};
         const loadedCats = data.categories || [];
         const loadedTargets = data.targets || {};
         let loadedReports = data.allReports || {};
         let loadedBankRows = ensureBankRowIds(data.bankRows || []);
-        const currentLocalBank = stateRef.current.bankRows || [];
-        if (Array.isArray(currentLocalBank) && currentLocalBank.length > 0) {
-          const combinedBankRows = [...loadedBankRows];
-          currentLocalBank.forEach(lr => {
-            if (!combinedBankRows.some(cr => cr.id === lr.id)) {
-              combinedBankRows.push(lr);
-            }
-          });
-          loadedBankRows = ensureBankRowIds(combinedBankRows);
-        }
 
         const { cleanReports: cloudClean, cleanRows: cloudRows, modified: cloudMod } = reconcileOrphanBankItems(loadedReports, loadedBankRows);
         if (cloudMod) {
           loadedReports = cloudClean;
           loadedBankRows = cloudRows || loadedBankRows;
-          saveToFirebaseDirectly(cloudClean, loadedBankRows);
         }
 
         safeSetLocalStorage('tmr_v19_allReports', loadedReports);
         safeSetLocalStorage('tmr_v19_bankRows', loadedBankRows);
+        safeSetLocalStorage('tmr_v19_signatures', loadedSigs);
+        safeSetLocalStorage('tmr_v19_categories', loadedCats);
+        safeSetLocalStorage('tmr_v19_targets', loadedTargets);
         if (serverUpdated) safeSetLocalStorage('tmr_v19_lastUpdated', serverUpdated);
 
         stateRef.current = {
@@ -1116,7 +1103,7 @@ export default function App() {
         setBankRows(loadedBankRows);
         
         setSyncStatus('synced');
-        if (showNotification) showToast("Data terbaru berhasil disinkronkan dari Cloud!");
+        if (showNotification) showToast("Data terbaru berhasil disinkronkan dari Server Pusat!");
       } else {
         setSyncStatus('synced');
       }
@@ -1128,29 +1115,22 @@ export default function App() {
   };
 
   const handleManualSync = async () => {
-    if (syncStatus === 'syncing') return;
-    showToast("Menyinkronkan data dengan Cloud...");
-    try {
-      await saveState({}, { immediate: true });
-      await pullLatestFromCloud(true);
-    } catch(err) {
-      console.error("Manual sync error:", err);
-      pullLatestFromCloud(true);
-    }
+    showToast("Mengambil data terbaru dari Server Pusat...");
+    await pullLatestFromCloud(true);
   };
 
   useEffect(() => {
     const handleWakeup = () => {
-      // Hanya sinkronkan saat tab kembali aktif dan user tidak sedang aktif menyimpan
-      if (document.visibilityState === 'visible' && user && db && !isSavingRef.current && (Date.now() - lastLocalSaveTimeRef.current > 15000)) {
-        pullLatestFromCloud(false);
+      // Saat tab kembali dibuka/difokuskan, sinkronkan data terbaru dari server
+      if (document.visibilityState === 'visible' && user && db && !isSavingRef.current) {
+        pullLatestFromCloud();
       }
     };
     document.addEventListener('visibilitychange', handleWakeup);
-    return () => {
-      document.removeEventListener('visibilitychange', handleWakeup);
-    };
+    return () => document.removeEventListener('visibilitychange', handleWakeup);
   }, [user]);
+
+
 
   const showToast = (message) => { setSaveToast({ show: true, message }); setTimeout(() => setSaveToast({ show: false, message: '' }), 3000); };
   const showConfirm = (message, onConfirmAction) => { setConfirmDialog({ isOpen: true, message, onConfirm: onConfirmAction }); };
@@ -2048,8 +2028,10 @@ export default function App() {
               <RekonBankTab 
                  syncStatus={syncStatus}
                  onRefreshCloud={handleManualSync}
+                 onForcePushCloud={handleForcePushToCloud}
                  bankRows={bankRows}
                  setBankRows={setBankRows}
+                 allReports={allReports}
                  formatRp={formatRp} 
                  safeString={safeString} 
                  categories={categories}
@@ -2598,7 +2580,6 @@ export default function App() {
                           alert("Gagal membatalkan pasangan: " + err.message);
                       }
                   }}
-                  allReports={allReports}
               />
           </div>
       )}
@@ -2673,6 +2654,10 @@ export default function App() {
         signatures={signatures}
         setSignatures={handleUpdateSignatures}
         handleForceSave={handleForceSave}
+        handleForcePushToCloud={handleForcePushToCloud}
+        handleManualSync={handleManualSync}
+        syncStatus={syncStatus}
+        currentUser={user}
         categories={categories}
         moveCategory={moveCategory}
         updateCategory={updateCategory}
