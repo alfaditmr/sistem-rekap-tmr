@@ -19,6 +19,7 @@ import {
   formatRp,
   terbilang,
   formatTanggalTtd,
+  parseYmd,
   getActiveItemKey
 } from '../../utils/formatters';
 
@@ -597,30 +598,69 @@ export default function InputHarianTab({
                     </div>
                   );
                 })}
-                <div className="pt-3 mt-2 border-t border-dashed border-gray-300 flex justify-between items-end text-sm font-bold text-gray-600">
-                  <div className="flex flex-col gap-1.5">
-                    <span>Sub Total:</span>
-                    {group.activeItems.some((i) => i.bankMatched) && (
-                      <span className="text-[11px] font-bold text-green-700 bg-green-100 border border-green-200 px-2.5 py-1 rounded-full w-max flex items-center gap-1 shadow-sm">
-                        <CheckCircle size={12} /> Masuk Bank:{' '}
-                        {(() => {
-                          const dates = [];
-                          group.activeItems.forEach(i => {
-                            if (Array.isArray(i.bankAllocations) && i.bankAllocations.length > 0) {
-                              i.bankAllocations.forEach(ba => { if (ba.bankDate && !dates.includes(ba.bankDate)) dates.push(ba.bankDate); });
-                            } else if (i.bankMatchDate && !dates.includes(i.bankMatchDate)) {
-                              dates.push(i.bankMatchDate);
-                            }
-                          });
-                          return dates.length > 0 ? dates.join(', ') : (group.activeItems.find((i) => i.bankMatched)?.bankMatchDate || '');
-                        })()}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-gray-800 text-base leading-none pb-1">
-                    Rp {formatRp(subtotals[group.groupId] || 0)}
-                  </span>
-                </div>
+                {/* SUB TOTAL & KETERANGAN MUTASI BANK (RINGAN & TIDAK SALING MENDORONG) */}
+                {(() => {
+                  let bankCount = 0;
+                  const rawDates = [];
+                  const details = [];
+
+                  group.activeItems.forEach(i => {
+                    if (Array.isArray(i.bankAllocations) && i.bankAllocations.length > 0) {
+                      i.bankAllocations.forEach(ba => {
+                        bankCount++;
+                        if (ba.bankDate) rawDates.push(ba.bankDate);
+                        details.push(`• ${ba.desc || ba.tenant || 'Mutasi'}: Rp ${formatRp(ba.amount || 0)} (${ba.bankDate || ''})`);
+                      });
+                    } else if (i.bankMatchDate || i.bankMatched) {
+                      bankCount++;
+                      if (i.bankMatchDate) rawDates.push(i.bankMatchDate);
+                      details.push(`• ${i.itemNote || i.name || 'Mutasi'}: (${i.bankMatchDate || ''})`);
+                    }
+                  });
+
+                  const cleanDates = [];
+                  rawDates.forEach(rd => {
+                    const ymd = parseYmd ? parseYmd(rd) : '';
+                    const formatted = ymd ? formatTanggalTtd(ymd) : rd.split(' ')[0];
+                    if (formatted && !cleanDates.includes(formatted)) {
+                      cleanDates.push(formatted);
+                    }
+                  });
+                  const displayDateStr = cleanDates.length > 0 ? cleanDates.join(', ') : 'Terverifikasi';
+                  const tooltipText = details.length > 0 ? `Rincian Mutasi Terhubung:\n${details.join('\n')}` : '';
+
+                  return (
+                    <div className="pt-3 mt-2 border-t border-dashed border-gray-300 flex flex-col gap-2">
+                      {/* Baris Sub Total Utama - Selalu Kokoh & Angka Rapi di Kanan */}
+                      <div className="flex justify-between items-center text-sm font-bold text-gray-700">
+                        <span className="text-gray-600 font-semibold uppercase tracking-wider text-xs">Sub Total:</span>
+                        <span className="text-gray-900 text-base font-extrabold shrink-0 text-right whitespace-nowrap pl-4">
+                          Rp {formatRp(subtotals[group.groupId] || 0)}
+                        </span>
+                      </div>
+
+                      {/* Baris Status Uang Masuk Bank - Ringan, 0 Beban Memori, Elegan */}
+                      {bankCount > 0 && (
+                        <div
+                          className="flex items-center justify-between bg-emerald-50/80 hover:bg-emerald-50 border border-emerald-200/80 rounded-lg px-2.5 py-1.5 text-xs text-emerald-800 transition-colors shadow-2xs"
+                          title={tooltipText}
+                        >
+                          <div className="flex items-center gap-1.5 truncate">
+                            <CheckCircle size={13} className="text-emerald-600 shrink-0" />
+                            <span className="truncate font-medium text-[11px]">
+                              Masuk Bank: <strong className="text-emerald-950 font-bold">{displayDateStr}</strong>
+                            </span>
+                          </div>
+                          {bankCount > 1 && (
+                            <span className="bg-emerald-200/70 text-emerald-900 text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ml-2 shadow-2xs">
+                              {bankCount} Mutasi
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           ))
