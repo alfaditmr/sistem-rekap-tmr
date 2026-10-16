@@ -20,7 +20,6 @@ export const sanitizeForFirestore = (data) => {
   if (data === undefined) return null;
   
   // 1. Bersihkan undefined, string data: URI, blob:, dan semua string raksasa (> 500 karakter).
-  // Tidak ada field teks resmi (nama, uraian, tanggal, nomor STSU, URL Drive dokumen) yang melebihi 500 karakter.
   // Semua string > 500 karakter dipastikan adalah sampah base64 gambar yang menyebabkan Firestore menolak dokumen (> 1 MB).
   let sanitized = JSON.parse(JSON.stringify(data, (key, value) => {
     if (value === undefined) return null;
@@ -33,70 +32,12 @@ export const sanitizeForFirestore = (data) => {
     return value;
   }));
 
-  // 2. Bersihkan allReports secara mendalam dari form field bukti base64 dan properti usang
-  if (sanitized && sanitized.allReports && typeof sanitized.allReports === 'object') {
-    Object.keys(sanitized.allReports).forEach(date => {
-      const dayData = sanitized.allReports[date];
-      if (dayData && typeof dayData === 'object') {
-        Object.keys(dayData).forEach(docKey => {
-          const docObj = dayData[docKey];
-          if (docObj) {
-            // Bersihkan formData dari key _buktiUrl yang berisi base64 atau kosong
-            if (docObj.formData && typeof docObj.formData === 'object') {
-              Object.keys(docObj.formData).forEach(fk => {
-                const fVal = docObj.formData[fk];
-                if (fk.endsWith('_buktiUrl') && (!fVal || (typeof fVal === 'string' && (fVal.startsWith('data:') || fVal.length > 500)))) {
-                  delete docObj.formData[fk];
-                }
-              });
-            }
-            // Bersihkan activeItems dari proofUrl base64
-            if (Array.isArray(docObj.activeItems)) {
-              docObj.activeItems.forEach(item => {
-                if (item) {
-                  if (item.proofUrl && (item.proofUrl.startsWith('data:') || item.proofUrl.length > 500)) {
-                    item.proofUrl = '';
-                  }
-                  if (Array.isArray(item.bankAllocations)) {
-                    item.bankAllocations.forEach(ba => {
-                      if (ba && ba.proofUrl && (ba.proofUrl.startsWith('data:') || ba.proofUrl.length > 500)) {
-                        ba.proofUrl = '';
-                      }
-                    });
-                  }
-                }
-              });
-            }
-          }
-        });
-      }
-    });
-  }
-
-  // 3. Bersihkan bankRows dari proofUrl base64
-  if (sanitized && Array.isArray(sanitized.bankRows)) {
-    sanitized.bankRows.forEach(row => {
-      if (row) {
-        if (row.proofUrl && (row.proofUrl.startsWith('data:') || row.proofUrl.length > 500)) {
-          row.proofUrl = '';
-        }
-        if (row.transferProof && (row.transferProof.startsWith('data:') || row.transferProof.length > 500)) {
-          row.transferProof = '';
-        }
-        if (row.linkedTo && row.linkedTo.proofUrl && (row.linkedTo.proofUrl.startsWith('data:') || row.linkedTo.proofUrl.length > 500)) {
-          row.linkedTo.proofUrl = '';
-        }
-      }
-    });
-  }
-
-  // 4. Proteksi batas keras Firestore 1.048.576 bytes (1 MB)
+  // 2. Proteksi batas keras Firestore 1.048.576 bytes (1 MB) jika data sangat banyak
   try {
-    const jsonStr = JSON.stringify(sanitized);
-    if (jsonStr.length > 900000) {
-      console.warn(`Firestore payload besar (${jsonStr.length} bytes). Memangkas baris pending lama untuk mencegah penolakan...`);
-      if (Array.isArray(sanitized.bankRows) && sanitized.bankRows.length > 400) {
-        // Pertahankan semua yang sudah dipasangkan (matched / linked), sisakan 250 pending terbaru
+    if (Array.isArray(sanitized.bankRows) && sanitized.bankRows.length > 400) {
+      const jsonStr = JSON.stringify(sanitized);
+      if (jsonStr.length > 900000) {
+        console.warn(`Firestore payload besar (${jsonStr.length} bytes). Memangkas baris pending lama untuk mencegah penolakan...`);
         const matched = sanitized.bankRows.filter(r => r.status === 'matched' || r.status === 'linked');
         const pending = sanitized.bankRows.filter(r => r.status !== 'matched' && r.status !== 'linked');
         sanitized.bankRows = [...matched, ...pending.slice(-250)];

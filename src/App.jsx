@@ -848,17 +848,17 @@ export default function App() {
         lastLocalUpdatedRef.current = nowIso;
         setSyncStatus('synced');
 
-        // Simpan juga salinan mutasi bank lengkap ke dokumen pendamping (Document Sharding Backup)
+        // Simpan salinan dokumen pendamping di latar belakang secara non-blocking
         try {
           const bankPayload = sanitizeForFirestore({
             bankRows: allBankRows,
             lastWriterId: CLIENT_ID,
             lastUpdated: nowIso
           });
-          await setDoc(getBankDocRef(), bankPayload);
-        } catch (e) {
-          console.warn("Secondary bankRows shard write skipped:", e.message);
-        }
+          setDoc(getBankDocRef(), bankPayload).catch(e => {
+            console.warn("Secondary bankRows shard write skipped:", e.message);
+          });
+        } catch (e) {}
       } catch (err) {
         console.error("Firestore push error:", err);
         setSyncStatus('offline');
@@ -880,11 +880,11 @@ export default function App() {
     }
   };
 
-  const saveToFirebaseDirectly = (newReports, newBankRows) => {
+  const saveToFirebaseDirectly = (newReports, newBankRows, options = {}) => {
     return saveState({
       ...(newReports !== undefined ? { allReports: newReports } : {}),
       bankRows: newBankRows !== undefined ? newBankRows : stateRef.current.bankRows
-    }, { immediate: true });
+    }, { immediate: false, ...options });
   };
 
   const handleForceSave = () => {
@@ -2428,11 +2428,11 @@ export default function App() {
                            alert("Gagal memasangkan data: " + err.message);
                        }
                   }}
-                  onUpdateBankRow={async (rowId, updates) => {
+                  onUpdateBankRow={(rowId, updates) => {
                       const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
                       const newBankRows = baseBankRows.map(r => r.id === rowId ? { ...r, ...updates } : r);
                       setBankRows(newBankRows);
-                      await saveToFirebaseDirectly(stateRef.current.allReports, newBankRows);
+                      saveToFirebaseDirectly(stateRef.current.allReports, newBankRows);
                   }}
                   onUnlinkBankRow={async (bankRow) => {
                      try {
@@ -2592,8 +2592,8 @@ export default function App() {
                           setAllReports(newReports);
                           setBankRows(newBankRows);
                           
-                          await saveToFirebaseDirectly(newReports, newBankRows);
                           showToast('Status pasangan mutasi bank berhasil dibatalkan!');
+                          saveToFirebaseDirectly(newReports, newBankRows);
                       } catch (err) {
                           console.error("Error unlinking:", err);
                           alert("Gagal membatalkan pasangan: " + err.message);
