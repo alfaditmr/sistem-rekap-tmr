@@ -65,6 +65,20 @@ export default function RekonBankTab({
     return '';
   };
 
+  // Helper untuk mencocokkan baris mutasi dengan target tanggal (baik format YYYY-MM-DD maupun teks)
+  const isRowMatchingDate = (r, target) => {
+    if (!r || !target) return false;
+    const rowYmd = parseYmd(r.date);
+    const targetYmd = (typeof target === 'string' && target.match(/^\d{4}-\d{2}-\d{2}$/)) 
+      ? target 
+      : parseYmd(target);
+    if (rowYmd && targetYmd && rowYmd === targetYmd) return true;
+    if (r.date && typeof r.date === 'string' && typeof target === 'string') {
+      return r.date.toLowerCase().includes(target.toLowerCase());
+    }
+    return false;
+  };
+
   const formatCompactRp = (val) => {
     const num = Number(val) || 0;
     if (num >= 1000000000) return `${(num / 1000000000).toFixed(1).replace('.0', '')} M`;
@@ -362,7 +376,7 @@ export default function RekonBankTab({
 
   const filteredBankRows = useMemo(() => {
     if (selectedBankDates.length === 0 || (selectedBankDates.length === 1 && selectedBankDates[0] === 'Semua')) return bankRows;
-    return bankRows.filter(r => selectedBankDates.some(d => r.date.includes(d)));
+    return bankRows.filter(r => selectedBankDates.some(d => isRowMatchingDate(r, d)));
   }, [bankRows, selectedBankDates]);
   
   const groupedBankRows = useMemo(() => {
@@ -547,12 +561,29 @@ export default function RekonBankTab({
 
   const handleDeleteDateGroup = (targetDateStr) => {
     if (!targetDateStr) return;
-    const count = bankRows.filter(r => (r.date || '').includes(targetDateStr)).length;
-    const confirmMsg = `Hapus seluruh data mutasi bank untuk tanggal ${targetDateStr} (${count} mutasi)?\n\n(Catatan: Data input laporan STSU harian tetap aman tersimpan).`;
+    
+    // Cari seluruh baris mutasi bank yang tanggalnya cocok
+    const matchingRows = bankRows.filter(r => isRowMatchingDate(r, targetDateStr));
+    const count = matchingRows.length;
+    
+    if (count === 0) {
+      alert(`Tidak ada mutasi bank yang ditemukan untuk tanggal ${targetDateStr}.`);
+      return;
+    }
+
+    const displayDate = (typeof targetDateStr === 'string' && targetDateStr.match(/^\d{4}-\d{2}-\d{2}$/)) 
+      ? formatDateIndo(targetDateStr) 
+      : targetDateStr;
+
+    const confirmMsg = `Hapus seluruh ${count} data mutasi bank untuk tanggal ${displayDate}?\n\n(Catatan: Data input laporan STSU harian tetap aman tersimpan).`;
+    
     if (window.confirm(confirmMsg)) {
-      const updated = bankRows.filter(r => !(r.date || '').includes(targetDateStr));
+      const matchIds = new Set(matchingRows.map(r => r.id));
+      const updated = bankRows.filter(r => !matchIds.has(r.id) && !isRowMatchingDate(r, targetDateStr));
+      
       if (onSaveBankRows) onSaveBankRows(updated);
       else setBankRows(updated);
+      
       if (selectedBankDates.includes(targetDateStr)) {
         setSelectedBankDates(prev => prev.filter(d => d !== targetDateStr));
       }
@@ -565,10 +596,13 @@ export default function RekonBankTab({
       alert("Pilih tanggal mutasi pada filter terlebih dahulu untuk menghapus mutasi pada tanggal tersebut.");
       return;
     }
-    const count = filteredBankRows.length;
-    const confirmMsg = `Hapus ${count} data mutasi bank pada tanggal terpilih (${activeDates.join(', ')})?\n\n(Catatan: Data input laporan STSU harian tetap aman tersimpan).`;
+    const matchingRows = bankRows.filter(r => activeDates.some(d => isRowMatchingDate(r, d)));
+    const count = matchingRows.length;
+    
+    const confirmMsg = `Hapus seluruh ${count} data mutasi bank pada tanggal terpilih (${activeDates.join(', ')})?\n\n(Catatan: Data input laporan STSU harian tetap aman tersimpan).`;
     if (window.confirm(confirmMsg)) {
-      const updated = bankRows.filter(r => !activeDates.some(d => (r.date || '').includes(d)));
+      const matchIds = new Set(matchingRows.map(r => r.id));
+      const updated = bankRows.filter(r => !matchIds.has(r.id) && !activeDates.some(d => isRowMatchingDate(r, d)));
       if (onSaveBankRows) onSaveBankRows(updated);
       else setBankRows(updated);
       setSelectedBankDates([]);
