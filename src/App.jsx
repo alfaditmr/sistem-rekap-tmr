@@ -1063,6 +1063,93 @@ export default function App() {
   }, []);
 
   // ==============================================================
+  // 🔴 METODE PENCADANGAN & PEMULIHAN DATABASE OFFLINE (.JSON)
+  // Menjamin 100% keamanan data jika terjadi bencana / migrasi database
+  // ==============================================================
+  const handleDownloadBackup = () => {
+    try {
+      const current = stateRef.current;
+      const backupData = {
+        app: "Sistem Rekap STSU - TMR Ragunan",
+        version: "tmr_v19",
+        exportedAt: new Date().toISOString(),
+        metadata: {
+          totalReports: Object.keys(current.allReports || {}).length,
+          totalBankRows: (current.bankRows || []).length,
+          totalCategories: (current.categories || []).length,
+          hasSignatures: !!current.signatures
+        },
+        data: {
+          allReports: current.allReports || {},
+          bankRows: current.bankRows || [],
+          signatures: current.signatures || {},
+          categories: current.categories || [],
+          targets: current.targets || {}
+        }
+      };
+
+      const jsonStr = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const dateStr = getLocalYMD ? getLocalYMD() : new Date().toISOString().split("T")[0];
+      a.href = url;
+      a.download = `backup_tmr_ragunan_${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast("Berhasil mengunduh file cadangan database (.json)!");
+    } catch (err) {
+      console.error("Download backup error:", err);
+      alert("Gagal mengunduh cadangan: " + err.message);
+    }
+  };
+
+  const handleRestoreBackup = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const parsed = JSON.parse(e.target.result);
+        const payload = parsed.data || parsed;
+
+        if (!payload.allReports && !payload.bankRows && !payload.categories) {
+          throw new Error("Format file JSON tidak sesuai dengan standar cadangan TMR Ragunan.");
+        }
+
+        const repCount = Object.keys(payload.allReports || {}).length;
+        const rowCount = (payload.bankRows || []).length;
+        const exportDate = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString('id-ID') : 'Tidak diketahui';
+
+        const confirmMsg = `Pulihkan database dari file cadangan ini?\n\n` +
+          `• Tanggal Backup: ${exportDate}\n` +
+          `• Laporan STSU: ${repCount} hari\n` +
+          `• Mutasi Bank: ${rowCount} baris transaksi\n` +
+          `• Kategori: ${(payload.categories || []).length} pos\n\n` +
+          `PERINGATAN: Seluruh data di Cloud saat ini akan diselaraskan dan diperbarui dengan isi file cadangan ini.`;
+
+        if (window.confirm(confirmMsg)) {
+          showToast("Sedang memulihkan database ke Cloud...");
+          await saveState({
+            allReports: payload.allReports || {},
+            bankRows: payload.bankRows || [],
+            signatures: payload.signatures || stateRef.current.signatures,
+            categories: payload.categories || stateRef.current.categories,
+            targets: payload.targets || stateRef.current.targets
+          }, { immediate: true, showToastMessage: "Database berhasil dipulihkan 100% dari file cadangan!" });
+        }
+      } catch (err) {
+        console.error("Restore error:", err);
+        alert("Gagal memulihkan database: " + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+
+  // ==============================================================
   // 🔴 INISIALISASI & LISTENER REAL-TIME PARTISI BULANAN (MULTI-PC INSTANT SYNC)
   // Data server adalah otoritas tertinggi - Menggunakan partisi koleksi bulanan
   // ==============================================================
@@ -3093,6 +3180,10 @@ export default function App() {
         deleteItem={deleteItem}
         addItem={addItem}
         addCategory={addCategory}
+        allReports={allReports}
+        bankRows={bankRows}
+        onDownloadBackup={handleDownloadBackup}
+        onRestoreBackup={handleRestoreBackup}
       />
 
       {/* ============================================================== */}

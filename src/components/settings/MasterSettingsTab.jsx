@@ -11,13 +11,18 @@ import {
   ArrowDown,
   CheckCircle,
   Tag,
-  RefreshCw
+  RefreshCw,
+  Download,
+  Upload,
+  ShieldCheck,
+  AlertTriangle,
+  HardDrive
 } from 'lucide-react';
 import { safeString } from '../../utils/formatters';
 
 /**
  * Komponen Tab Pengaturan Master Menu Admin
- * Mencakup Database Kategori, Pejabat TTD, dan Alamat Koneksi Server Integrasi Bot
+ * Mencakup Database Kategori, Pejabat TTD, Koneksi Server Bot Integrasi, serta Pusat Cadangan & Pemulihan (Backup & Restore)
  */
 export default function MasterSettingsTab({
   activeTab,
@@ -36,7 +41,11 @@ export default function MasterSettingsTab({
   deleteItem,
   addItem,
   addCategory,
-  handleForceSave
+  handleForceSave,
+  allReports = {},
+  bankRows = [],
+  onDownloadBackup,
+  onRestoreBackup
 }) {
   if (activeTab !== 'settings') return null;
 
@@ -49,7 +58,7 @@ export default function MasterSettingsTab({
             Sistem Informasi Manajemen Pendapatan Taman Margasatwa Ragunan
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-3xl">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 w-full max-w-4xl">
             <button
               onClick={() => setActiveMasterMenu('kategori')}
               className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4 group"
@@ -88,6 +97,19 @@ export default function MasterSettingsTab({
                 <p className="text-xs text-gray-500">Konfigurasi IP Address Bot Integrasi (3A & IWM).</p>
               </div>
             </button>
+
+            <button
+              onClick={() => setActiveMasterMenu('backup')}
+              className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4 group"
+            >
+              <div className="w-16 h-16 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <ShieldCheck size={32} />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-800 text-base mb-1">Pusat Cadangan</h3>
+                <p className="text-xs text-gray-500">Download & pulihkan file cadangan database offline (.json).</p>
+              </div>
+            </button>
           </div>
         </div>
       )}
@@ -100,6 +122,120 @@ export default function MasterSettingsTab({
           >
             <ChevronLeft size={16} /> Kembali ke Menu Master
           </button>
+
+          {activeMasterMenu === 'backup' && (
+            <div className="space-y-6">
+              {/* Header Box */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                <div className="flex items-start justify-between flex-wrap gap-4">
+                  <div>
+                    <h2 className="text-xl font-black text-gray-800 flex items-center gap-2.5">
+                      <ShieldCheck size={26} className="text-emerald-600" /> Pusat Cadangan & Pemulihan Database
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Unduh salinan data lengkap ke komputer / flashdisk Anda, atau pulihkan database kapan pun dibutuhkan.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-full text-xs font-bold text-emerald-800">
+                    <CheckCircle size={15} className="text-emerald-600" /> Arsitektur Cloud Aktif & Aman
+                  </div>
+                </div>
+
+                {/* Ringkasan Data Saat Ini */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
+                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
+                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Laporan STSU</span>
+                    <span className="text-xl font-extrabold text-gray-800">{Object.keys(allReports || {}).length} <span className="text-xs font-normal text-gray-500">hari</span></span>
+                  </div>
+                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
+                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Mutasi Bank</span>
+                    <span className="text-xl font-extrabold text-gray-800">{(bankRows || []).length} <span className="text-xs font-normal text-gray-500">baris</span></span>
+                  </div>
+                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
+                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Master Kategori</span>
+                    <span className="text-xl font-extrabold text-gray-800">{(categories || []).length} <span className="text-xs font-normal text-gray-500">pos</span></span>
+                  </div>
+                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
+                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Pejabat TTD</span>
+                    <span className="text-xl font-extrabold text-emerald-700">Terkonfigurasi</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Cards: Download & Restore */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Card 1: Download Backup */}
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col justify-between hover:border-emerald-300 transition-all">
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4 shadow-sm">
+                      <Download size={24} />
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-800 mb-1.5">Unduh Cadangan (.json)</h3>
+                    <p className="text-xs text-gray-500 leading-relaxed mb-6">
+                      Menyimpan seluruh data (STSU harian, seluruh mutasi bank, tanda tangan, kategori, target) ke dalam 1 file fisik JSON di komputer Anda. Simpan file ini di flashdisk atau Google Drive dinas.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onDownloadBackup}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all hover:shadow active:scale-[0.99]"
+                  >
+                    <Download size={18} /> Download Backup Sekarang
+                  </button>
+                </div>
+
+                {/* Card 2: Restore Backup */}
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col justify-between hover:border-amber-300 transition-all">
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-4 shadow-sm">
+                      <Upload size={24} />
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-800 mb-1.5">Pulihkan Database (.json)</h3>
+                    <p className="text-xs text-gray-500 leading-relaxed mb-4">
+                      Pilih file cadangan JSON yang pernah diunduh sebelumnya untuk mengembalikan seluruh database seperti saat file cadangan tersebut dibuat.
+                    </p>
+                    <div className="bg-amber-50 border border-amber-200/80 rounded-lg p-2.5 mb-6 flex items-start gap-2 text-xs text-amber-900">
+                      <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                      <span>Seluruh data di Cloud saat ini akan diselaraskan dengan data file cadangan.</span>
+                    </div>
+                  </div>
+                  <div>
+                    <input
+                      type="file"
+                      accept=".json"
+                      id="restore-file-input"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file && onRestoreBackup) {
+                          onRestoreBackup(file);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                    <label
+                      htmlFor="restore-file-input"
+                      className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all hover:shadow active:scale-[0.99] cursor-pointer text-center"
+                    >
+                      <Upload size={18} /> Pilih File Cadangan Untuk Restore
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Panduan Praktis */}
+              <div className="bg-slate-50 rounded-2xl border border-slate-200/80 p-5 text-xs text-slate-700 space-y-2.5">
+                <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                  <HardDrive size={16} className="text-slate-600" /> Panduan Praktis Ketahanan Data TMR Ragunan:
+                </h4>
+                <ul className="list-disc pl-5 space-y-1.5 text-slate-600">
+                  <li><strong>Rekomendasi Waktu Backup:</strong> Lakukan pengunduhan cadangan minimal <strong>1 kali setiap akhir bulan</strong> setelah penutupan buku kas / pelaporan STSU bulanan selesai.</li>
+                  <li><strong>Penyimpanan Ganda:</strong> Simpan file <code>.json</code> hasil unduhan di minimal 2 tempat (contoh: Harddisk PC Kantor & Flashdisk Bendahara atau Google Drive dinas).</li>
+                  <li><strong>Keamanan Data:</strong> File cadangan berisi data nominal dan tanggal transaksi murni, tanpa kata sandi atau data sensitif sistem.</li>
+                </ul>
+              </div>
+            </div>
+          )}
 
           {activeMasterMenu === 'koneksi' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
