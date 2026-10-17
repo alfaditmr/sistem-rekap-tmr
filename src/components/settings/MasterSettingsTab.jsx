@@ -23,7 +23,8 @@ import {
   FileCheck,
   CheckCircle2,
   AlertCircle,
-  Info
+  Info,
+  Calendar
 } from 'lucide-react';
 import { safeString } from '../../utils/formatters';
 
@@ -81,36 +82,69 @@ export default function MasterSettingsTab({
   const monthDataList = useMemo(() => {
     const map = {};
 
-    // 1. Scan allReports
-    Object.keys(allReports || {}).forEach((dateKey) => {
-      const m = dateKey.substring(0, 7);
-      if (/^\d{4}-\d{2}$/.test(m)) {
-        if (!map[m]) map[m] = { monthKey: m, reportCount: 0, totalRevenue: 0, bankCount: 0 };
-        map[m].reportCount += 1;
-        const rep = allReports[dateKey];
-        if (rep && rep.formData) {
-          Object.values(rep.formData).forEach((val) => {
-            const num = Number(val);
-            if (!isNaN(num) && num > 0) map[m].totalRevenue += num;
-          });
+    // 1. Scan allReports (Hitung hari laporan & total penerimaan per bulan)
+    try {
+      Object.keys(allReports || {}).forEach((dateKey) => {
+        const m = String(dateKey || '').substring(0, 7);
+        if (/^\d{4}-\d{2}$/.test(m)) {
+          if (!map[m]) map[m] = { monthKey: m, reportCount: 0, totalRevenue: 0, bankCount: 0 };
+          map[m].reportCount += 1;
+          const dayData = allReports[dateKey];
+          if (dayData && typeof dayData === 'object') {
+            Object.keys(dayData).forEach((docKey) => {
+              const doc = dayData[docKey];
+              if (doc && doc.formData && typeof doc.formData === 'object') {
+                Object.values(doc.formData).forEach((val) => {
+                  const num = Number(val);
+                  if (!isNaN(num) && num > 0) map[m].totalRevenue += num;
+                });
+              }
+            });
+          }
         }
-      }
-    });
+      });
+    } catch (e) {
+      console.warn("Gagal scan allReports bulanan:", e);
+    }
 
-    // 2. Scan bankRows
-    (bankRows || []).forEach((row) => {
-      const rawDate = row.date || row.bankDate || '';
-      const m = rawDate.substring(0, 7);
-      if (/^\d{4}-\d{2}$/.test(m)) {
-        if (!map[m]) map[m] = { monthKey: m, reportCount: 0, totalRevenue: 0, bankCount: 0 };
-        map[m].bankCount += 1;
-      }
-    });
+    // 2. Scan bankRows (Hitung jumlah mutasi bank per bulan)
+    try {
+      (bankRows || []).forEach((row) => {
+        if (!row) return;
+        const rawDate = String(row.date || row.bankDate || '').trim();
+        let m = '';
+        if (/^\d{4}-\d{2}/.test(rawDate)) {
+          m = rawDate.substring(0, 7);
+        } else {
+          const dmy = rawDate.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+          if (dmy) {
+            m = `${dmy[3]}-${dmy[2].padStart(2, '0')}`;
+          } else {
+            const parsed = new Date(rawDate.replace(/WIB|WITA|WIT/i, '').trim());
+            if (!isNaN(parsed.getTime())) {
+              m = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
+            }
+          }
+        }
+        if (m && /^\d{4}-\d{2}$/.test(m)) {
+          if (!map[m]) map[m] = { monthKey: m, reportCount: 0, totalRevenue: 0, bankCount: 0 };
+          map[m].bankCount += 1;
+        }
+      });
+    } catch (e) {
+      console.warn("Gagal scan bankRows bulanan:", e);
+    }
 
     // 3. Scan closedMonths
-    Object.keys(closedMonths || {}).forEach((m) => {
-      if (!map[m]) map[m] = { monthKey: m, reportCount: 0, totalRevenue: 0, bankCount: 0 };
-    });
+    try {
+      Object.keys(closedMonths || {}).forEach((m) => {
+        if (/^\d{4}-\d{2}$/.test(m)) {
+          if (!map[m]) map[m] = { monthKey: m, reportCount: 0, totalRevenue: 0, bankCount: 0 };
+        }
+      });
+    } catch (e) {
+      console.warn("Gagal scan closedMonths:", e);
+    }
 
     // 4. Pastikan bulan berjalan selalu muncul
     const nowYm = new Date().toISOString().substring(0, 7);
