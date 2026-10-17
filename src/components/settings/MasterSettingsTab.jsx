@@ -273,50 +273,6 @@ export default function MasterSettingsTab({
                     {totalClosedCount} Bulan Terkunci
                   </div>
                 </div>
-
-                {/* Panduan & Pilar Pengamanan Data (Menjawab Pertanyaan User) */}
-                <div className="mt-6 p-4 rounded-xl bg-gradient-to-br from-indigo-50/70 via-blue-50/40 to-slate-50 border border-indigo-100/80">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-indigo-900 flex items-center gap-2 mb-3">
-                    <Shield size={16} className="text-indigo-600" /> 4 Pilar Pengamanan Data & Pencegahan Salah Input
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                    <div className="bg-white/80 p-3 rounded-lg border border-indigo-100 shadow-2xs">
-                      <div className="font-bold text-gray-800 flex items-center gap-1.5 mb-1">
-                        <Lock size={14} className="text-indigo-600 shrink-0" /> 1. Tutup Buku Periode (Read-Only)
-                      </div>
-                      <p className="text-gray-600 leading-relaxed text-[11px]">
-                        Membekukan seluruh transaksi pada bulan yang telah selesai direkonsiliasi. Tombol simpan, edit, dan hapus otomatis dikunci di seluruh komputer & HP.
-                      </p>
-                    </div>
-
-                    <div className="bg-white/80 p-3 rounded-lg border border-indigo-100 shadow-2xs">
-                      <div className="font-bold text-gray-800 flex items-center gap-1.5 mb-1">
-                        <FileCheck size={14} className="text-emerald-600 shrink-0" /> 2. Live Terbilang & Deteksi Lonjakan (Anti-Typo)
-                      </div>
-                      <p className="text-gray-600 leading-relaxed text-[11px]">
-                        Setiap pengetikan nominal otomatis diverifikasi dengan ejaan kata bahasa Indonesia serta deteksi otomatis jika angka ≥ Rp 100 Jt untuk mencegah kelebihan angka nol.
-                      </p>
-                    </div>
-
-                    <div className="bg-white/80 p-3 rounded-lg border border-indigo-100 shadow-2xs">
-                      <div className="font-bold text-gray-800 flex items-center gap-1.5 mb-1">
-                        <CheckCircle2 size={14} className="text-blue-600 shrink-0" /> 3. Sinkronisasi Instan Multi-Perangkat
-                      </div>
-                      <p className="text-gray-600 leading-relaxed text-[11px]">
-                        Status tutup buku disinkronkan secara real-time via Google Firestore (&lt; 0.5 detik). Saat admin mengunci di PC, aplikasi di HP kasir langsung terkunci seketika.
-                      </p>
-                    </div>
-
-                    <div className="bg-white/80 p-3 rounded-lg border border-indigo-100 shadow-2xs">
-                      <div className="font-bold text-gray-800 flex items-center gap-1.5 mb-1">
-                        <Unlock size={14} className="text-amber-600 shrink-0" /> 4. Fleksibilitas Terkontrol (Zero Lockout)
-                      </div>
-                      <p className="text-gray-600 leading-relaxed text-[11px]">
-                        Bila ditemukan revisi resmi atas persetujuan pimpinan, admin/bendahara dapat membuka kunci bulan terkait secara aman kapan pun dibutuhkan.
-                      </p>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {/* Daftar Bulan & Status Kunci */}
