@@ -1,16 +1,18 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lock } from 'lucide-react';
 import { safeString, formatRp, getLocalYMD } from '../../utils/formatters';
 
 /**
  * Komponen Tab Kalender Status STSU
- * Menampilkan matriks hari dalam bulan dengan indikator kelengkapan STSU Utama dan Lain-lain
+ * Menampilkan matriks hari dalam bulan dengan indikator kelengkapan STSU Utama, Lain-lain, dan Status Tutup Buku
  */
 export default function KalenderTab({
   activeTab,
   allReports = {},
   reportDate,
-  onSelectDay
+  onSelectDay,
+  closedMonths = {},
+  isMonthClosed
 }) {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
 
@@ -88,9 +90,16 @@ export default function KalenderTab({
             >
               <ChevronLeft size={20} className="text-gray-600" />
             </button>
-            <h3 className="text-lg font-bold text-gray-800 uppercase tracking-wide">
-              {calendarMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-bold text-gray-800 uppercase tracking-wide">
+                {calendarMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+              </h3>
+              {Boolean(closedMonths && closedMonths[`${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, '0')}`]) && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-black bg-indigo-100 text-indigo-800 border border-indigo-200 px-2.5 py-0.5 rounded-full shadow-2xs">
+                  <Lock size={12} className="text-indigo-600" /> Tutup Buku
+                </span>
+              )}
+            </div>
             <button
               onClick={nextMonth}
               className="p-2 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-gray-100 transition-colors"
@@ -118,6 +127,7 @@ export default function KalenderTab({
             {days.map((d) => {
               const isToday = d.dateStr === getLocalYMD();
               const isActive = d.dateStr === reportDate;
+              const isDayLocked = typeof isMonthClosed === 'function' && isMonthClosed(d.dateStr);
 
               return (
                 <button
@@ -129,6 +139,11 @@ export default function KalenderTab({
                       : 'bg-white hover:bg-gray-50 border-gray-200'
                   } ${isActive ? 'ring-2 ring-blue-500 transform scale-105 z-10 bg-blue-50' : ''}`}
                 >
+                  {isDayLocked && (
+                    <span className="absolute top-1.5 right-1.5 text-indigo-600/70" title="Periode Bulan Ini Telah Ditutup Buku (Terkunci)">
+                      <Lock size={12} />
+                    </span>
+                  )}
                   <span
                     className={`text-sm sm:text-lg font-bold ${
                       isToday ? 'text-blue-600 bg-blue-100 px-2 rounded-full' : 'text-gray-700'

@@ -716,6 +716,7 @@ export default function App() {
   ]));
 
   const [targets, setTargets] = useState(() => getInitialState('tmr_v19_targets', {}));
+  const [closedMonths, setClosedMonths] = useState(() => getInitialState('tmr_v19_closedMonths', {}));
   const [allReports, setAllReports] = useState(() => {
     const rawRep = getInitialState('tmr_v19_allReports', {});
     const rawBank = getInitialState('tmr_v19_bankRows', []);
@@ -751,6 +752,7 @@ export default function App() {
   useEffect(() => { safeSetLocalStorage('tmr_v19_signatures', signatures); }, [signatures]);
   useEffect(() => { safeSetLocalStorage('tmr_v19_categories', categories); }, [categories]);
   useEffect(() => { safeSetLocalStorage('tmr_v19_targets', targets); }, [targets]);
+  useEffect(() => { safeSetLocalStorage('tmr_v19_closedMonths', closedMonths); }, [closedMonths]);
   useEffect(() => { safeSetLocalStorage('tmr_v19_allReports', allReports); }, [allReports]);
   useEffect(() => { safeSetLocalStorage('tmr_v19_bankRows', bankRows); }, [bankRows]);
   useEffect(() => { safeSetLocalStorage('tmr_v19_api_ip', apiIpAddress); }, [apiIpAddress]);
@@ -761,14 +763,16 @@ export default function App() {
     bankRows,
     signatures,
     categories,
-    targets
+    targets,
+    closedMonths
   });
   stateRef.current = {
     allReports,
     bankRows,
     signatures,
     categories,
-    targets
+    targets,
+    closedMonths
   };
 
   const lastLocalUpdatedRef = useRef(getInitialState('tmr_v19_lastUpdated', ''));
@@ -844,6 +848,7 @@ export default function App() {
         signatures: stateRef.current.signatures,
         categories: stateRef.current.categories,
         targets: stateRef.current.targets,
+        closedMonths: stateRef.current.closedMonths || {},
         allReports: stateRef.current.allReports,
         bankRows: allBankRows,
         lastWriterId: CLIENT_ID,
@@ -862,6 +867,7 @@ export default function App() {
     const nextSigs = updates.signatures !== undefined ? updates.signatures : current.signatures;
     const nextCats = updates.categories !== undefined ? updates.categories : current.categories;
     const nextTargets = updates.targets !== undefined ? updates.targets : current.targets;
+    const nextClosedMonths = updates.closedMonths !== undefined ? updates.closedMonths : current.closedMonths;
 
     // 1. Sinkronkan stateRef secara instan (0ms)
     stateRef.current = {
@@ -869,7 +875,8 @@ export default function App() {
       bankRows: nextBankRows,
       signatures: nextSigs,
       categories: nextCats,
-      targets: nextTargets
+      targets: nextTargets,
+      closedMonths: nextClosedMonths
     };
 
     // 2. Sinkronkan React state
@@ -878,6 +885,7 @@ export default function App() {
     if (updates.signatures !== undefined) setSignatures(nextSigs);
     if (updates.categories !== undefined) setCategories(nextCats);
     if (updates.targets !== undefined) setTargets(nextTargets);
+    if (updates.closedMonths !== undefined) setClosedMonths(nextClosedMonths);
 
     const nowIso = new Date().toISOString();
     lastLocalUpdatedRef.current = nowIso;
@@ -889,6 +897,7 @@ export default function App() {
     if (updates.signatures !== undefined) safeSetLocalStorage('tmr_v19_signatures', nextSigs);
     if (updates.categories !== undefined) safeSetLocalStorage('tmr_v19_categories', nextCats);
     if (updates.targets !== undefined) safeSetLocalStorage('tmr_v19_targets', nextTargets);
+    if (updates.closedMonths !== undefined) safeSetLocalStorage('tmr_v19_closedMonths', nextClosedMonths);
     safeSetLocalStorage('tmr_v19_lastUpdated', nowIso);
 
     if (options.showToastMessage) {
@@ -936,11 +945,12 @@ export default function App() {
           }
         });
 
-        // Deteksi perubahan konfigurasi master (ttd, kategori, target)
+        // Deteksi perubahan konfigurasi master (ttd, kategori, target, status tutup buku)
         const currentConfig = {
           signatures: stateRef.current.signatures || {},
           categories: stateRef.current.categories || [],
-          targets: stateRef.current.targets || {}
+          targets: stateRef.current.targets || {},
+          closedMonths: stateRef.current.closedMonths || {}
         };
         const configHash = JSON.stringify(currentConfig);
         const configChanged = configHash !== previousConfigRef.current;
@@ -981,6 +991,7 @@ export default function App() {
               signatures: currentConfig.signatures,
               categories: currentConfig.categories,
               targets: currentConfig.targets,
+              closedMonths: currentConfig.closedMonths,
               lastWriterId: CLIENT_ID,
               lastUpdated: nowIso
             }))
@@ -1063,6 +1074,42 @@ export default function App() {
   }, []);
 
   // ==============================================================
+  // 🔴 FITUR TUTUP BUKU BULANAN (PERIOD LOCKING)
+  // Menjaga data keuangan agar fix, sah, dan aman dari perubahan/salah ketik tidak sengaja
+  // ==============================================================
+  const isMonthClosed = (dateStr) => {
+    if (!dateStr) return false;
+    const m = getPartitionMonth(dateStr);
+    return Boolean(stateRef.current.closedMonths && stateRef.current.closedMonths[m]);
+  };
+
+  const handleToggleCloseMonth = async (monthKey, shouldClose, note = '', closedBy = '') => {
+    const current = { ...(stateRef.current.closedMonths || {}) };
+    if (shouldClose) {
+      const nowStr = new Date().toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      current[monthKey] = {
+        closedAt: nowStr,
+        closedBy: closedBy || (user?.email ? user.email.split('@')[0] : 'Bendahara Penerimaan'),
+        note: note || 'Tutup buku bulanan resmi'
+      };
+    } else {
+      delete current[monthKey];
+    }
+    await saveState({ closedMonths: current }, {
+      immediate: true,
+      showToastMessage: shouldClose 
+        ? `Periode ${monthKey} berhasil DITUTUP BUKU (Data Terkunci Aman)!` 
+        : `Kunci periode ${monthKey} berhasil DIBUKA untuk revisi.`
+    });
+  };
+
+  // ==============================================================
   // 🔴 METODE PENCADANGAN & PEMULIHAN DATABASE OFFLINE (.JSON)
   // Menjamin 100% keamanan data jika terjadi bencana / migrasi database
   // ==============================================================
@@ -1077,14 +1124,16 @@ export default function App() {
           totalReports: Object.keys(current.allReports || {}).length,
           totalBankRows: (current.bankRows || []).length,
           totalCategories: (current.categories || []).length,
-          hasSignatures: !!current.signatures
+          hasSignatures: !!current.signatures,
+          closedMonthsCount: Object.keys(current.closedMonths || {}).length
         },
         data: {
           allReports: current.allReports || {},
           bankRows: current.bankRows || [],
           signatures: current.signatures || {},
           categories: current.categories || [],
-          targets: current.targets || {}
+          targets: current.targets || {},
+          closedMonths: current.closedMonths || {}
         }
       };
 
@@ -1137,7 +1186,8 @@ export default function App() {
             bankRows: payload.bankRows || [],
             signatures: payload.signatures || stateRef.current.signatures,
             categories: payload.categories || stateRef.current.categories,
-            targets: payload.targets || stateRef.current.targets
+            targets: payload.targets || stateRef.current.targets,
+            closedMonths: payload.closedMonths || stateRef.current.closedMonths || {}
           }, { immediate: true, showToastMessage: "Database berhasil dipulihkan 100% dari file cadangan!" });
         }
       } catch (err) {
@@ -1175,6 +1225,7 @@ export default function App() {
         let loadedSigs = {};
         let loadedCats = [];
         let loadedTargets = {};
+        let loadedClosedMonths = {};
 
         const hasBankShards = !bankSnap.empty;
         const hasReportShards = !repSnap.empty;
@@ -1202,6 +1253,7 @@ export default function App() {
           loadedSigs = cd.signatures || {};
           loadedCats = cd.categories || [];
           loadedTargets = cd.targets || {};
+          loadedClosedMonths = cd.closedMonths || {};
         }
 
         // 2. Proteksi Zero Data Loss: Jika partisi belum ada atau masih kosong, migrasikan dari 'tmr_rekapitulasi_pusat'
@@ -1293,7 +1345,8 @@ export default function App() {
           bankRows: loadedBankRows,
           signatures: loadedSigs,
           categories: loadedCats,
-          targets: loadedTargets
+          targets: loadedTargets,
+          closedMonths: loadedClosedMonths
         };
 
         safeSetLocalStorage('tmr_v19_allReports', loadedReports);
@@ -1301,10 +1354,12 @@ export default function App() {
         safeSetLocalStorage('tmr_v19_signatures', loadedSigs);
         safeSetLocalStorage('tmr_v19_categories', loadedCats);
         safeSetLocalStorage('tmr_v19_targets', loadedTargets);
+        safeSetLocalStorage('tmr_v19_closedMonths', loadedClosedMonths);
 
         setSignatures(loadedSigs);
         setCategories(loadedCats);
         setTargets(loadedTargets);
+        setClosedMonths(loadedClosedMonths);
         setAllReports(loadedReports);
         setBankRows(loadedBankRows);
 
@@ -1326,7 +1381,8 @@ export default function App() {
         previousConfigRef.current = JSON.stringify({
           signatures: loadedSigs,
           categories: loadedCats,
-          targets: loadedTargets
+          targets: loadedTargets,
+          closedMonths: loadedClosedMonths
         });
 
         // 5. AUTO-MIGRATION: Jika partisi bulanan di Firestore belum ada, simpan partisi awal sekarang
@@ -1362,6 +1418,7 @@ export default function App() {
               signatures: loadedSigs,
               categories: loadedCats,
               targets: loadedTargets,
+              closedMonths: loadedClosedMonths,
               lastWriterId: CLIENT_ID,
               lastUpdated: nowIso
             }))
@@ -1468,10 +1525,16 @@ export default function App() {
             setTargets(data.targets);
             safeSetLocalStorage('tmr_v19_targets', data.targets);
           }
+          if (data.closedMonths !== undefined) {
+            stateRef.current.closedMonths = data.closedMonths;
+            setClosedMonths(data.closedMonths);
+            safeSetLocalStorage('tmr_v19_closedMonths', data.closedMonths);
+          }
           previousConfigRef.current = JSON.stringify({
             signatures: data.signatures || stateRef.current.signatures,
             categories: data.categories || stateRef.current.categories,
-            targets: data.targets || stateRef.current.targets
+            targets: data.targets || stateRef.current.targets,
+            closedMonths: data.closedMonths || stateRef.current.closedMonths || {}
           });
           setSyncStatus('synced');
         }, (error) => {
@@ -1513,6 +1576,7 @@ export default function App() {
       let loadedSigs = {};
       let loadedCats = [];
       let loadedTargets = {};
+      let loadedClosedMonths = {};
 
       bankSnap.forEach(d => {
         const bd = d.data();
@@ -1529,6 +1593,7 @@ export default function App() {
         loadedSigs = cd.signatures || {};
         loadedCats = cd.categories || [];
         loadedTargets = cd.targets || {};
+        loadedClosedMonths = cd.closedMonths || {};
       }
 
       // Fallback master legacy jika koleksi partisi kosong
@@ -1541,6 +1606,7 @@ export default function App() {
           loadedTargets = data.targets || {};
           loadedReports = data.allReports || {};
           loadedBankRows = ensureBankRowIds(data.bankRows || []);
+          loadedClosedMonths = data.closedMonths || {};
         }
       }
 
@@ -1556,13 +1622,15 @@ export default function App() {
       safeSetLocalStorage('tmr_v19_signatures', loadedSigs);
       safeSetLocalStorage('tmr_v19_categories', loadedCats);
       safeSetLocalStorage('tmr_v19_targets', loadedTargets);
+      safeSetLocalStorage('tmr_v19_closedMonths', loadedClosedMonths);
 
       stateRef.current = {
         allReports: loadedReports,
         bankRows: loadedBankRows,
         signatures: loadedSigs,
         categories: loadedCats,
-        targets: loadedTargets
+        targets: loadedTargets,
+        closedMonths: loadedClosedMonths
       };
 
       // Perbarui hash tracking
@@ -1581,12 +1649,14 @@ export default function App() {
       previousConfigRef.current = JSON.stringify({
         signatures: loadedSigs,
         categories: loadedCats,
-        targets: loadedTargets
+        targets: loadedTargets,
+        closedMonths: loadedClosedMonths
       });
 
       setSignatures(loadedSigs);
       setCategories(loadedCats);
       setTargets(loadedTargets);
+      setClosedMonths(loadedClosedMonths);
       setAllReports(loadedReports);
       setBankRows(loadedBankRows);
 
@@ -1633,6 +1703,10 @@ export default function App() {
   }, [allReports, reportDate]);
 
   const handleAddLainDoc = () => {
+    if (isMonthClosed(reportDate)) {
+      showToast('Periode bulan ini telah TUTUP BUKU. Penambahan dokumen dikunci.');
+      return;
+    }
     flushPendingSave();
     const nextIndex = Math.max(...lainDocIndices) + 1; const nextKey = `lain_${nextIndex}`;
     const baseReports = stateRef.current.allReports;
@@ -1650,6 +1724,10 @@ export default function App() {
   };
 
   const handleRemoveLainDoc = (indexToRemove) => {
+    if (isMonthClosed(reportDate)) {
+      showToast('Periode bulan ini telah TUTUP BUKU. Penghapusan dokumen dikunci.');
+      return;
+    }
     showConfirm(`Hapus Dokumen Ke-${indexToRemove}? Semua data di dalam dokumen ini akan ikut terhapus.`, () => {
       const baseReports = stateRef.current.allReports;
       const dayData = { ...(baseReports[reportDate] || {}) };
@@ -1695,6 +1773,10 @@ export default function App() {
   }, [allReports, reportDate, activeTypeKey]);
 
   const updateCurrentReport = (updater) => {
+    if (isMonthClosed(reportDate)) {
+      showToast('Periode bulan ini telah TUTUP BUKU. Perubahan data dikunci.');
+      return;
+    }
     const baseReports = stateRef.current.allReports;
     const dayData = baseReports[reportDate] || {};
     const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
@@ -1770,7 +1852,13 @@ export default function App() {
     setPrintMode('pdf');
   };
 
-  const clearCurrentReport = () => { setResetDialog({ isOpen: true, password: '', error: '', isVerifying: false }); };
+  const clearCurrentReport = () => {
+    if (isMonthClosed(reportDate)) {
+      showToast('Periode bulan ini telah TUTUP BUKU. Data tidak dapat direset.');
+      return;
+    }
+    setResetDialog({ isOpen: true, password: '', error: '', isVerifying: false });
+  };
 
   const handleConfirmReset = async (e) => {
     e.preventDefault(); setResetDialog(prev => ({ ...prev, isVerifying: true, error: '' }));
@@ -1827,6 +1915,10 @@ export default function App() {
   };
 
   const handleAddActiveItem = () => {
+    if (isMonthClosed(reportDate)) {
+      showToast('Periode bulan ini telah TUTUP BUKU. Penambahan transaksi dikunci.');
+      return;
+    }
     if (!selectedCatToAdd || !selectedItemToAdd) return;
     const newItem = { catId: selectedCatToAdd, itemId: selectedItemToAdd };
     if (activeType === 'utama' && isAddingSusulan) { if (!susulanValidDate) { showConfirm("Mohon pilih Tanggal Validasi untuk pendapatan susulan!", null); return; } newItem.isSusulan = true; newItem.validDate = susulanValidDate; }
@@ -1927,6 +2019,10 @@ export default function App() {
   };
 
   const handleRemoveActiveItem = (itemToRemove, providedKey) => {
+    if (isMonthClosed(reportDate)) {
+      showToast('Periode bulan ini telah TUTUP BUKU. Penghapusan data dikunci.');
+      return;
+    }
     const baseBankRows = stateRef.current.bankRows;
     let newBankRows = baseBankRows;
     
@@ -1971,6 +2067,10 @@ export default function App() {
   };
 
   const handleInputChange = (inputKey, value) => {
+    if (isMonthClosed(reportDate)) {
+      showToast('Periode bulan ini telah TUTUP BUKU. Perubahan data dikunci.');
+      return;
+    }
     const rawValue = value.replace(/[^0-9]/g, '');
     const numVal = Number(rawValue) || 0;
     
@@ -2039,6 +2139,10 @@ export default function App() {
   // 🔴 FUNGSI: MENGAMBIL DATA DARI BOT PYTHON
   // ==========================================
   const handleOpenTransit3A = () => {
+    if (isMonthClosed(reportDate)) {
+      showToast('Periode bulan ini telah TUTUP BUKU. Penarikan data otomatis dikunci.');
+      return;
+    }
     setTransitModal({
       isOpen: true, step: 'confirm_date', source: '3a', targetDate: reportDate,
       isLoading: false, data: [], error: '', isOverwriting: false, iwmDiskon: []
@@ -2046,6 +2150,10 @@ export default function App() {
   };
 
   const handleOpenTransitIWM = () => {
+    if (isMonthClosed(reportDate)) {
+      showToast('Periode bulan ini telah TUTUP BUKU. Penarikan data otomatis dikunci.');
+      return;
+    }
     setTransitModal({
       isOpen: true, step: 'confirm_date', source: 'iwm', targetDate: reportDate,
       isLoading: false, data: [], error: '', isOverwriting: false, iwmDiskon: []
@@ -2099,6 +2207,10 @@ export default function App() {
   // 🔴 FUNGSI INJEKSI & AGREGASI PENGGABUNGAN TIKET SAMA
   // ==========================================
   const confirmTransitInjection = () => {
+    if (isMonthClosed(reportDate)) {
+      showToast('Periode bulan ini telah TUTUP BUKU. Data tidak dapat disuntikkan.');
+      return;
+    }
     const baseReports = stateRef.current.allReports;
     const newReports = JSON.parse(JSON.stringify(baseReports));
     const dayData = newReports[reportDate] || {}; 
@@ -2532,6 +2644,8 @@ export default function App() {
         activeTab={activeTab}
         allReports={allReports}
         reportDate={reportDate}
+        closedMonths={closedMonths}
+        isMonthClosed={isMonthClosed}
         onSelectDay={({ dateStr, type, lainIndex }) => {
           handleDateChange(dateStr);
           if (type) setActiveType(type);
@@ -2546,6 +2660,7 @@ export default function App() {
               <RekonBankTab 
                  syncStatus={syncStatus}
                  onRefreshCloud={handleManualSync}
+                 isMonthClosed={isMonthClosed}
                  bankRows={bankRows}
                  setBankRows={setBankRows}
                  allReports={allReports}
@@ -2575,6 +2690,11 @@ export default function App() {
 
                       const distinctTargetDates = [...new Set(allocations.map(a => a.targetDate || ymd).filter(Boolean))];
                       const primaryTargetDate = distinctTargetDates[0] || ymd;
+
+                      if (isMonthClosed(primaryTargetDate) || isMonthClosed(ymd) || distinctTargetDates.some(d => isMonthClosed(d))) {
+                          alert('Periode tanggal yang dipilih telah TUTUP BUKU. Tidak dapat menambah atau mengalokasikan data ke periode yang terkunci.');
+                          return;
+                      }
 
                       // Compute target summary for bankRows
                       let targetSummary = allocations.map(a => {
@@ -2838,6 +2958,10 @@ export default function App() {
                        }
                    }}
                   onLinkRekon={async (bankRow, targetDate, targetType, targetGroupInfo) => {
+                       if (isMonthClosed(targetDate) || isMonthClosed(bankRow?.date)) {
+                           alert('Periode tanggal ini telah TUTUP BUKU. Tidak dapat memasangkan mutasi ke periode yang terkunci.');
+                           return;
+                       }
                        const bankAmount = Number(bankRow?.amount || 0);
                        const groupNominal = Number(targetGroupInfo?.nominal || 0);
                        if (bankAmount !== groupNominal) {
@@ -2933,6 +3057,10 @@ export default function App() {
                       saveToFirebaseDirectly(stateRef.current.allReports, newBankRows);
                   }}
                   onUnlinkBankRow={async (bankRow) => {
+                     if (isMonthClosed(bankRow?.date) || (bankRow?.linkedTo?.date && isMonthClosed(bankRow.linkedTo.date))) {
+                         alert('Periode tanggal ini telah TUTUP BUKU. Status pasangan mutasi bank tidak dapat dibatalkan atau dilepas.');
+                         return;
+                     }
                      try {
                          const baseReports = stateRef.current.allReports;
                           const newReports = JSON.parse(JSON.stringify(baseReports));
@@ -3153,6 +3281,8 @@ export default function App() {
         subtotals={subtotals}
         clearCurrentReport={clearCurrentReport}
         handleForceSave={handleForceSave}
+        isMonthClosed={isMonthClosed(reportDate)}
+        closedInfo={(closedMonths || {})[getPartitionMonth(reportDate)]}
         onViewDraftCetak={() => {
           setActiveTab('print');
           setPrintMode('pdf');
@@ -3182,6 +3312,9 @@ export default function App() {
         addCategory={addCategory}
         allReports={allReports}
         bankRows={bankRows}
+        formatRp={formatRp}
+        closedMonths={closedMonths}
+        onToggleCloseMonth={handleToggleCloseMonth}
         onDownloadBackup={handleDownloadBackup}
         onRestoreBackup={handleRestoreBackup}
       />

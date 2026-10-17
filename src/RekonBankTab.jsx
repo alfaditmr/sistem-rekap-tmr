@@ -19,7 +19,8 @@ export default function RekonBankTab({
   onUnlinkBankRow, 
   onSaveBankRows, 
   syncStatus, 
-  onRefreshCloud
+  onRefreshCloud,
+  isMonthClosed
 }) {
   const [viewMode, setViewMode] = useState('calendar'); // 'calendar' | 'list'
   const [selectedBankDates, setSelectedBankDates] = useState([]);
@@ -551,6 +552,10 @@ export default function RekonBankTab({
   // ==============================================================
   const handleDeleteSingleRow = (rowToDelete) => {
     if (!rowToDelete) return;
+    if (typeof isMonthClosed === 'function' && isMonthClosed(rowToDelete?.date)) {
+      alert("Periode tanggal mutasi ini telah TUTUP BUKU. Baris mutasi tidak dapat dihapus.");
+      return;
+    }
     const confirmMsg = `Hapus baris mutasi bank ini?\n\nTanggal: ${rowToDelete.date}\nKeterangan: ${rowToDelete.description}\nNominal: Rp ${formatRp(rowToDelete.amount)}\n\n(Catatan: Data input laporan STSU harian tetap aman tersimpan).`;
     if (window.confirm(confirmMsg)) {
       const updated = bankRows.filter(r => r.id !== rowToDelete.id);
@@ -561,6 +566,10 @@ export default function RekonBankTab({
 
   const handleDeleteDateGroup = (targetDateStr) => {
     if (!targetDateStr) return;
+    if (typeof isMonthClosed === 'function' && isMonthClosed(targetDateStr)) {
+      alert(`Periode tanggal ${targetDateStr} telah TUTUP BUKU. Data mutasi bank tidak dapat dihapus.`);
+      return;
+    }
     
     // Cari seluruh baris mutasi bank yang tanggalnya cocok
     const matchingRows = bankRows.filter(r => isRowMatchingDate(r, targetDateStr));
@@ -596,6 +605,10 @@ export default function RekonBankTab({
       alert("Pilih tanggal mutasi pada filter terlebih dahulu untuk menghapus mutasi pada tanggal tersebut.");
       return;
     }
+    if (typeof isMonthClosed === 'function' && activeDates.some(d => isMonthClosed(d))) {
+      alert("Salah satu atau lebih tanggal mutasi yang dipilih telah TUTUP BUKU. Penghapusan dibatalkan.");
+      return;
+    }
     const matchingRows = bankRows.filter(r => activeDates.some(d => isRowMatchingDate(r, d)));
     const count = matchingRows.length;
     
@@ -614,6 +627,10 @@ export default function RekonBankTab({
     if (isDateFiltered) {
       handleDeleteFilteredDates();
     } else {
+      if (typeof isMonthClosed === 'function' && bankRows.some(r => isMonthClosed(r.date))) {
+        alert("Terdapat data mutasi pada periode yang telah TUTUP BUKU. Seluruh mutasi tidak dapat dibersihkan sekaligus.");
+        return;
+      }
       if (window.confirm(`Hapus SEMUA data CSV mutasi bank (${bankRows.length} data mutasi)?\n\nPeringatan: Seluruh data mutasi di semua tanggal akan dibersihkan.`)) {
         if (onSaveBankRows) onSaveBankRows([]);
         else setBankRows([]);
@@ -622,6 +639,10 @@ export default function RekonBankTab({
   };
 
   const openSplitModal = (row) => {
+    if (typeof isMonthClosed === 'function' && isMonthClosed(row?.date)) {
+      alert("Periode tanggal mutasi ini telah TUTUP BUKU (Terkunci). Alokasi mutasi tidak dapat diubah.");
+      return;
+    }
     setSplitModal({
       isOpen: true,
       bankRow: row,
@@ -846,6 +867,10 @@ export default function RekonBankTab({
   }, [unlinkedItems, linkModalFilterDate, linkModal.bankRow]);
 
   const openLinkModal = (row) => {
+    if (typeof isMonthClosed === 'function' && isMonthClosed(row?.date)) {
+      alert("Periode tanggal mutasi ini telah TUTUP BUKU (Terkunci). Mutasi tidak dapat dipasangkan.");
+      return;
+    }
     const rowYmd = parseYmd(row.date);
     let initialFilterDate = 'Semua';
     let targetMonth = new Date();
