@@ -2414,11 +2414,12 @@ export default function App() {
 
 
   const handlePrint = () => { if (typeof window !== 'undefined') window.print(); };
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = (customFilename) => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return; const element = document.getElementById('printable-area'); if (!element) return;
     if (window.html2pdf) {
       setPdfLoading(true);
-      window.html2pdf().set({ margin: [10, 10, 10, 10], filename: `Laporan_STSU_${activeType.toUpperCase()}${activeType === 'lain' ? `_Dok${activeLainIndex}` : ''}_${reportDate}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(element).save().then(() => setPdfLoading(false)).catch(err => { setPdfLoading(false); });
+      const fn = typeof customFilename === 'string' && customFilename ? customFilename : `Laporan_STSU_${activeType.toUpperCase()}${activeType === 'lain' ? `_Dok${activeLainIndex}` : ''}_${reportDate}.pdf`;
+      window.html2pdf().set({ margin: [10, 10, 10, 10], filename: fn, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(element).save().then(() => setPdfLoading(false)).catch(err => { setPdfLoading(false); });
     } else { showConfirm("Modul pembuat PDF sedang dimuat oleh sistem. Mohon tunggu 3 detik lalu coba tekan lagi.", null); }
   };
 
@@ -3340,6 +3341,12 @@ export default function App() {
         grandTotal={grandTotal}
         currentReport={currentReport}
         signatures={signatures}
+        categories={categories}
+        allReports={allReports}
+        activeLainIndex={activeLainIndex}
+        handleSequenceChange={handleSequenceChange}
+        handleSignatureDateChange={handleSignatureDateChange}
+        isMonthClosed={isMonthClosed(reportDate)}
       />
 
       </>

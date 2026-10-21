@@ -117,21 +117,19 @@ export default function InputHarianTab({
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-1.5 flex flex-col sm:flex-row w-full sm:w-auto">
           <button
             onClick={() => handleTypeSwitch('utama')}
-            className={`flex-1 sm:flex-none py-2.5 px-6 rounded-xl font-bold flex items-center justify-center transition-all ${
-              activeType === 'utama'
-                ? 'bg-green-600 text-white shadow-md'
-                : 'bg-transparent text-gray-500 hover:bg-green-50 hover:text-green-600'
-            }`}
+            className={`flex-1 sm:flex-none py-2.5 px-6 rounded-xl font-bold flex items-center justify-center transition-all ${activeType === 'utama'
+              ? 'bg-green-600 text-white shadow-md'
+              : 'bg-transparent text-gray-500 hover:bg-green-50 hover:text-green-600'
+              }`}
           >
             STSU Pendapatan
           </button>
           <button
             onClick={() => handleTypeSwitch('lain')}
-            className={`flex-1 sm:flex-none py-2.5 px-6 rounded-xl font-bold flex items-center justify-center transition-all ${
-              activeType === 'lain'
-                ? 'bg-purple-600 text-white shadow-md'
-                : 'bg-transparent text-gray-500 hover:bg-purple-50 hover:text-purple-600'
-            }`}
+            className={`flex-1 sm:flex-none py-2.5 px-6 rounded-xl font-bold flex items-center justify-center transition-all ${activeType === 'lain'
+              ? 'bg-purple-600 text-white shadow-md'
+              : 'bg-transparent text-gray-500 hover:bg-purple-50 hover:text-purple-600'
+              }`}
           >
             STSU Lain-lain
           </button>
@@ -173,11 +171,10 @@ export default function InputHarianTab({
                   if (setLainItemDate) setLainItemDate('');
                   if (setLainItemNote) setLainItemNote('');
                 }}
-                className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all border ${
-                  activeLainIndex === num
-                    ? 'bg-purple-600 text-white border-purple-600 shadow-md scale-105'
-                    : 'bg-white text-purple-600 border-purple-200 hover:bg-purple-50'
-                }`}
+                className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all border ${activeLainIndex === num
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-md scale-105'
+                  : 'bg-white text-purple-600 border-purple-200 hover:bg-purple-50'
+                  }`}
               >
                 Dokumen Ke-{num}
               </button>
@@ -187,9 +184,8 @@ export default function InputHarianTab({
                     e.stopPropagation();
                     handleRemoveLainDoc(num);
                   }}
-                  className={`absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-black shadow-md z-10 hover:bg-red-600 border border-white transition-opacity ${
-                    activeLainIndex === num ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                  }`}
+                  className={`absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-black shadow-md z-10 hover:bg-red-600 border border-white transition-opacity ${activeLainIndex === num ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                    }`}
                   title="Hapus Dokumen"
                 >
                   ✕
@@ -211,9 +207,8 @@ export default function InputHarianTab({
       {/* 3. Header Info Dokumen STSU */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 relative overflow-hidden">
         <div
-          className={`absolute top-0 right-0 text-white text-xs font-bold px-3 py-1 rounded-bl-lg ${
-            activeType === 'utama' ? 'bg-green-500' : 'bg-purple-500'
-          }`}
+          className={`absolute top-0 right-0 text-white text-xs font-bold px-3 py-1 rounded-bl-lg ${activeType === 'utama' ? 'bg-green-500' : 'bg-purple-500'
+            }`}
         >
           Dokumen {activeType === 'utama' ? 'STSU (SU)' : `Lain-lain (SU/L) - Ke ${activeLainIndex}`}
         </div>
@@ -241,9 +236,8 @@ export default function InputHarianTab({
               onBlur={() => {
                 if (triggerSaveToFirebase) triggerSaveToFirebase();
               }}
-              className={`w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-blue-500 font-bold ${
-                isMonthClosed ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-blue-50 text-blue-700'
-              }`}
+              className={`w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-blue-500 font-bold ${isMonthClosed ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-blue-50 text-blue-700'
+                }`}
             />
           </div>
           <div>
@@ -260,9 +254,8 @@ export default function InputHarianTab({
                 onBlur={() => {
                   if (triggerSaveToFirebase) triggerSaveToFirebase();
                 }}
-                className={`w-16 border border-gray-300 rounded-lg p-2.5 text-center font-bold outline-none focus:border-blue-500 text-lg ${
-                  isMonthClosed ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white shadow-inner'
-                }`}
+                className={`w-16 border border-gray-300 rounded-lg p-2.5 text-center font-bold outline-none focus:border-blue-500 text-lg ${isMonthClosed ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white shadow-inner'
+                  }`}
               />
               <div className="flex-1 border border-dashed border-gray-300 rounded-lg bg-gray-50 p-2 flex items-center overflow-x-auto min-w-0">
                 <span className="font-mono font-bold text-gray-600 text-xs sm:text-sm whitespace-nowrap truncate">
@@ -272,21 +265,18 @@ export default function InputHarianTab({
             </div>
           </div>
           <div
-            className={`p-3 rounded-xl border flex flex-col justify-center shadow-inner items-end ${
-              activeType === 'utama' ? 'bg-green-50 border-green-200' : 'bg-purple-50 border-purple-200'
-            }`}
+            className={`p-3 rounded-xl border flex flex-col justify-center shadow-inner items-end ${activeType === 'utama' ? 'bg-green-50 border-green-200' : 'bg-purple-50 border-purple-200'
+              }`}
           >
             <span
-              className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${
-                activeType === 'utama' ? 'text-green-600' : 'text-purple-600'
-              }`}
+              className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${activeType === 'utama' ? 'text-green-600' : 'text-purple-600'
+                }`}
             >
               Total {activeType === 'utama' ? 'Pendapatan' : 'Lain-lain'}
             </span>
             <span
-              className={`text-lg sm:text-xl font-black truncate max-w-full ${
-                activeType === 'utama' ? 'text-green-800' : 'text-purple-800'
-              }`}
+              className={`text-lg sm:text-xl font-black truncate max-w-full ${activeType === 'utama' ? 'text-green-800' : 'text-purple-800'
+                }`}
               title={`Rp ${formatRp(grandTotal)}`}
             >
               Rp {formatRp(grandTotal)}
@@ -311,15 +301,13 @@ export default function InputHarianTab({
       ) : (
         <div
           id="form-tambah-transaksi"
-          className={`${
-            activeType === 'utama' ? 'bg-green-50 border-green-200' : 'bg-purple-50 border-purple-200'
-          } rounded-xl shadow-sm border p-4 mb-6 transition-colors`}
+          className={`${activeType === 'utama' ? 'bg-green-50 border-green-200' : 'bg-purple-50 border-purple-200'
+            } rounded-xl shadow-sm border p-4 mb-6 transition-colors`}
         >
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
             <h2
-              className={`text-sm font-bold flex items-center gap-2 uppercase tracking-wide ${
-                activeType === 'utama' ? 'text-green-800' : 'text-purple-800'
-              }`}
+              className={`text-sm font-bold flex items-center gap-2 uppercase tracking-wide ${activeType === 'utama' ? 'text-green-800' : 'text-purple-800'
+                }`}
             >
               <Plus size={18} /> Tambah Transaksi Manual
             </h2>
@@ -374,9 +362,8 @@ export default function InputHarianTab({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label
-                  className={`block text-xs font-semibold mb-1 ${
-                    activeType === 'utama' ? 'text-green-700' : 'text-purple-700'
-                  }`}
+                  className={`block text-xs font-semibold mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'
+                    }`}
                 >
                   Kategori
                 </label>
@@ -395,9 +382,8 @@ export default function InputHarianTab({
               </div>
               <div>
                 <label
-                  className={`block text-xs font-semibold mb-1 ${
-                    activeType === 'utama' ? 'text-green-700' : 'text-purple-700'
-                  }`}
+                  className={`block text-xs font-semibold mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'
+                    }`}
                 >
                   Sub-Kategori
                 </label>
@@ -432,9 +418,8 @@ export default function InputHarianTab({
               </div>
               <div>
                 <label
-                  className={`block text-xs font-semibold mb-1 ${
-                    activeType === 'utama' ? 'text-green-700' : 'text-purple-700'
-                  }`}
+                  className={`block text-xs font-semibold mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'
+                    }`}
                 >
                   Nominal (Rp)
                 </label>
@@ -498,11 +483,10 @@ export default function InputHarianTab({
             <button
               onClick={handleAddActiveItem}
               disabled={!selectedCatToAdd || !selectedItemToAdd}
-              className={`w-full mt-2 text-white p-3 rounded-lg font-bold flex justify-center items-center transition-colors shadow-sm disabled:bg-gray-300 ${
-                activeType === 'utama'
-                  ? 'bg-green-600 hover:bg-green-700'
-                  : 'bg-purple-600 hover:bg-purple-700'
-              }`}
+              className={`w-full mt-2 text-white p-3 rounded-lg font-bold flex justify-center items-center transition-colors shadow-sm disabled:bg-gray-300 ${activeType === 'utama'
+                ? 'bg-green-600 hover:bg-green-700'
+                : 'bg-purple-600 hover:bg-purple-700'
+                }`}
             >
               Add Transaksi
             </button>
@@ -521,28 +505,25 @@ export default function InputHarianTab({
           activeGroups.map((group, idx) => (
             <div
               key={group.groupId}
-              className={`bg-white rounded-xl shadow-sm border overflow-hidden ${
-                group.isSusulan ? 'border-yellow-300' : 'border-gray-200'
-              }`}
+              className={`bg-white rounded-xl shadow-sm border overflow-hidden ${group.isSusulan ? 'border-yellow-300' : 'border-gray-200'
+                }`}
             >
               <div
-                className={`px-4 py-3 border-b flex justify-between items-center ${
-                  group.isSusulan
-                    ? 'bg-yellow-50 border-yellow-200'
-                    : activeType === 'utama'
+                className={`px-4 py-3 border-b flex justify-between items-center ${group.isSusulan
+                  ? 'bg-yellow-50 border-yellow-200'
+                  : activeType === 'utama'
                     ? 'bg-green-50/50 border-green-100'
                     : 'bg-purple-50/50 border-purple-100'
-                }`}
+                  }`}
               >
                 <h3 className="font-bold text-gray-800 flex items-center gap-2 capitalize">
                   <span
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                      group.isSusulan
-                        ? 'bg-yellow-400 text-yellow-900'
-                        : activeType === 'utama'
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${group.isSusulan
+                      ? 'bg-yellow-400 text-yellow-900'
+                      : activeType === 'utama'
                         ? 'bg-green-200 text-green-800'
                         : 'bg-purple-200 text-purple-800'
-                    }`}
+                      }`}
                   >
                     {idx + 1}
                   </span>
@@ -662,13 +643,12 @@ export default function InputHarianTab({
                                 if (!isMonthClosed && triggerSaveToFirebase) triggerSaveToFirebase();
                               }
                             }}
-                            className={`w-full border rounded-lg pl-10 pr-3 py-2.5 text-right font-bold outline-none transition-all ${
-                              isMonthClosed
-                                ? 'bg-gray-100/80 border-gray-200 text-gray-500 cursor-not-allowed select-none'
-                                : group.isSusulan
+                            className={`w-full border rounded-lg pl-10 pr-3 py-2.5 text-right font-bold outline-none transition-all ${isMonthClosed
+                              ? 'bg-gray-100/80 border-gray-200 text-gray-500 cursor-not-allowed select-none'
+                              : group.isSusulan
                                 ? 'border-yellow-300 focus:ring-2 focus:ring-yellow-500'
                                 : 'border-gray-300 focus:ring-2 focus:ring-green-500'
-                            }`}
+                              }`}
                             placeholder="0"
                           />
                         </div>
@@ -789,9 +769,8 @@ export default function InputHarianTab({
                 Grand Total ({activeType === 'utama' ? 'SU' : 'SU/L'})
               </p>
               <p
-                className={`text-2xl font-black leading-none mb-1 ${
-                  activeType === 'utama' ? 'text-green-700' : 'text-purple-700'
-                }`}
+                className={`text-2xl font-black leading-none mb-1 ${activeType === 'utama' ? 'text-green-700' : 'text-purple-700'
+                  }`}
               >
                 Rp {formatRp(grandTotal)}
               </p>
@@ -804,22 +783,20 @@ export default function InputHarianTab({
             <button
               onClick={clearCurrentReport}
               disabled={isMonthClosed}
-              className={`px-4 py-3 font-bold rounded-xl transition-colors text-sm border ${
-                isMonthClosed
-                  ? 'text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed opacity-60'
-                  : 'text-red-500 hover:bg-red-50 border-transparent hover:border-red-200'
-              }`}
+              className={`px-4 py-3 font-bold rounded-xl transition-colors text-sm border ${isMonthClosed
+                ? 'text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed opacity-60'
+                : 'text-red-500 hover:bg-red-50 border-transparent hover:border-red-200'
+                }`}
             >
               Reset
             </button>
             <button
               onClick={handleForceSave}
               disabled={isMonthClosed}
-              className={`px-4 py-3 font-bold rounded-xl transition-colors text-sm border flex items-center gap-1.5 shadow-sm ${
-                isMonthClosed
-                  ? 'text-gray-400 bg-gray-100 border-gray-200 cursor-not-allowed opacity-75'
-                  : 'text-blue-600 hover:bg-blue-50 border-blue-200 hover:border-blue-300 bg-white'
-              }`}
+              className={`px-4 py-3 font-bold rounded-xl transition-colors text-sm border flex items-center gap-1.5 shadow-sm ${isMonthClosed
+                ? 'text-gray-400 bg-gray-100 border-gray-200 cursor-not-allowed opacity-75'
+                : 'text-blue-600 hover:bg-blue-50 border-blue-200 hover:border-blue-300 bg-white'
+                }`}
               title={isMonthClosed ? 'Bulan ini telah ditutup buku (Terkunci)' : 'Simpan Data'}
             >
               {isMonthClosed ? <Lock size={16} className="text-gray-400" /> : <Save size={18} />}
@@ -827,12 +804,10 @@ export default function InputHarianTab({
             </button>
             <button
               onClick={onViewDraftCetak}
-              disabled={activeGroups.length === 0}
-              className={`flex-1 sm:flex-none text-white px-6 py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors shadow-sm disabled:bg-gray-300 ${
-                activeType === 'utama'
-                  ? 'bg-green-600 hover:bg-green-700'
-                  : 'bg-purple-600 hover:bg-purple-700'
-              }`}
+              className={`flex-1 sm:flex-none text-white px-6 py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors shadow-sm ${activeType === 'utama'
+                ? 'bg-green-600 hover:bg-green-700'
+                : 'bg-purple-600 hover:bg-purple-700'
+                }`}
             >
               <FileText size={20} /> Lihat Draft Cetak
             </button>

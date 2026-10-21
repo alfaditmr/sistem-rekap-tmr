@@ -1,6 +1,7 @@
-import React from 'react';
-import { FileText, Printer, RefreshCw, Download } from 'lucide-react';
+import React, { useState } from 'react';
+import { FileText, Printer, RefreshCw, Download, FileSpreadsheet } from 'lucide-react';
 import DraggableElement from './DraggableElement';
+import FormatPemasaranReport from './FormatPemasaranReport';
 import {
   safeString,
   terbilang,
@@ -13,9 +14,10 @@ import {
 
 /**
  * Komponen Tab Print & Download Laporan STSU
- * Mendukung 2 mode cetak:
- * 1. Mode PDF / Preview Laporan Gabungan Standar
- * 2. Mode Cetak NCR Dot Matrix A5 Kertas Rangkap 3 (dengan Draggable Element)
+ * Mendukung mode cetak:
+ * 1. Format Baru Pemasaran (STSU Dasar Hasil Retribusi - identik dokumen Word format-new-pemasaran)
+ * 2. Format Standar STSU Gabungan (DRAFT SU / SU/L)
+ * 3. Mode Cetak NCR Dot Matrix A5 Kertas Rangkap 3 (dengan Draggable Element)
  */
 export default function PrintPreviewTab({
   activeTab,
@@ -34,8 +36,16 @@ export default function PrintPreviewTab({
   subtotals = {},
   grandTotal = 0,
   currentReport = {},
-  signatures = {}
+  signatures = {},
+  categories = [],
+  allReports = {},
+  activeLainIndex = 1,
+  handleSequenceChange,
+  handleSignatureDateChange,
+  isMonthClosed = false
 }) {
+  const [reportFormat, setReportFormat] = useState('pemasaran');
+
   if (activeTab !== 'print') return null;
 
   return (
@@ -44,10 +54,17 @@ export default function PrintPreviewTab({
         <div>
           <h2 className="font-bold text-gray-800 text-lg flex items-center gap-2">
             {printMode === 'pdf' ? (
-              <>
-                <FileText size={20} className={activeType === 'utama' ? 'text-green-600' : 'text-purple-600'} />
-                Preview & Download Laporan Gabungan
-              </>
+              reportFormat === 'pemasaran' ? (
+                <>
+                  <FileSpreadsheet size={20} className="text-blue-600" />
+                  Format Baru Pemasaran (STSU Retribusi)
+                </>
+              ) : (
+                <>
+                  <FileText size={20} className={activeType === 'utama' ? 'text-green-600' : 'text-purple-600'} />
+                  Format Standar STSU Gabungan
+                </>
+              )
             ) : (
               <>
                 <Printer size={20} className="text-purple-600" />
@@ -61,15 +78,25 @@ export default function PrintPreviewTab({
             <>
               <button
                 onClick={() => setActiveTab('input')}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none hover:bg-gray-200 transition-colors"
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none hover:bg-gray-200 transition-colors text-sm"
               >
                 Kembali Edit
               </button>
               <button
-                onClick={handleDownloadPDF}
+                onClick={() =>
+                  handleDownloadPDF(
+                    reportFormat === 'pemasaran'
+                      ? `Laporan_STSU_Hasil_Retribusi_Pemasaran_${reportDate}.pdf`
+                      : undefined
+                  )
+                }
                 disabled={pdfLoading}
-                className={`px-4 py-2 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md ${
-                  activeType === 'utama' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'
+                className={`px-4 py-2 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md text-sm ${
+                  reportFormat === 'pemasaran'
+                    ? 'bg-blue-600 hover:bg-blue-700'
+                    : activeType === 'utama'
+                    ? 'bg-green-600 hover:bg-green-700'
+                    : 'bg-purple-600 hover:bg-purple-700'
                 } disabled:opacity-50 transition-colors`}
               >
                 {pdfLoading ? <RefreshCw size={18} className="animate-spin" /> : <Download size={18} />}
@@ -77,7 +104,7 @@ export default function PrintPreviewTab({
               </button>
               <button
                 onClick={handlePrint}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md transition-colors"
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md transition-colors text-sm"
               >
                 <Printer size={18} /> Cetak Printer
               </button>
@@ -89,13 +116,13 @@ export default function PrintPreviewTab({
                   setPrintMode('pdf');
                   setSelectedNcrGroup(null);
                 }}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none hover:bg-gray-200 transition-colors"
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none hover:bg-gray-200 transition-colors text-sm"
               >
                 Kembali ke PDF
               </button>
               <button
                 onClick={handlePrint}
-                className="px-6 py-2 bg-purple-700 hover:bg-purple-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md transition-colors"
+                className="px-6 py-2 bg-purple-700 hover:bg-purple-900 text-white rounded-lg font-bold flex items-center justify-center gap-2 flex-1 sm:flex-none shadow-md transition-colors text-sm"
               >
                 <Printer size={18} /> Print Kertas NCR
               </button>
@@ -103,6 +130,39 @@ export default function PrintPreviewTab({
           )}
         </div>
       </div>
+
+      {/* PILIHAN FORMAT CETAK PDF: FORMAT BARU PEMASARAN VS FORMAT STANDAR */}
+      {printMode === 'pdf' && (
+        <div className="flex flex-wrap items-center gap-2 mb-6 no-print">
+          <span className="text-xs font-bold text-gray-500 uppercase tracking-wider mr-1">
+            Pilihan Format Laporan:
+          </span>
+          <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-xs">
+            <button
+              type="button"
+              onClick={() => setReportFormat('pemasaran')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all ${
+                reportFormat === 'pemasaran'
+                  ? 'bg-blue-600 text-white shadow-xs scale-102'
+                  : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
+              }`}
+            >
+              <FileSpreadsheet size={15} /> Format Baru Pemasaran (Hasil Retribusi)
+            </button>
+            <button
+              type="button"
+              onClick={() => setReportFormat('standar')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all ${
+                reportFormat === 'standar'
+                  ? 'bg-green-600 text-white shadow-xs scale-102'
+                  : 'text-gray-600 hover:text-green-600 hover:bg-green-50'
+              }`}
+            >
+              <FileText size={15} /> Format Standar STSU (DRAFT)
+            </button>
+          </div>
+        </div>
+      )}
 
       {printMode === 'pdf' && activeGroups.length > 0 && (
         <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 mb-6 no-print">
@@ -127,17 +187,31 @@ export default function PrintPreviewTab({
       )}
 
       {printMode === 'pdf' ? (
-        <div
-          id="printable-area"
-          className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative print:border-none print:shadow-none print:p-0"
-        >
-          <div className="absolute top-10 right-10 text-gray-200 font-bold text-3xl opacity-50 uppercase tracking-widest print:opacity-0 pointer-events-none">
-            DRAFT {activeType === 'utama' ? 'SU' : 'SU/L'}
-          </div>
-          <div className="font-bold underline mb-8 text-[11pt]">No. {safeString(computedStsuNo)}</div>
-          <div className="mb-6 text-[11pt]">
-            Diterima uang hasil pendapatan {formatTanggalCetak(reportDate)} sebagai berikut;
-          </div>
+        reportFormat === 'pemasaran' ? (
+          <FormatPemasaranReport
+            reportDate={reportDate}
+            currentReport={currentReport}
+            categories={categories}
+            allReports={allReports}
+            activeType={activeType}
+            activeLainIndex={activeLainIndex}
+            signatures={signatures}
+            onUpdateSequence={handleSequenceChange}
+            onUpdateSignatureDate={handleSignatureDateChange}
+            isMonthClosed={isMonthClosed}
+          />
+        ) : (
+          <div
+            id="printable-area"
+            className="print-container bg-white p-6 sm:p-10 shadow-lg min-h-[297mm] mx-auto border border-gray-200 text-black relative print:border-none print:shadow-none print:p-0"
+          >
+            <div className="absolute top-10 right-10 text-gray-200 font-bold text-3xl opacity-50 uppercase tracking-widest print:opacity-0 pointer-events-none">
+              DRAFT {activeType === 'utama' ? 'SU' : 'SU/L'}
+            </div>
+            <div className="font-bold underline mb-8 text-[11pt]">No. {safeString(computedStsuNo)}</div>
+            <div className="mb-6 text-[11pt]">
+              Diterima uang hasil pendapatan {formatTanggalCetak(reportDate)} sebagai berikut;
+            </div>
           <div className="space-y-2">
             {activeGroups.map((group, index) => {
               if (subtotals[group.groupId] === 0) return null;
