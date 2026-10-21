@@ -7,8 +7,9 @@ import {
 } from '../../utils/formatters';
 
 /**
- * Konfigurasi 28 Baris Baku Laporan Hasil Retribusi (Pemasaran & Pemanfaatan Aset)
- * Sesuai dokumen resmi template: format-new-pemasaran (1).docx
+ * Konfigurasi 23 Baris Baku Laporan Hasil Retribusi Pemasaran & Pemanfaatan Aset
+ * Sesuai dokumen resmi template terbaru: format-new-pemasaran (1).docx
+ * (Bagian Retribusi Parkir / Baris 21 s/d 25 telah dihapus sesuai arahan).
  */
 export const PEMASARAN_STANDARD_ITEMS = [
   // ==========================================
@@ -50,65 +51,7 @@ export const PEMASARAN_STANDARD_ITEMS = [
   },
 
   // ==========================================
-  // GRUP 2: 4.1.02.02.14.0001 Parkir Di Luar Badan Jalan
-  // ==========================================
-  {
-    no: 21,
-    groupId: '4.1.02.02.14.0001',
-    name: 'Golongan I (Bus Besar, Truk Besar, dan Mobil Box Besar)',
-    match: (name = '', catName = '', note = '') => {
-      const full = `${name} ${catName} ${note}`.toLowerCase();
-      return (
-        (/gol.*1\b|golongan.*1\b|gol.*i\b|golongan.*i\b/i.test(full) || /bus besar|truk besar|box besar/i.test(full)) &&
-        !/gol.*2|gol.*3|motor|sepeda/i.test(full)
-      );
-    }
-  },
-  {
-    no: 22,
-    groupId: '4.1.02.02.14.0001',
-    name: 'Golongan II (Bus Kecil,Truk Kecil,Mobil Box Kecil dan Pick Up Besar)',
-    match: (name = '', catName = '', note = '') => {
-      const full = `${name} ${catName} ${note}`.toLowerCase();
-      return (
-        (/gol.*2\b|golongan.*2\b|gol.*ii\b|golongan.*ii\b/i.test(full) || /bus kecil|truk kecil|pick up besar/i.test(full)) &&
-        !/gol.*1|gol.*3|motor|sepeda/i.test(full)
-      );
-    }
-  },
-  {
-    no: 23,
-    groupId: '4.1.02.02.14.0001',
-    name: 'Golongan III (Mobil Sedan, Minibus/Sejenis,Pick Up Kecil)',
-    match: (name = '', catName = '', note = '') => {
-      const full = `${name} ${catName} ${note}`.toLowerCase();
-      return (
-        (/gol.*3\b|golongan.*3\b|gol.*iii\b|golongan.*iii\b|mobil/i.test(full)) &&
-        !/gol.*1|gol.*2|motor|sepeda|box besar|truk/i.test(full)
-      );
-    }
-  },
-  {
-    no: 24,
-    groupId: '4.1.02.02.14.0001',
-    name: 'Sepeda Motor dan Kendaraan Roda Tiga',
-    match: (name = '', catName = '', note = '') => {
-      const full = `${name} ${catName} ${note}`.toLowerCase();
-      return /motor|roda tiga|roda 3/i.test(full);
-    }
-  },
-  {
-    no: 25,
-    groupId: '4.1.02.02.14.0001',
-    name: 'Sepeda',
-    match: (name = '', catName = '', note = '') => {
-      const full = `${name} ${catName} ${note}`.toLowerCase();
-      return /sepeda/i.test(full) && !/motor/i.test(full);
-    }
-  },
-
-  // ==========================================
-  // GRUP 3: 4.1.02.02.20.0001 Pemanfaatan Aset Daerah
+  // GRUP 2: 4.1.02.02.20.0001 Pemanfaatan Aset Daerah
   // ==========================================
   {
     no: 26,
@@ -244,7 +187,7 @@ export default function FormatPemasaranReport({
   onUpdateSignatureDate,
   isMonthClosed = false
 }) {
-  // Pilihan sumber data: 'active' (hanya dokumen yang sedang aktif) atau 'all' (gabungan seluruh transaksi hari ini)
+  // Pilihan sumber data: 'all' (gabungan seluruh transaksi hari ini) atau 'active' (hanya dokumen yang sedang aktif)
   const [dataSource, setDataSource] = useState('all');
 
   // Format nomor STSU: [nomor urut]/[tgl]/[bulan]/SU/[tahun]
@@ -263,14 +206,13 @@ export default function FormatPemasaranReport({
     return `${d}/${m}/${y}`;
   }, [signatureDateStr]);
 
-  // Hitung agregasi nominal dari data input ke dalam 28 baris standar
+  // Hitung agregasi nominal dari data input ke dalam baris standar
   const { rowAmounts, grandTotal } = useMemo(() => {
     const amounts = {};
     PEMASARAN_STANDARD_ITEMS.forEach((item) => {
       amounts[item.no] = 0;
     });
 
-    // Helper untuk memproses satu dokumen STSU (formData + activeItems)
     const processDoc = (docData) => {
       if (!docData || !docData.formData) return;
       const fData = docData.formData;
@@ -295,17 +237,16 @@ export default function FormatPemasaranReport({
         const nominal = Number(fData[itemKey] || fData[ai.catId + '_' + (ai.itemId || ai.id)] || 0);
         if (nominal <= 0) return;
 
-        // Cari baris standar yang cocok (18 s/d 45)
         let matchedNo = null;
 
-        // 1. Coba exact name match terlebih dahulu
+        // 1. Exact name match
         const exactMatch = PEMASARAN_STANDARD_ITEMS.find(
           (std) => std.name.trim().toLowerCase() === itemName.trim().toLowerCase()
         );
         if (exactMatch) {
           matchedNo = exactMatch.no;
         } else {
-          // 2. Coba rule regex matcher
+          // 2. Rule regex matcher
           const regexMatch = PEMASARAN_STANDARD_ITEMS.find((std) =>
             std.match(itemName, catName, itemNote)
           );
@@ -321,13 +262,11 @@ export default function FormatPemasaranReport({
     };
 
     if (dataSource === 'all') {
-      // Gabungkan semua data hari ini (utama + seluruh dokumen lain-lain)
       const dayData = allReports[reportDate] || {};
       Object.keys(dayData).forEach((key) => {
         processDoc(dayData[key]);
       });
     } else {
-      // Hanya dokumen aktif saat ini
       processDoc(currentReport);
     }
 
@@ -477,21 +416,13 @@ export default function FormatPemasaranReport({
             </tr>
             {PEMASARAN_STANDARD_ITEMS.slice(0, 3).map(renderRow)}
 
-            {/* GRUP 2: PARKIR LUAR BADAN JALAN */}
-            <tr>
-              <td colSpan={4} className="pt-2 pb-0.5 font-bold text-left leading-snug">
-                4.1.02.02.14.0001 &nbsp;Retribusi Penyediaan Tempat Khusus Parkir Di Luar Badan Jalan
-              </td>
-            </tr>
-            {PEMASARAN_STANDARD_ITEMS.slice(3, 8).map(renderRow)}
-
-            {/* GRUP 3: PEMANFAATAN ASET DAERAH */}
+            {/* GRUP 2: PEMANFAATAN ASET DAERAH */}
             <tr>
               <td colSpan={4} className="pt-2 pb-0.5 font-bold text-left leading-snug">
                 4.1.02.02.20.0001 &nbsp;Retribusi Pemanfaatan Aset Daerah yang Tidak Menganggu Penyelengaraan Tugas dan fungsi Organisasi Perangkat Daerah dan/atau Optimalisasi Aset Daerah dengan Tidak Mengubah Status Kepemilikan Sesuai dengan Ketentuan Peraturan Perundang-undangan
               </td>
             </tr>
-            {PEMASARAN_STANDARD_ITEMS.slice(8, 28).map(renderRow)}
+            {PEMASARAN_STANDARD_ITEMS.slice(3).map(renderRow)}
 
             {/* BARIS KOSONG PEMISAH SEBELUM TOTAL */}
             <tr>
@@ -518,23 +449,20 @@ export default function FormatPemasaranReport({
           </span>
         </div>
 
-        {/* TANGGAL DAN TANDA TANGAN (SESUAI DOKUMEN WORD RESMI) */}
-        <div className="mt-4 break-inside-avoid">
-          {/* TANGGAL KANAN ATAS TTD: Jakarta, DD/MM/YYYY */}
-          <div className="flex justify-end mb-2 pr-6">
-            <div>
-              {safeString(signatures.location || 'Jakarta')}, {formattedSignatureDate}
-            </div>
-          </div>
-
-          {/* DUA KOLOM PENANDA TANGAN */}
-          <div className="grid grid-cols-2 gap-4 text-center mt-1">
-            {/* KIRI: KEPALA SEKSI */}
-            <div className="flex flex-col justify-between items-center min-h-[95px]">
-              <div>{safeString(signatures.leftRole || 'Kepala Seksi Pelayanan dan Informasi')}</div>
-              <div className="mt-auto">
+        {/* TANGGAL DAN TANDA TANGAN (PERSIS GAMBAR 1 & TEMPLATE WORD RESMI) */}
+        <div className="mt-6 break-inside-avoid">
+          <div className="grid grid-cols-2 gap-4 text-center">
+            {/* KIRI: KEPALA SEKSI PELAYANAN DAN INFORMASI */}
+            <div className="flex flex-col items-center">
+              {/* Spacer baris atas agar jabatan kiri sejajar dengan jabatan kanan di bawah tanggal */}
+              <div className="leading-normal text-transparent select-none">&nbsp;</div>
+              <div className="font-normal leading-normal">
+                {safeString(signatures.leftRole || 'Kepala Seksi Pelayanan dan Informasi')}
+              </div>
+              <div className="h-20 sm:h-24"></div>
+              <div className="leading-normal">
                 <div className="font-normal">
-                  {safeString(signatures.leftName || 'Afriana Pulungan, S.Si., M.AP.')}
+                  {safeString(signatures.leftName || 'Afriana Pulungan S.Si. MAP')}
                 </div>
                 <div>
                   NIP {safeString(signatures.leftNip || '197304212007012021')}
@@ -542,10 +470,17 @@ export default function FormatPemasaranReport({
               </div>
             </div>
 
-            {/* KANAN: BENDAHARA PENERIMAAN */}
-            <div className="flex flex-col justify-between items-center min-h-[95px]">
-              <div>{safeString(signatures.rightRole || 'Bendahara Penerimaan')}</div>
-              <div className="mt-auto">
+            {/* KANAN: TANGGAL DI ATAS BENDAHARA PENERIMAAN */}
+            <div className="flex flex-col items-center">
+              {/* Tanggal persis di atas Bendahara Penerimaan */}
+              <div className="font-normal leading-normal">
+                {safeString(signatures.location || 'Jakarta')}, {formattedSignatureDate}
+              </div>
+              <div className="font-normal leading-normal">
+                {safeString(signatures.rightRole || 'Bendahara Penerimaan')}
+              </div>
+              <div className="h-20 sm:h-24"></div>
+              <div className="leading-normal">
                 <div className="font-normal">
                   {safeString(signatures.rightName || 'Evi Irmawati')}
                 </div>
