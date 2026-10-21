@@ -49,7 +49,7 @@ export default function PrintPreviewTab({
   if (activeTab !== 'print') return null;
 
   return (
-    <div className="max-w-4xl mx-auto px-2 sm:px-4 py-6">
+    <div className="max-w-4xl mx-auto px-2 sm:px-4 py-6 print:max-w-none print:p-0 print:m-0 print:w-full">
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4 no-print">
         <div>
           <h2 className="font-bold text-gray-800 text-lg flex items-center gap-2">

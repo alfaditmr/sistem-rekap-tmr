@@ -276,15 +276,15 @@ export default function FormatPemasaranReport({
     return { rowAmounts: amounts, grandTotal: total };
   }, [dataSource, reportDate, currentReport, allReports, categories]);
 
-  // Render baris rincian
+  // Render baris rincian (proporsional & nyaman dibaca persis Gambar 2)
   const renderRow = (item) => {
     const val = rowAmounts[item.no] || 0;
     return (
-      <tr key={item.no} className="hover:bg-blue-50/30 transition-colors">
-        <td className="w-[45px] text-right pr-2 py-[1.5px] align-bottom select-none">{item.no}.</td>
-        <td className="py-[1.5px] pr-2 align-bottom font-normal text-left">{item.name}</td>
-        <td className="w-[35px] py-[1.5px] align-bottom text-left select-none">Rp.</td>
-        <td className="w-[120px] py-[1.5px] align-bottom text-right font-medium">
+      <tr key={item.no} className="hover:bg-blue-50/30 transition-colors text-[10pt]">
+        <td className="w-[45px] text-right pr-2 py-[2px] align-bottom select-none">{item.no}.</td>
+        <td className="py-[2px] pr-2 align-bottom font-normal text-left">{item.name}</td>
+        <td className="w-[35px] py-[2px] align-bottom text-left select-none">Rp.</td>
+        <td className="w-[130px] py-[2px] align-bottom text-right font-normal">
           {val > 0 ? formatRp(val) : '0'}
         </td>
       </tr>
@@ -293,6 +293,78 @@ export default function FormatPemasaranReport({
 
   return (
     <div className="w-full">
+      {/* CSS KHUSUS CETAK & PREVIEW FORMAT BARU PEMASARAN */}
+      <style>{`
+        /* Tampilan Layar (Screen Preview): menyerupai lembar kertas A4 nyata */
+        .pemasaran-sheet {
+          width: 210mm;
+          max-width: 100%;
+          min-height: 297mm;
+          padding: 14mm 16mm 12mm 16mm;
+          box-sizing: border-box;
+          font-family: Arial, Helvetica, sans-serif !important;
+          font-size: 10pt;
+          line-height: 1.35;
+          color: #000000;
+          background-color: #ffffff;
+        }
+        .pemasaran-sheet * {
+          font-family: Arial, Helvetica, sans-serif !important;
+          box-sizing: border-box;
+        }
+
+        /* Mode Cetak Printer (window.print) & Ekspor PDF */
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 12mm 15mm 10mm 15mm !important;
+          }
+          html, body {
+            background-color: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .min-h-screen {
+            min-height: 0 !important;
+            padding-bottom: 0 !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+          #printable-area.pemasaran-sheet,
+          .pemasaran-sheet {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-height: 0 !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            font-size: 10pt !important;
+            line-height: 1.35 !important;
+            page-break-inside: avoid !important;
+            page-break-after: avoid !important;
+            break-inside: avoid !important;
+            break-after: avoid !important;
+          }
+          .pemasaran-sheet table {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          .pemasaran-sheet tbody tr {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          .pemasaran-sheet .pemasaran-ttd {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+        }
+      `}</style>
+
       {/* TOOLBAR KONTROL DI ATAS LEMBAR CETAK (TIDAK IKUT TERCETAK) */}
       <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-blue-50 border border-blue-200 p-3 sm:p-4 rounded-xl shadow-xs mb-6 no-print flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -352,21 +424,13 @@ export default function FormatPemasaranReport({
         </div>
       </div>
 
-      {/* LEMBAR FISIK DOKUMEN (PERSIS WORD FORMAT-NEW-PEMASARAN) */}
+      {/* LEMBAR FISIK DOKUMEN (PERSIS GAMBAR 2 & TEMPLATE WORD FORMAT-NEW-PEMASARAN) */}
       <div
         id="printable-area"
-        className="print-container bg-white text-black mx-auto shadow-xl border border-gray-300 relative print:border-none print:shadow-none font-sans"
-        style={{
-          width: '210mm',
-          minHeight: '297mm',
-          padding: '16mm 18mm 14mm 18mm',
-          boxSizing: 'border-box',
-          fontSize: '9pt',
-          lineHeight: '1.25'
-        }}
+        className="pemasaran-sheet print-container mx-auto shadow-xl border border-gray-300 relative print:border-none print:shadow-none"
       >
         {/* HEADER DOKUMEN: KIRI & KANAN */}
-        <div className="flex justify-between items-start mb-2">
+        <div className="flex justify-between items-start mb-2 text-[10.5pt]">
           <div className="text-left font-normal leading-tight">
             <div>BLUD TAMAN MARGASATWA</div>
             <div>RAGUNAN PROV. DKI JAKARTA</div>
@@ -377,10 +441,10 @@ export default function FormatPemasaranReport({
           </div>
         </div>
 
-        {/* NOMOR SURAT STSU (SESUAI CIRI MERAH USER) */}
-        <div className="mb-2 flex items-center font-normal">
+        {/* NOMOR SURAT STSU */}
+        <div className="mb-2 flex items-center font-normal text-[10.5pt]">
           <span className="mr-2">NO :</span>
-          <span className="font-medium tracking-wide">{formattedStsuNo}</span>
+          <span className="font-normal tracking-wide">{formattedStsuNo}</span>
         </div>
 
         {/* TABEL RINCIAN RETRIBUSI */}
@@ -389,30 +453,29 @@ export default function FormatPemasaranReport({
             <col style={{ width: '45px' }} />
             <col />
             <col style={{ width: '35px' }} />
-            <col style={{ width: '120px' }} />
+            <col style={{ width: '130px' }} />
           </colgroup>
 
           {/* HEADER TABEL: GARIS PUTUS-PUTUS ATAS DAN BAWAH */}
           <thead>
-            <tr className="border-t border-b border-dashed border-gray-800 font-bold select-none">
+            <tr className="border-t border-b border-dashed border-black font-bold select-none text-[10pt]">
               <th className="py-1 text-center font-bold">NO</th>
               <th className="py-1 text-left font-bold pl-1">URAIAN</th>
-              <th className="py-1 text-left"></th>
-              <th className="py-1 text-right font-bold pr-1">JUMLAH</th>
+              <th className="py-1 text-right font-bold pr-1" colSpan={2}>JUMLAH</th>
             </tr>
           </thead>
 
           <tbody>
             {/* SUBHEADER UTAMA: 4.1.02 */}
             <tr>
-              <td colSpan={4} className="pt-2 pb-0.5 font-bold text-left">
+              <td colSpan={4} className="pt-2 pb-0.5 font-bold text-left text-[10pt]">
                 4.1.02 &nbsp;Pendapatan Retribusi Daerah :
               </td>
             </tr>
 
             {/* GRUP 1: PASAR GROSIR & TEMPAT USAHA LAINNYA */}
             <tr>
-              <td colSpan={4} className="pt-1 pb-0.5 font-bold text-left leading-snug">
+              <td colSpan={4} className="pt-1 pb-0.5 font-bold text-left leading-snug text-[10pt]">
                 4.1.02.02.12.0001 &nbsp;Retribusi Penyediaan Tempat Kegiatan Usaha Berupa Pasar Grosir, Pertokoan dan Tempat Kegiatan Usaha Lainnya
               </td>
             </tr>
@@ -420,7 +483,7 @@ export default function FormatPemasaranReport({
 
             {/* GRUP 2: PEMANFAATAN ASET DAERAH */}
             <tr>
-              <td colSpan={4} className="pt-2 pb-0.5 font-bold text-left leading-snug">
+              <td colSpan={4} className="pt-2 pb-0.5 font-bold text-left leading-snug text-[10pt]">
                 4.1.02.02.20.0001 &nbsp;Retribusi Pemanfaatan Aset Daerah yang Tidak Menganggu Penyelengaraan Tugas dan fungsi Organisasi Perangkat Daerah dan/atau Optimalisasi Aset Daerah dengan Tidak Mengubah Status Kepemilikan Sesuai dengan Ketentuan Peraturan Perundang-undangan
               </td>
             </tr>
@@ -428,14 +491,14 @@ export default function FormatPemasaranReport({
 
             {/* BARIS KOSONG PEMISAH SEBELUM TOTAL */}
             <tr>
-              <td colSpan={4} className="h-2"></td>
+              <td colSpan={4} className="h-1.5"></td>
             </tr>
 
             {/* BARIS TOTAL / JUMLAH: GARIS PUTUS-PUTUS ATAS DAN BAWAH */}
-            <tr className="border-t border-b border-dashed border-gray-800 font-bold">
+            <tr className="border-t border-b border-dashed border-black font-bold text-[10pt]">
               <td className="py-1"></td>
               <td className="py-1 text-left font-bold pl-1">JUMLAH</td>
-              <td className="py-1 text-left">Rp.</td>
+              <td className="py-1 text-left font-bold">Rp.</td>
               <td className="py-1 text-right font-bold pr-1">
                 {grandTotal > 0 ? formatRp(grandTotal) : '0'}
               </td>
@@ -444,15 +507,15 @@ export default function FormatPemasaranReport({
         </table>
 
         {/* TERBILANG RUPIAH */}
-        <div className="mt-3 flex items-start font-normal">
+        <div className="mt-2.5 mb-5 flex items-start font-normal text-[10pt]">
           <span className="font-bold mr-2 whitespace-nowrap">Terbilang :</span>
           <span className="font-normal capitalize italic">
             {grandTotal > 0 ? `${terbilang(grandTotal)} rupiah` : 'Rupiah'}
           </span>
         </div>
 
-        {/* TANGGAL DAN TANDA TANGAN (PERSIS GAMBAR 1 & TEMPLATE WORD RESMI) */}
-        <div className="mt-6 break-inside-avoid">
+        {/* TANGGAL DAN TANDA TANGAN (PERSIS GAMBAR 2 & TEMPLATE WORD RESMI) */}
+        <div className="pemasaran-ttd break-inside-avoid text-[10pt]">
           <div className="grid grid-cols-2 gap-4 text-center">
             {/* KIRI: KEPALA SEKSI PELAYANAN DAN INFORMASI */}
             <div className="flex flex-col items-center">
@@ -461,7 +524,7 @@ export default function FormatPemasaranReport({
               <div className="font-normal leading-normal">
                 {safeString(signatures.leftRole || 'Kepala Seksi Pelayanan dan Informasi')}
               </div>
-              <div className="h-20 sm:h-24"></div>
+              <div className="h-16 sm:h-20"></div>
               <div className="leading-normal">
                 <div className="font-normal">
                   {safeString(signatures.leftName || 'Afriana Pulungan S.Si. MAP')}
@@ -481,7 +544,7 @@ export default function FormatPemasaranReport({
               <div className="font-normal leading-normal">
                 {safeString(signatures.rightRole || 'Bendahara Penerimaan')}
               </div>
-              <div className="h-20 sm:h-24"></div>
+              <div className="h-16 sm:h-20"></div>
               <div className="leading-normal">
                 <div className="font-normal">
                   {safeString(signatures.rightName || 'Evi Irmawati')}

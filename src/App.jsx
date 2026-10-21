@@ -2466,10 +2466,10 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-800 font-sans pb-36 relative">
+    <div className="min-h-screen bg-gray-100 text-gray-800 font-sans pb-36 relative print:pb-0 print:min-h-0 print:bg-white">
       <style>{`
         @media print {
-          body { background-color: white; margin: 0; padding: 0; }
+          html, body { background-color: white !important; margin: 0 !important; padding: 0 !important; }
           .no-print { display: none !important; }
           ${printMode === 'ncr' ? `
             /* KERTAS A5 LANDSCAPE (MENDATAR) UNTUK DOT MATRIX */
@@ -2487,8 +2487,8 @@ export default function App() {
               position: relative;
             }
           ` : `
-            .print-container { width: 100%; max-width: 100%; margin: 0; padding: 0; font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: black; box-shadow: none !important; border: none !important; }
-            @page { margin: 15mm; }
+            .print-container:not(.pemasaran-sheet) { width: 100%; max-width: 100%; margin: 0; padding: 0; font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: black; box-shadow: none !important; border: none !important; }
+            @page { margin: 12mm 15mm 10mm 15mm; }
           `}
         }
         /* Sticky Column for Excel Report */
