@@ -46,6 +46,8 @@ export const PEMASARAN_STANDARD_ITEMS = [
     name: 'Pemakaian Lokasi/Tempat Untuk Promo/Penjualan Produk',
     match: (name = '', catName = '', note = '') => {
       const full = `${name} ${catName} ${note}`.toLowerCase();
+      // Jangan menangkap Spanduk atau Banner/Umbul (pos retribusi terpisah No 34 & 35)
+      if (/banner|umbul|spanduk/i.test(full)) return false;
       return /promo|penjualan produk|bazar|booth|stand produk/i.test(full);
     }
   },
@@ -105,13 +107,13 @@ export const PEMASARAN_STANDARD_ITEMS = [
     no: 34,
     groupId: '4.1.02.02.20.0001',
     name: 'Penempatan Spanduk Promosi',
-    match: (name = '', catName = '', note = '') => /spanduk/i.test(`${name} ${catName} ${note}`)
+    match: (name = '', catName = '', note = '') => /spanduk/i.test(`${name} ${catName} ${note}`) && !/banner|umbul/i.test(`${name} ${catName} ${note}`)
   },
   {
     no: 35,
     groupId: '4.1.02.02.20.0001',
     name: 'Penempatan Banner/Umbul Promosi',
-    match: (name = '', catName = '', note = '') => /banner|umbul/i.test(`${name} ${catName} ${note}`)
+    match: (name = '', catName = '', note = '') => /banner|umbul/i.test(`${name} ${catName} ${note}`) && !/spanduk/i.test(`${name} ${catName} ${note}`)
   },
   {
     no: 36,
