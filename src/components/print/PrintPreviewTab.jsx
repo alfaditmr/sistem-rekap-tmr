@@ -304,6 +304,7 @@ export default function PrintPreviewTab({
             </div>
           </div>
         </div>
+        )
       ) : (
         <div
           id="printable-area-ncr"
