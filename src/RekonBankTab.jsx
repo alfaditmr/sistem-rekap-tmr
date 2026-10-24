@@ -40,6 +40,54 @@ export default function RekonBankTab({
       localStorage.setItem('tmr_apiData', JSON.stringify(apiData));
     } catch(e) {}
   }, [apiData]);
+
+  // Sinkronisasi & Permanenkan link bukti transfer API ke dalam bankRows
+  // Agar ketika user membersihkan data API, link bukti tetap MENETAP permanen pada mutasi bank
+  useEffect(() => {
+    if (!Array.isArray(apiData) || apiData.length === 0 || !Array.isArray(bankRows) || bankRows.length === 0) return;
+    let modified = false;
+    const newBankRows = bankRows.map(r => {
+      if (!r || (r.status !== 'matched' && r.status !== 'linked')) return r;
+      if (r.proofUrl && r.proofUrl.trim().length > 5 && r.linkedTo?.proofUrl) return r;
+
+      let targetApi = null;
+      if (r.apiRefId) {
+        targetApi = apiData.find(a => String(a.id) === String(r.apiRefId));
+      }
+      if (!targetApi && Array.isArray(r.apiRefIds) && r.apiRefIds.length > 0) {
+        targetApi = apiData.find(a => r.apiRefIds.some(id => String(id) === String(a.id)));
+      }
+      if (!targetApi) {
+        const rYmd = parseYmd(r.date);
+        targetApi = apiData.find(a => {
+          const apiNominal = a.jumlahTransferNumeric || (typeof a.jumlahTransfer === 'string' ? Number(a.jumlahTransfer.replace(/[^0-9]/g, '')) : a.jumlahTransfer) || 0;
+          return Number(r.amount) === Number(apiNominal) && (a.tanggal_transfer === rYmd || a.tanggalTransfer === rYmd);
+        });
+      }
+
+      if (targetApi) {
+        const foundProof = targetApi.buktiTransferUrl || targetApi.buktiTransferDocUrl || targetApi.pksDriveUrl || targetApi.fileUrl || targetApi.url || '';
+        if (foundProof) {
+          modified = true;
+          return {
+            ...r,
+            proofUrl: r.proofUrl || foundProof,
+            apiRefId: r.apiRefId || targetApi.id,
+            linkedTo: r.linkedTo ? { ...r.linkedTo, proofUrl: r.linkedTo.proofUrl || foundProof } : r.linkedTo
+          };
+        }
+      }
+      return r;
+    });
+
+    if (modified) {
+      if (typeof onSaveBankRows === 'function') {
+        onSaveBankRows(newBankRows);
+      } else if (typeof setBankRows === 'function') {
+        setBankRows(newBankRows);
+      }
+    }
+  }, [apiData, bankRows, onSaveBankRows, setBankRows]);
   const [loadingApi, setLoadingApi] = useState(false);
   const [apiDate, setApiDate] = useState(new Date().toISOString().split('T')[0]);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
@@ -685,12 +733,21 @@ export default function RekonBankTab({
       return;
     }
     
-    const cleanAllocations = splitModal.allocations.map(a => ({
-      ...a,
-      amount: Number(a.amount || 0)
-    }));
+    const cleanAllocations = splitModal.allocations.map(a => {
+      const matchedApi = apiData.find(d => String(d.id) === String(a.apiRefId));
+      const proofUrl = a.proofUrl || matchedApi?.buktiTransferUrl || matchedApi?.buktiTransferDocUrl || matchedApi?.pksDriveUrl || matchedApi?.fileUrl || matchedApi?.url || '';
+      return {
+        ...a,
+        amount: Number(a.amount || 0),
+        proofUrl: proofUrl,
+        tenant: a.tenant || matchedApi?.nama_penyewa || matchedApi?.namaPerusahaan || '',
+        location: a.location || matchedApi?.lokasi_sewa || matchedApi?.namaProduk || ''
+      };
+    });
 
-    const targetRow = splitModal.bankRow;
+    const targetRow = { ...splitModal.bankRow };
+    const firstProof = cleanAllocations.find(a => a.proofUrl)?.proofUrl || targetRow.proofUrl || '';
+    if (firstProof) targetRow.proofUrl = firstProof;
     const currentApis = Array.isArray(apiData) ? apiData : [];
 
     // 🔴 1. TUTUP MODAL SEKETIKA (0ms) - Bebas macet, UI langsung tertutup seketika
@@ -953,7 +1010,7 @@ export default function RekonBankTab({
         const foundCat = categories.find(c => cleanName.toLowerCase().startsWith(c.name.toLowerCase()));
         if (foundCat) cleanName = foundCat.name;
         if (cleanName) {
-          let proofUrl = row.linkedTo.proofUrl || row.proofUrl || '';
+          let proofUrl = row.proofUrl || row.linkedTo.proofUrl || '';
           if (!proofUrl && allReports && allReports[row.linkedTo.date]) {
             Object.keys(allReports[row.linkedTo.date]).forEach(type => {
               const td = allReports[row.linkedTo.date][type];
@@ -968,14 +1025,15 @@ export default function RekonBankTab({
                       let h = 0; for(let j=0; j<item.itemNote.length; j++){ h=((h<<5)-h)+item.itemNote.charCodeAt(j); h=h&h; }
                       itemKey += `_note_${Math.abs(h)}`;
                     }
-                    const pu = item.proofUrl || td.formData?.[itemKey + '_buktiUrl'];
+                    const myAlloc = Array.isArray(item.bankAllocations) ? item.bankAllocations.find(ba => (row.id && ba.bankRowId === row.id)) : null;
+                    const pu = myAlloc?.proofUrl || item.proofUrl || td.formData?.[itemKey + '_buktiUrl'];
                     if (pu) proofUrl = pu;
                   }
                 });
               }
             });
           }
-          matchedDetails.push({ date: row.linkedTo.date, name: cleanName, proofUrl });
+          matchedDetails.push({ date: row.linkedTo.date, name: cleanName, proofUrl: proofUrl || row.proofUrl || row.linkedTo?.proofUrl || '' });
         }
       });
     }
@@ -1003,7 +1061,13 @@ export default function RekonBankTab({
                   if (item.itemNote) {
                     name = `${name} (${item.itemNote})`;
                   }
-                  const proofUrl = item.proofUrl || typeData.formData?.[`${item.catId}_${item.itemId || item.id}_buktiUrl`] || row.proofUrl || '';
+                  // PENTING: Prioritaskan bukti mutasi baris ini (row.proofUrl atau alokasi spesifik ba.proofUrl)
+                  // agar tidak tertimpa oleh bukti transaksi lain yang masuk ke kategori yang sama!
+                  const myAlloc = Array.isArray(item.bankAllocations) ? item.bankAllocations.find(ba => 
+                    (row.id && ba.bankRowId === row.id) ||
+                    (!row.id && !ba.bankRowId && ba.bankDate === row.date && Number(ba.amount) === Number(row.amount))
+                  ) : null;
+                  const proofUrl = row.proofUrl || row.linkedTo?.proofUrl || myAlloc?.proofUrl || item.proofUrl || typeData.formData?.[`${item.catId}_${item.itemId || item.id}_buktiUrl`] || '';
                   const targetDate = item.validDate || item.itemDate || ymd;
                   matchedDetails.push({ date: targetDate, name, proofUrl });
                 }
@@ -1022,7 +1086,7 @@ export default function RekonBankTab({
         const foundCat = categories.find(c => cleanName.toLowerCase().startsWith(c.name.toLowerCase()));
         if (foundCat) cleanName = foundCat.name;
         if (cleanName) {
-          matchedDetails.push({ date: row.linkedTo.date, name: cleanName, proofUrl: row.linkedTo.proofUrl || row.proofUrl || '' });
+          matchedDetails.push({ date: row.linkedTo.date, name: cleanName, proofUrl: row.proofUrl || row.linkedTo.proofUrl || '' });
         }
       });
     }
@@ -1064,7 +1128,9 @@ export default function RekonBankTab({
         <span className="text-[11px] text-gray-500 font-normal">Telah dipasangkan dengan:</span>
         {uniqueDetails.map((detail, idx) => {
           const apiItem = (row.apiRefId || detail.apiRefId) ? apiData.find(a => String(a.id) === String(row.apiRefId || detail.apiRefId)) : null;
-          const activeProof = detail.proofUrl || row.proofUrl || apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || (row.transferProof && (row.transferProof.startsWith('http') || row.transferProof.startsWith('data:')) ? row.transferProof : '');
+          // PENTING: Prioritas Utama adalah bukti mutasi baris ini (row.proofUrl atau row.linkedTo.proofUrl)
+          // agar jika data API dibersihkan atau ada transaksi lain, bukti mutasi ini TETAP MENETAP & TIDAK BERUBAH!
+          const activeProof = row.proofUrl || row.linkedTo?.proofUrl || detail.proofUrl || apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || (row.transferProof && (row.transferProof.startsWith('http') || row.transferProof.startsWith('data:')) ? row.transferProof : '');
           return (
             <div key={idx} className="flex flex-col gap-1">
               <span className="font-bold text-indigo-900 leading-snug">
@@ -1726,7 +1792,7 @@ export default function RekonBankTab({
                         value={alloc.apiRefId} 
                         onChange={e => {
                           const selectedId = e.target.value;
-                          const itemFound = apiData.find(d => d.id === selectedId);
+                          const itemFound = apiData.find(d => String(d.id) === String(selectedId));
                           updateAllocation(alloc.id, 'apiRefId', selectedId);
                           if (itemFound) {
                             const itemNominal = itemFound.jumlahTransferNumeric || (typeof itemFound.jumlahTransfer === 'string' ? Number(itemFound.jumlahTransfer.replace(/[^0-9]/g, '')) : itemFound.jumlahTransfer) || 0;
@@ -1736,6 +1802,20 @@ export default function RekonBankTab({
                             if (itemFound.tanggal_transfer) {
                               updateAllocation(alloc.id, 'targetDate', itemFound.tanggal_transfer);
                             }
+                            const foundProof = itemFound.buktiTransferUrl || itemFound.buktiTransferDocUrl || itemFound.pksDriveUrl || itemFound.fileUrl || itemFound.url || '';
+                            if (foundProof) {
+                              updateAllocation(alloc.id, 'proofUrl', foundProof);
+                            }
+                            const foundTenant = itemFound.nama_penyewa || itemFound.namaPerusahaan || '';
+                            if (foundTenant) {
+                              updateAllocation(alloc.id, 'tenant', foundTenant);
+                            }
+                            const foundLoc = itemFound.lokasi_sewa || itemFound.namaProduk || '';
+                            if (foundLoc) {
+                              updateAllocation(alloc.id, 'location', foundLoc);
+                            }
+                          } else if (!selectedId) {
+                            updateAllocation(alloc.id, 'proofUrl', '');
                           }
                         }} 
                         className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white text-indigo-700 font-bold"

@@ -484,6 +484,19 @@ export const reconcileOrphanBankItems = (reports, rows) => {
         if (!r.proofUrl && alloc.proofUrl) r.proofUrl = alloc.proofUrl;
         if (!r.apiRefId && alloc.apiRefId) r.apiRefId = alloc.apiRefId;
         rowsModified = true;
+      } else {
+        if (!r.proofUrl && alloc.proofUrl) {
+          r.proofUrl = alloc.proofUrl;
+          rowsModified = true;
+        }
+        if (!r.apiRefId && alloc.apiRefId) {
+          r.apiRefId = alloc.apiRefId;
+          rowsModified = true;
+        }
+      }
+      if (r.linkedTo && !r.linkedTo.proofUrl && (r.proofUrl || alloc.proofUrl)) {
+        r.linkedTo.proofUrl = r.proofUrl || alloc.proofUrl;
+        rowsModified = true;
       }
     }
   });
@@ -2769,14 +2782,14 @@ export default function App() {
 
                                const typeData = dayData[docKey];
 
-                               const apiItem = safeApis.find(a => a.id === alloc.apiRefId);
-                               const rawProofUrl = apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
+                               const apiItem = safeApis.find(a => String(a.id) === String(alloc.apiRefId));
+                               const rawProofUrl = alloc.proofUrl || apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || bankRow.proofUrl || '';
                                const isBase64Proof = (typeof rawProofUrl === 'string' && rawProofUrl.startsWith('data:image'));
                                // Untuk menjaga performa dan batas 1MB Firestore, URL base64 disimpan pada mutasi bank saja
                                const cleanProofUrl = isBase64Proof ? '' : rawProofUrl;
 
-                               const tenantLabel = apiItem ? (apiItem.nama_penyewa || apiItem.namaPerusahaan || '') : '';
-                               const locationLabel = apiItem ? (apiItem.lokasi_sewa || apiItem.namaProduk || '') : '';
+                               const tenantLabel = alloc.tenant || (apiItem ? (apiItem.nama_penyewa || apiItem.namaPerusahaan || '') : '');
+                               const locationLabel = alloc.location || (apiItem ? (apiItem.lokasi_sewa || apiItem.namaProduk || '') : '');
                                const displayDesc = tenantLabel
                                  ? (locationLabel && locationLabel !== tenantLabel ? `${tenantLabel} - ${locationLabel}` : tenantLabel)
                                  : (alloc.description || bankRow.description || 'Mutasi Bank');
@@ -2819,7 +2832,7 @@ export default function App() {
                                    if (!Array.isArray(existingItem.bankAllocations)) {
                                        existingItem.bankAllocations = [];
                                        if (priorNominal > 0) {
-                                           const existingApi = safeApis.find(a => a.id === existingItem.apiRefId);
+                                           const existingApi = safeApis.find(a => String(a.id) === String(existingItem.apiRefId));
                                            const priorTenant = existingApi ? (existingApi.nama_penyewa || existingApi.namaPerusahaan || '') : (existingItem.itemNote || '');
                                            const priorLoc = existingApi ? (existingApi.lokasi_sewa || existingApi.namaProduk || '') : '';
                                            const priorLabel = priorTenant
@@ -2833,7 +2846,7 @@ export default function App() {
                                                tenant: priorTenant,
                                                location: priorLoc,
                                                apiRefId: existingItem.apiRefId || '',
-                                               proofUrl: ''
+                                               proofUrl: existingItem.proofUrl || ''
                                            });
                                        }
                                    }
@@ -2911,40 +2924,42 @@ export default function App() {
                            });
 
                            let matchedProofUrl = '';
-                           let matchedApiRefIds = [];
-                           allocations.forEach(alloc => {
-                               if (alloc.apiRefId) {
-                                   matchedApiRefIds.push(alloc.apiRefId);
-                                   const apiItem = safeApis.find(a => a.id === alloc.apiRefId);
-                                   const url = apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
-                                   if (url) matchedProofUrl = url;
-                               }
-                           });
+                            let matchedApiRefIds = [];
+                            allocations.forEach(alloc => {
+                                if (alloc.proofUrl) matchedProofUrl = alloc.proofUrl;
+                                if (alloc.apiRefId) {
+                                    matchedApiRefIds.push(alloc.apiRefId);
+                                    const apiItem = safeApis.find(a => String(a.id) === String(alloc.apiRefId));
+                                    const url = alloc.proofUrl || apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
+                                    if (url) matchedProofUrl = url;
+                                }
+                            });
 
-                           const newBankRows = baseBankRows.map((r, idx) => {
+                            const newBankRows = baseBankRows.map((r, idx) => {
                                const isTarget = (targetIndex >= 0 && idx === targetIndex) ||
                                    (bankRow.id && r.id && r.id === bankRow.id) ||
                                    (r.id && r.id === effectiveRowId) ||
                                    (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount));
                                if (isTarget) {
-                                   return { 
-                                       ...r, 
-                                       id: r.id || effectiveRowId,
-                                       status: 'matched', 
-                                       isFromInputBaru: true,
-                                       inputBaruAllocations: createdAllocationsSummary,
-                                       matchedTo: targetSummary,
-                                       linkedTo: { 
-                                           date: primaryTargetDate, 
-                                           dates: distinctTargetDates, 
-                                           groupName: targetSummary, 
-                                           proofUrl: matchedProofUrl || r.proofUrl || '' 
-                                       },
-                                       proofUrl: matchedProofUrl || r.proofUrl || '',
-                                       apiRefId: matchedApiRefIds[0] || r.apiRefId || '',
-                                       apiRefIds: matchedApiRefIds.length > 0 ? matchedApiRefIds : (r.apiRefIds || [])
-                                   };
-                               }
+                                    const finalProofUrl = matchedProofUrl || r.proofUrl || bankRow.proofUrl || '';
+                                    return { 
+                                        ...r, 
+                                        id: r.id || effectiveRowId,
+                                        status: 'matched', 
+                                        isFromInputBaru: true,
+                                        inputBaruAllocations: createdAllocationsSummary,
+                                        matchedTo: targetSummary,
+                                        linkedTo: { 
+                                            date: primaryTargetDate, 
+                                            dates: distinctTargetDates, 
+                                            groupName: targetSummary, 
+                                            proofUrl: finalProofUrl 
+                                        },
+                                        proofUrl: finalProofUrl,
+                                        apiRefId: matchedApiRefIds[0] || r.apiRefId || bankRow.apiRefId || '',
+                                        apiRefIds: matchedApiRefIds.length > 0 ? matchedApiRefIds : (r.apiRefIds || [])
+                                    };
+                                }
                                return r;
                            });
                            
@@ -3053,11 +3068,20 @@ export default function App() {
                        }
                   }}
                   onUpdateBankRow={(rowId, updates) => {
-                      const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
-                      const newBankRows = baseBankRows.map(r => r.id === rowId ? { ...r, ...updates } : r);
-                      setBankRows(newBankRows);
-                      saveToFirebaseDirectly(stateRef.current.allReports, newBankRows);
-                  }}
+                       const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
+                       const newBankRows = baseBankRows.map(r => {
+                           if (r.id === rowId) {
+                               const updated = { ...r, ...updates };
+                               if (updates.proofUrl && updated.linkedTo) {
+                                   updated.linkedTo = { ...updated.linkedTo, proofUrl: updates.proofUrl };
+                               }
+                               return updated;
+                           }
+                           return r;
+                       });
+                       setBankRows(newBankRows);
+                       saveToFirebaseDirectly(stateRef.current.allReports, newBankRows);
+                   }}
                   onUnlinkBankRow={async (bankRow) => {
                      if (isMonthClosed(bankRow?.date) || (bankRow?.linkedTo?.date && isMonthClosed(bankRow.linkedTo.date))) {
                          alert('Periode tanggal ini telah TUTUP BUKU. Status pasangan mutasi bank tidak dapat dibatalkan atau dilepas.');
