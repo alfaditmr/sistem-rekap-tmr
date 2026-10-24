@@ -1053,7 +1053,7 @@ export default function App() {
     if (options.immediate) {
       await pushToFirestore();
     } else {
-      cloudSaveTimerRef.current = setTimeout(pushToFirestore, 100);
+      cloudSaveTimerRef.current = setTimeout(pushToFirestore, 500);
     }
   };
 
