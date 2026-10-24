@@ -16,7 +16,7 @@ export const PEMASARAN_STANDARD_ITEMS = [
   // GRUP 1: 4.1.02.02.12.0001 Pasar Grosir / Toko / Tempat Usaha
   // ==========================================
   {
-    no: 18,
+    no: 1,
     groupId: '4.1.02.02.12.0001',
     name: 'Pedagang Hari Selasa-Sabtu',
     match: (name = '', catName = '', note = '') => {
@@ -29,7 +29,7 @@ export const PEMASARAN_STANDARD_ITEMS = [
     }
   },
   {
-    no: 19,
+    no: 2,
     groupId: '4.1.02.02.12.0001',
     name: 'Pedagang Hari Minggu/Libur Nasional',
     match: (name = '', catName = '', note = '') => {
@@ -41,12 +41,12 @@ export const PEMASARAN_STANDARD_ITEMS = [
     }
   },
   {
-    no: 20,
+    no: 3,
     groupId: '4.1.02.02.12.0001',
     name: 'Pemakaian Lokasi/Tempat Untuk Promo/Penjualan Produk',
     match: (name = '', catName = '', note = '') => {
       const full = `${name} ${catName} ${note}`.toLowerCase();
-      // Jangan menangkap Spanduk atau Banner/Umbul (pos retribusi terpisah No 34 & 35)
+      // Jangan menangkap Spanduk atau Banner/Umbul (pos retribusi terpisah No 12 & 13)
       if (/banner|umbul|spanduk/i.test(full)) return false;
       return /promo|penjualan produk|bazar|booth|stand produk/i.test(full);
     }
@@ -56,121 +56,121 @@ export const PEMASARAN_STANDARD_ITEMS = [
   // GRUP 2: 4.1.02.02.20.0001 Pemanfaatan Aset Daerah
   // ==========================================
   {
-    no: 26,
+    no: 4,
     groupId: '4.1.02.02.20.0001',
     name: 'Film Cerita',
     match: (name = '', catName = '', note = '') => /film cerita|shooting film cerita/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 27,
+    no: 5,
     groupId: '4.1.02.02.20.0001',
     name: 'Film Iklan',
     match: (name = '', catName = '', note = '') => /film iklan|shooting iklan|iklan/i.test(`${name} ${catName} ${note}`) && !/spanduk|banner/i.test(`${name} ${note}`)
   },
   {
-    no: 28,
+    no: 6,
     groupId: '4.1.02.02.20.0001',
     name: 'Film Dokumentasi/Dokumenter',
     match: (name = '', catName = '', note = '') => /dokumenter|dokumentasi/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 29,
+    no: 7,
     groupId: '4.1.02.02.20.0001',
     name: 'Film Keluarga',
     match: (name = '', catName = '', note = '') => /film keluarga|video keluarga/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 30,
+    no: 8,
     groupId: '4.1.02.02.20.0001',
     name: 'Program Televisi',
     match: (name = '', catName = '', note = '') => /program televisi|acara tv|shooting tv|televisi/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 31,
+    no: 9,
     groupId: '4.1.02.02.20.0001',
     name: 'Video Clip',
     match: (name = '', catName = '', note = '') => /video clip|videoclip|klip video/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 32,
+    no: 10,
     groupId: '4.1.02.02.20.0001',
     name: 'Pre-Wedding/Sejenisnya',
     match: (name = '', catName = '', note = '') => /pre-wedding|prewedding|pre wed|foto nikah/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 33,
+    no: 11,
     groupId: '4.1.02.02.20.0001',
     name: 'Pemakaian Lokasi/Tempat Lahan Terbuka',
     match: (name = '', catName = '', note = '') => /lahan terbuka|tempat terbuka|lokasi terbuka/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 34,
+    no: 12,
     groupId: '4.1.02.02.20.0001',
     name: 'Penempatan Spanduk Promosi',
     match: (name = '', catName = '', note = '') => /spanduk/i.test(`${name} ${catName} ${note}`) && !/banner|umbul/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 35,
+    no: 13,
     groupId: '4.1.02.02.20.0001',
     name: 'Penempatan Banner/Umbul Promosi',
     match: (name = '', catName = '', note = '') => /banner|umbul/i.test(`${name} ${catName} ${note}`) && !/spanduk/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 36,
+    no: 14,
     groupId: '4.1.02.02.20.0001',
     name: 'Fasilitas Panggung',
     match: (name = '', catName = '', note = '') => /panggung/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 37,
+    no: 15,
     groupId: '4.1.02.02.20.0001',
     name: 'Fasilitas Gedung Informasi',
     match: (name = '', catName = '', note = '') => /gedung informasi|ruang informasi/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 38,
+    no: 16,
     groupId: '4.1.02.02.20.0001',
     name: 'Fasilitas Gedung Auditorium',
     match: (name = '', catName = '', note = '') => /auditorium|gedung auditorium/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 39,
+    no: 17,
     groupId: '4.1.02.02.20.0001',
     name: 'Pemakaian Sound System',
     match: (name = '', catName = '', note = '') => /sound system|sound/i.test(`${name} ${catName} ${note}`) && !/wireles/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 40,
+    no: 18,
     groupId: '4.1.02.02.20.0001',
     name: 'Pemakaian Wireles',
     match: (name = '', catName = '', note = '') => /wireles|wireless|mic wireless/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 41,
+    no: 19,
     groupId: '4.1.02.02.20.0001',
     name: 'Pelayanan Pengambilan Foto',
     match: (name = '', catName = '', note = '') => (/pengambilan foto|foto/i.test(`${name} ${catName} ${note}`)) && !/pre-wedding|prewedding|satwa/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 42,
+    no: 20,
     groupId: '4.1.02.02.20.0001',
     name: 'Penyediaan Satwa Jinak untuk Berfoto',
     match: (name = '', catName = '', note = '') => /satwa jinak|foto satwa|berfoto satwa/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 43,
+    no: 21,
     groupId: '4.1.02.02.20.0001',
     name: 'Pemutaran Film Satwa (di Luar jadwal pemutaran)',
     match: (name = '', catName = '', note = '') => /pemutaran film|film satwa/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 44,
+    no: 22,
     groupId: '4.1.02.02.20.0001',
     name: 'Pelayanan Pemandu Wisata Berbahasa Indonesia',
     match: (name = '', catName = '', note = '') => /pemandu.*indo|guide.*indo|tour guide.*indo/i.test(`${name} ${catName} ${note}`)
   },
   {
-    no: 45,
+    no: 23,
     groupId: '4.1.02.02.20.0001',
     name: 'Pelayanan Pemandu Wisata Berbahasa Inggris',
     match: (name = '', catName = '', note = '') => /pemandu.*inggris|guide.*inggris|tour guide.*eng/i.test(`${name} ${catName} ${note}`)
@@ -484,7 +484,7 @@ export default function FormatPemasaranReport({
             {/* GRUP 2: PEMANFAATAN ASET DAERAH */}
             <tr>
               <td colSpan={4} className="pt-2 pb-0.5 font-bold text-left leading-snug text-[10pt]">
-                4.1.02.02.20.0001 &nbsp;Retribusi Pemanfaatan Aset Daerah yang Tidak Menganggu Penyelengaraan Tugas dan fungsi Organisasi Perangkat Daerah dan/atau Optimalisasi Aset Daerah dengan Tidak Mengubah Status Kepemilikan Sesuai dengan Ketentuan Peraturan Perundang-undangan
+                4.1.02.02.20.0001 &nbsp;Retribusi Pemanfaatan Aset Daerah
               </td>
             </tr>
             {PEMASARAN_STANDARD_ITEMS.slice(3).map(renderRow)}
