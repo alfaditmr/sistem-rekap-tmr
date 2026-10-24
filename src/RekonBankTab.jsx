@@ -1821,16 +1821,30 @@ export default function RekonBankTab({
                         className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white text-indigo-700 font-bold"
                       >
                         <option value="">-- Tanpa Bukti API --</option>
-                        {apiData.map(d => {
-                          const nominal = d.jumlahTransferNumeric || (typeof d.jumlahTransfer === 'string' ? Number(d.jumlahTransfer.replace(/[^0-9]/g, '')) : d.jumlahTransfer) || 0;
-                          const labelTenant = d.nama_penyewa || d.namaPerusahaan || '';
-                          const labelDetail = d.lokasi_sewa || d.namaProduk || '';
-                          return (
-                            <option key={d.id} value={d.id}>
-                              [{d.tipe_transaksi || d.source}] {labelTenant} - Rp {formatRp(nominal)} {labelDetail ? `(${labelDetail})` : ''}
-                            </option>
-                          );
-                        })}
+                        {(() => {
+                          // Filter bukti API: jangan tampilkan yang sudah dipasangkan agar tidak terjadi double / salah pilih
+                          const availableApis = apiData.filter(d => {
+                            if (String(d.id) === String(alloc.apiRefId)) return true;
+                            // Jangan tampilkan jika sudah dipilih di pecahan alokasi lain pada modal yang sama
+                            const isChosenInOtherAlloc = Array.isArray(splitModal.allocations) && splitModal.allocations.some(other => other.id !== alloc.id && String(other.apiRefId) === String(d.id));
+                            if (isChosenInOtherAlloc) return false;
+                            // Jangan tampilkan jika sudah terpasang di mutasi bank lain atau laporan dashboard
+                            const matchedInfo = getMatchedInfoForApi(d);
+                            if (matchedInfo.isMatched) return false;
+                            return true;
+                          });
+
+                          return availableApis.map(d => {
+                            const nominal = d.jumlahTransferNumeric || (typeof d.jumlahTransfer === 'string' ? Number(d.jumlahTransfer.replace(/[^0-9]/g, '')) : d.jumlahTransfer) || 0;
+                            const labelTenant = d.nama_penyewa || d.namaPerusahaan || '';
+                            const labelDetail = d.lokasi_sewa || d.namaProduk || '';
+                            return (
+                              <option key={d.id} value={d.id}>
+                                [{d.tipe_transaksi || d.source}] {labelTenant} - Rp {formatRp(nominal)} {labelDetail ? `(${labelDetail})` : ''}
+                              </option>
+                            );
+                          });
+                        })()}
                       </select>
                     </div>
                     <div className="w-full md:flex-[0.8]">
