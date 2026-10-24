@@ -41,53 +41,7 @@ export default function RekonBankTab({
     } catch(e) {}
   }, [apiData]);
 
-  // Sinkronisasi & Permanenkan link bukti transfer API ke dalam bankRows
-  // Agar ketika user membersihkan data API, link bukti tetap MENETAP permanen pada mutasi bank
-  useEffect(() => {
-    if (!Array.isArray(apiData) || apiData.length === 0 || !Array.isArray(bankRows) || bankRows.length === 0) return;
-    let modified = false;
-    const newBankRows = bankRows.map(r => {
-      if (!r || (r.status !== 'matched' && r.status !== 'linked')) return r;
-      if (r.proofUrl && r.proofUrl.trim().length > 5 && r.linkedTo?.proofUrl) return r;
 
-      let targetApi = null;
-      if (r.apiRefId) {
-        targetApi = apiData.find(a => String(a.id) === String(r.apiRefId));
-      }
-      if (!targetApi && Array.isArray(r.apiRefIds) && r.apiRefIds.length > 0) {
-        targetApi = apiData.find(a => r.apiRefIds.some(id => String(id) === String(a.id)));
-      }
-      if (!targetApi) {
-        const rYmd = parseYmd(r.date);
-        targetApi = apiData.find(a => {
-          const apiNominal = a.jumlahTransferNumeric || (typeof a.jumlahTransfer === 'string' ? Number(a.jumlahTransfer.replace(/[^0-9]/g, '')) : a.jumlahTransfer) || 0;
-          return Number(r.amount) === Number(apiNominal) && (a.tanggal_transfer === rYmd || a.tanggalTransfer === rYmd);
-        });
-      }
-
-      if (targetApi) {
-        const foundProof = targetApi.buktiTransferUrl || targetApi.buktiTransferDocUrl || targetApi.pksDriveUrl || targetApi.fileUrl || targetApi.url || '';
-        if (foundProof) {
-          modified = true;
-          return {
-            ...r,
-            proofUrl: r.proofUrl || foundProof,
-            apiRefId: r.apiRefId || targetApi.id,
-            linkedTo: r.linkedTo ? { ...r.linkedTo, proofUrl: r.linkedTo.proofUrl || foundProof } : r.linkedTo
-          };
-        }
-      }
-      return r;
-    });
-
-    if (modified) {
-      if (typeof onSaveBankRows === 'function') {
-        onSaveBankRows(newBankRows);
-      } else if (typeof setBankRows === 'function') {
-        setBankRows(newBankRows);
-      }
-    }
-  }, [apiData, bankRows, onSaveBankRows, setBankRows]);
   const [loadingApi, setLoadingApi] = useState(false);
   const [apiDate, setApiDate] = useState(new Date().toISOString().split('T')[0]);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
