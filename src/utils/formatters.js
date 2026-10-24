@@ -19,13 +19,19 @@ export const safeString = (val) => {
 export const sanitizeForFirestore = (data) => {
   if (data === undefined) return null;
   
-  // 1. Bersihkan undefined, string data: URI, blob:, dan semua string raksasa (> 500 karakter).
-  // Semua string > 500 karakter dipastikan adalah sampah base64 gambar yang menyebabkan Firestore menolak dokumen (> 1 MB).
+  // 1. Bersihkan undefined, string data: URI, blob:, dan sampah base64 gambar raksasa (> 500 karakter non-URL atau > 3000 karakter).
+  // Menjaga agar link bukti transfer valid (Google Drive, Cloud Storage, dll) tetap aman dan tidak terpotong.
   let sanitized = JSON.parse(JSON.stringify(data, (key, value) => {
     if (value === undefined) return null;
     if (typeof value === 'string') {
       const trimmed = value.trim();
-      if (trimmed.startsWith('data:') || trimmed.startsWith('blob:') || trimmed.length > 500) {
+      const isHttpUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://');
+      if (
+        trimmed.startsWith('data:') || 
+        trimmed.startsWith('blob:') || 
+        (!isHttpUrl && trimmed.length > 500) ||
+        trimmed.length > 3000
+      ) {
         return '';
       }
     }

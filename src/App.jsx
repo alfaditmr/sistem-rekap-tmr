@@ -919,8 +919,13 @@ export default function App() {
 
     if (!user || !db) return;
 
-    // 4. Sinkronkan Delta Partisi Bulanan ke Firestore Cloud (< 0.5 detik)
+    // 4. Sinkronkan Delta Partisi Bulanan ke Firestore Cloud (Debounce 0.5 detik)
     const pushToFirestore = async () => {
+      if (isSavingRef.current) {
+        if (cloudSaveTimerRef.current) clearTimeout(cloudSaveTimerRef.current);
+        cloudSaveTimerRef.current = setTimeout(pushToFirestore, 250);
+        return;
+      }
       isSavingRef.current = true;
       setSyncStatus('syncing');
       try {
@@ -1687,18 +1692,22 @@ export default function App() {
     await pullLatestFromCloud(true);
   };
 
+  const lastWakeupSyncRef = useRef(Date.now());
+
   useEffect(() => {
     const handleWakeup = () => {
-      // Saat tab kembali dibuka/difokuskan, sinkronkan data terbaru dari server
-      if ((document.visibilityState === 'visible' || document.hasFocus()) && user && db && !isSavingRef.current) {
-        pullLatestFromCloud();
+      // Saat tab kembali dibuka setelah lama tidak aktif (> 60 detik), sinkronkan data terbaru dari server
+      const now = Date.now();
+      if (document.visibilityState === 'visible' && user && db && !isSavingRef.current) {
+        if (now - lastWakeupSyncRef.current > 60000) {
+          lastWakeupSyncRef.current = now;
+          pullLatestFromCloud();
+        }
       }
     };
     document.addEventListener('visibilitychange', handleWakeup);
-    window.addEventListener('focus', handleWakeup);
     return () => {
       document.removeEventListener('visibilitychange', handleWakeup);
-      window.removeEventListener('focus', handleWakeup);
     };
   }, [user]);
 
