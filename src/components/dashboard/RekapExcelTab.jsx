@@ -17,7 +17,9 @@ import {
   formatRp,
   getLocalYMD,
   formatTanggalTtd,
-  formatDetailsTooltip
+  formatDetailsTooltip,
+  getActiveItemKey,
+  parseYmd
 } from '../../utils/formatters';
 import {
   getPengunjungTmrData,
@@ -262,7 +264,7 @@ export default function RekapExcelTab({
     return { columnStructure, reportRows: finalRows, grandTotalPerDay };
   };
 
-  // 2. Data Generator: Rekonsiliasi Harian
+  // 2. Data Generator: Rekonsiliasi Harian (E-Car, Foto Satwa, & Kategori Lain)
   const generateRekonData = (catName) => {
     const [yearStr, monthStr] = excelReportMonth.split('-');
     const year = parseInt(yearStr, 10);
@@ -270,89 +272,215 @@ export default function RekapExcelTab({
     const daysInMonth = new Date(year, month, 0).getDate();
     const shortDays = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 
-    let catId = null;
-    const lowerTarget = catName.toLowerCase();
-    const cat = categories.find((c) => {
+    const lowerTarget = (catName || '').toLowerCase().trim();
+    const isEcarTarget =
+      lowerTarget.includes('ecar') ||
+      lowerTarget.includes('e-car') ||
+      lowerTarget.includes('mobil listrik');
+    const isFotoTarget = lowerTarget.includes('foto');
+
+    // 1. Identifikasi ID kategori yang cocok dari master categories
+    const matchingCatIds = new Set();
+    categories.forEach((c) => {
       const cName = (c.name || '').toLowerCase();
-      if (lowerTarget.includes('ecar') || lowerTarget.includes('e-car')) {
-        return cName.includes('ecar') || cName.includes('e-car') || cName.includes('mobil listrik');
-      }
-      if (lowerTarget.includes('foto')) return cName.includes('foto');
-      if (lowerTarget.includes('old gate') && cName.includes('old gate')) return true;
-      if (lowerTarget.includes('online') && cName.includes('online')) return true;
-      if (
+      let match = false;
+      if (isEcarTarget) {
+        match = cName.includes('ecar') || cName.includes('e-car') || cName.includes('mobil listrik');
+      } else if (isFotoTarget) {
+        match = cName.includes('foto');
+      } else if (lowerTarget.includes('old gate') && cName.includes('old gate')) {
+        match = true;
+      } else if (lowerTarget.includes('online') && cName.includes('online')) {
+        match = true;
+      } else if (
         (lowerTarget.includes('tvm') || lowerTarget.includes('vending') || lowerTarget.includes('vinding')) &&
         (cName.includes('tvm') || cName.includes('vending') || cName.includes('vinding'))
-      )
-        return true;
-      if (lowerTarget.includes('new gate') && cName.includes('new gate')) return true;
-      return cName === lowerTarget;
+      ) {
+        match = true;
+      } else if (lowerTarget.includes('new gate') && cName.includes('new gate')) {
+        match = true;
+      } else if (cName === lowerTarget) {
+        match = true;
+      }
+      if (match) matchingCatIds.add(c.id);
     });
-    if (cat) catId = cat.id;
 
+    // Helper pencocokan item atau key
+    const isItemMatch = (item, key = '', catNameStr = '') => {
+      if (item && item.catId && matchingCatIds.has(item.catId)) return true;
+      const combined = `${catNameStr} ${item?.name || ''} ${item?.itemNote || ''} ${key}`.toLowerCase();
+      if (isEcarTarget) {
+        return combined.includes('e-car') || combined.includes('ecar') || combined.includes('mobil listrik');
+      }
+      if (isFotoTarget) {
+        return combined.includes('foto');
+      }
+      if (matchingCatIds.size > 0 && item?.catId && matchingCatIds.has(item.catId)) return true;
+      return combined.includes(lowerTarget);
+    };
+
+    // 2. Siapkan slot harian untuk seluruh hari di bulan terpilih (1..daysInMonth)
+    const dayMap = {};
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateObj = new Date(year, month - 1, d);
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      dayMap[dateStr] = {
+        day: d,
+        dayOfWeek: dateObj.getDay(),
+        dateStr,
+        dailyNominal: 0,
+        rawPelimpahan: '',
+        rawOfficer: '',
+        uraian: '',
+        docTypeKey: 'utama',
+        docDateStr: dateStr,
+        susulanList: []
+      };
+    }
+
+    // 3. Pindai SEMUA laporan di allReports (agar transaksi di dokumen 'lain', 'lain_1', 'lain_2', maupun 'utama' terbaca)
+    Object.keys(allReports || {}).forEach((docDateStr) => {
+      const dayAll = allReports[docDateStr];
+      if (!dayAll || typeof dayAll !== 'object') return;
+
+      Object.keys(dayAll).forEach((docTypeKey) => {
+        const typeData = dayAll[docTypeKey];
+        if (!typeData || !typeData.formData) return;
+
+        const docSigDate = typeData.signatureDate || docDateStr;
+        const docOfficer = typeData.rekonOfficer || rekonOfficerName;
+        const processedKeys = new Set();
+
+        // A. Cek activeItems (data terstruktur di dokumen)
+        if (Array.isArray(typeData.activeItems) && typeData.activeItems.length > 0) {
+          typeData.activeItems.forEach((item) => {
+            if (!item) return;
+            const cat = categories.find((c) => c.id === item.catId);
+            const catNameStr = cat?.name || '';
+
+            const inputKey = getActiveItemKey(
+              item.catId,
+              item.id || item.itemId || 'direct',
+              item.isSusulan,
+              item.validDate,
+              item.itemDate,
+              item.itemNote
+            );
+
+            if (!isItemMatch(item, inputKey, catNameStr)) return;
+
+            processedKeys.add(inputKey);
+            const val = Number(typeData.formData[inputKey]) || 0;
+            if (val <= 0) return;
+
+            // Tanggal transaksi operasional (utamakan itemDate jika ada)
+            let transDate = item.itemDate || (item.isSusulan && item.validDate ? item.validDate : docDateStr);
+
+            // Tanggal pelimpahan / masuk bank
+            let rawPelimpahan = '';
+            if (Array.isArray(item.bankAllocations) && item.bankAllocations.length > 0 && item.bankAllocations[0].bankDate) {
+              rawPelimpahan = parseYmd ? parseYmd(item.bankAllocations[0].bankDate) : item.bankAllocations[0].bankDate.split(' ')[0];
+            } else if (item.bankMatchDate) {
+              rawPelimpahan = parseYmd ? parseYmd(item.bankMatchDate) : item.bankMatchDate.split(' ')[0];
+            } else if (item.isSusulan && typeData.susulanMeta?.[inputKey]?.signatureDate) {
+              rawPelimpahan = typeData.susulanMeta[inputKey].signatureDate;
+            } else {
+              rawPelimpahan = docSigDate;
+            }
+
+            const rawOfficer =
+              (item.isSusulan && typeData.susulanMeta?.[inputKey]?.rekonOfficer) ||
+              typeData.rekonOfficer ||
+              rekonOfficerName;
+
+            // Masukkan ke slot hari yang sesuai dengan tanggal transaksinya
+            if (dayMap[transDate]) {
+              const slot = dayMap[transDate];
+              slot.docTypeKey = docTypeKey;
+              slot.docDateStr = docDateStr;
+
+              if (item.isSusulan) {
+                slot.susulanList.push({
+                  keys: [inputKey],
+                  val,
+                  validDate: item.validDate || transDate,
+                  susSigDate: rawPelimpahan,
+                  susOfficer: rawOfficer
+                });
+              } else {
+                slot.dailyNominal += val;
+                if (!slot.rawPelimpahan) slot.rawPelimpahan = rawPelimpahan;
+                if (!slot.rawOfficer) slot.rawOfficer = rawOfficer;
+                if (item.itemNote && !slot.uraian) slot.uraian = item.itemNote;
+              }
+            }
+          });
+        }
+
+        // B. Cek sisa kunci di formData (jika activeItems kosong atau key belum tercover)
+        Object.keys(typeData.formData).forEach((key) => {
+          if (processedKeys.has(key)) return;
+          const val = Number(typeData.formData[key]) || 0;
+          if (val <= 0) return;
+
+          let catNameStr = '';
+          const parts = key.split('_');
+          if (parts.length >= 2 && parts[0] === 'cat') {
+            const cat = categories.find((c) => c.id === `${parts[0]}_${parts[1]}`);
+            if (cat) catNameStr = cat.name;
+          }
+
+          if (!isItemMatch(null, key, catNameStr)) return;
+
+          let transDate = docDateStr;
+          const dateMatch = key.match(/_date_(\d{4}-\d{2}-\d{2})/);
+          if (dateMatch) transDate = dateMatch[1];
+
+          const isSus = key.includes('_susulan_');
+          const susMatch = key.match(/_susulan_(\d{4}-\d{2}-\d{2})/);
+          if (isSus && susMatch) transDate = susMatch[1];
+
+          if (dayMap[transDate]) {
+            const slot = dayMap[transDate];
+            slot.docTypeKey = docTypeKey;
+            slot.docDateStr = docDateStr;
+
+            if (isSus) {
+              const susMeta = typeData.susulanMeta?.[key] || {};
+              slot.susulanList.push({
+                keys: [key],
+                val,
+                validDate: susMatch ? susMatch[1] : transDate,
+                susSigDate: susMeta.signatureDate || docSigDate,
+                susOfficer: susMeta.rekonOfficer || docOfficer
+              });
+            } else {
+              slot.dailyNominal += val;
+              if (!slot.rawPelimpahan) slot.rawPelimpahan = docSigDate;
+              if (!slot.rawOfficer) slot.rawOfficer = docOfficer;
+            }
+          }
+        });
+      });
+    });
+
+    // 4. Susun baris output tabel rekon
     const rows = [];
     let grandTotal = 0;
     let rowNum = 1;
 
     for (let d = 1; d <= daysInMonth; d++) {
-      const dateObj = new Date(year, month - 1, d);
       const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const dayAllTypes = allReports[dateStr];
+      const slot = dayMap[dateStr];
 
-      let dailyNominal = 0;
-      let susulanList = [];
-      let signatureDate = '';
-      let rekonOfficer = '';
-
-      if (dayAllTypes && dayAllTypes['utama']) {
-        const typeData = dayAllTypes['utama'];
-        if (typeData && typeData.formData) {
-          signatureDate = typeData.signatureDate || '';
-          rekonOfficer = typeData.rekonOfficer || '';
-
-          Object.keys(typeData.formData).forEach((key) => {
-            const val = Number(typeData.formData[key]) || 0;
-            if (val > 0) {
-              const matchThisCat = catId ? key.startsWith(`${catId}_`) : (
-                lowerTarget.includes('ecar') ? /ecar|e-car|mobil/i.test(key) :
-                lowerTarget.includes('foto') ? /foto/i.test(key) : true
-              );
-
-              if (matchThisCat) {
-                if (key.includes('_susulan_')) {
-                  const match = key.match(/_susulan_(\d{4}-\d{2}-\d{2})/);
-                  const validDate = match ? match[1] : '';
-
-                  const susulanMeta = typeData.susulanMeta?.[key] || {};
-                  const susSigDate = susulanMeta.signatureDate || validDate || getLocalYMD();
-                  const susOfficer = susulanMeta.rekonOfficer || rekonOfficerName;
-
-                  const existingSus = susulanList.find((s) => s.validDate === validDate);
-                  if (existingSus) {
-                    existingSus.val += val;
-                    existingSus.keys.push(key);
-                  } else {
-                    susulanList.push({ keys: [key], val, validDate, susSigDate, susOfficer });
-                  }
-                } else {
-                  dailyNominal += val;
-                }
-              }
-            }
-          });
-        }
-      }
-
-      let rawPelimpahan = '';
-      let rawOfficer = '';
       let formattedPelimpahan = '';
       let keterangan = '';
 
-      if (dailyNominal > 0) {
-        rawPelimpahan = signatureDate || getLocalYMD();
-        rawOfficer = rekonOfficer || rekonOfficerName;
+      if (slot.dailyNominal > 0) {
+        if (!slot.rawPelimpahan) slot.rawPelimpahan = dateStr;
+        if (!slot.rawOfficer) slot.rawOfficer = rekonOfficerName;
 
-        const parts = rawPelimpahan.split('-');
+        const parts = slot.rawPelimpahan.split('-');
         if (parts.length === 3) {
           formattedPelimpahan = `${parts[2]}-${parts[1]}-${parts[0]}`;
           const sigYear = parseInt(parts[0], 10);
@@ -363,33 +491,34 @@ export default function RekapExcelTab({
         }
       }
 
-      if (dateObj.getDay() === 1 && dailyNominal === 0 && susulanList.length === 0) {
+      if (slot.dayOfWeek === 1 && slot.dailyNominal === 0 && slot.susulanList.length === 0) {
         keterangan = 'TMR Tutup ( Libur satwa )';
       }
 
       rows.push({
         no: rowNum++,
-        hari: shortDays[dateObj.getDay()],
+        hari: shortDays[slot.dayOfWeek],
         tanggal: `${String(d).padStart(2, '0')}-${String(month).padStart(2, '0')}-${year}`,
         dateStr: dateStr,
+        docDateStr: slot.docDateStr,
+        docTypeKey: slot.docTypeKey,
         isSusulan: false,
         susulanKeys: null,
-        uraian: '',
-        nominal: dailyNominal,
-        rawPelimpahan: rawPelimpahan,
-        rawOfficer: rawOfficer,
+        uraian: slot.uraian,
+        nominal: slot.dailyNominal,
+        rawPelimpahan: slot.rawPelimpahan,
+        rawOfficer: slot.rawOfficer,
         pelimpahan: formattedPelimpahan,
         keterangan: keterangan
       });
-      grandTotal += dailyNominal;
+      grandTotal += slot.dailyNominal;
 
-      susulanList.forEach((sus) => {
+      // Sisipkan baris susulan jika ada
+      slot.susulanList.forEach((sus) => {
         let susPelimpahan = '';
         let susKet = '';
-        let sRawPelimpahan = sus.susSigDate || getLocalYMD();
-        let sRawOfficer = sus.susOfficer || rekonOfficerName;
-
-        const p = sRawPelimpahan.split('-');
+        const sRaw = sus.susSigDate || dateStr;
+        const p = sRaw.split('-');
         if (p.length === 3) {
           susPelimpahan = `${p[2]}-${p[1]}-${p[0]}`;
           const sigYear = parseInt(p[0], 10);
@@ -404,12 +533,14 @@ export default function RekapExcelTab({
           hari: '',
           tanggal: '',
           dateStr: dateStr,
+          docDateStr: slot.docDateStr,
+          docTypeKey: slot.docTypeKey,
           isSusulan: true,
           susulanKeys: sus.keys,
           uraian: 'Susulan',
           nominal: sus.val,
-          rawPelimpahan: sRawPelimpahan,
-          rawOfficer: sRawOfficer,
+          rawPelimpahan: sRaw,
+          rawOfficer: sus.susOfficer || rekonOfficerName,
           pelimpahan: susPelimpahan,
           keterangan: susKet
         });
@@ -1040,7 +1171,7 @@ export default function RekapExcelTab({
                                   type="date"
                                   value={r.rawPelimpahan}
                                   onChange={(e) =>
-                                    handleUpdateRekonRow(r.dateStr, r.isSusulan, r.susulanKeys, 'signatureDate', e.target.value)
+                                    handleUpdateRekonRow(r.docDateStr || r.dateStr, r.isSusulan, r.susulanKeys, 'signatureDate', e.target.value, r.docTypeKey)
                                   }
                                   className="bg-transparent border border-transparent hover:border-gray-200 text-center outline-none cursor-pointer focus:ring-1 focus:ring-indigo-500 rounded px-1 py-0.5 text-xs text-gray-800 font-mono w-[115px] m-0"
                                 />
@@ -1048,7 +1179,7 @@ export default function RekapExcelTab({
                                   type="text"
                                   value={r.rawOfficer}
                                   onChange={(e) =>
-                                    handleUpdateRekonRow(r.dateStr, r.isSusulan, r.susulanKeys, 'rekonOfficer', e.target.value)
+                                    handleUpdateRekonRow(r.docDateStr || r.dateStr, r.isSusulan, r.susulanKeys, 'rekonOfficer', e.target.value, r.docTypeKey)
                                   }
                                   placeholder="Petugas Rekon"
                                   className="bg-transparent border-b-2 border-yellow-400 outline-none focus:border-indigo-500 rounded-none px-1 text-[10px] font-bold text-indigo-700 text-center w-[100px] placeholder-indigo-300 m-0"

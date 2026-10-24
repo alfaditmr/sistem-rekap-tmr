@@ -1785,10 +1785,11 @@ export default function App() {
     saveState({ allReports: newReports }, { immediate: false });
   };
 
-  const handleUpdateRekonRow = (dateStr, isSusulan, susulanKeys, field, value) => {
+  const handleUpdateRekonRow = (dateStr, isSusulan, susulanKeys, field, value, docTypeKey = 'utama') => {
     const baseReports = stateRef.current.allReports;
     const dayData = baseReports[dateStr] || {};
-    const typeData = dayData['utama'] || { sequence: '', signatureDate: dateStr, activeItems: [], formData: {} };
+    const targetKey = docTypeKey && dayData[docTypeKey] ? docTypeKey : (dayData['utama'] ? 'utama' : Object.keys(dayData)[0] || 'utama');
+    const typeData = dayData[targetKey] || { sequence: '', signatureDate: dateStr, activeItems: [], formData: {} };
     let newReports;
     
     if (isSusulan && Array.isArray(susulanKeys)) {
@@ -1809,7 +1810,7 @@ export default function App() {
            ...baseReports,
            [dateStr]: {
                ...dayData,
-               ['utama']: {
+               [targetKey]: {
                    ...typeData,
                    susulanMeta: newSusulanMeta
                }
@@ -1820,7 +1821,7 @@ export default function App() {
             ...baseReports,
             [dateStr]: {
                 ...dayData,
-                ['utama']: {
+                [targetKey]: {
                     ...typeData,
                     [field]: value
                 }
