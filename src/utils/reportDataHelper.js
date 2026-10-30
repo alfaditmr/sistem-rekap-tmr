@@ -597,26 +597,40 @@ export const FASILITAS_COLUMNS = [
   { key: 'lain_lain', label: 'Lain - Lain', shortLabel: 'Lain-lain' }
 ];
 
-const formatDmy = (dateStr) => {
+export const parseToYmd = (dateStr) => {
   if (!dateStr) return '';
-  const clean = String(dateStr).trim().split(' ')[0].split('T')[0];
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) return clean;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
-    const [y, m, d] = clean.split('-');
-    return `${d}/${m}/${y}`;
+  const str = String(dateStr).trim();
+  // Match YYYY-MM-DD
+  const mYmd = str.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+  if (mYmd) {
+    return `${mYmd[1]}-${String(mYmd[2]).padStart(2, '0')}-${String(mYmd[3]).padStart(2, '0')}`;
   }
-  return clean;
+  // Match DD/MM/YYYY or DD-MM-YYYY
+  const mDmy = str.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (mDmy) {
+    return `${mDmy[3]}-${String(mDmy[2]).padStart(2, '0')}-${String(mDmy[1]).padStart(2, '0')}`;
+  }
+  // Try Date object for GMT / localized strings
+  try {
+    const d = new Date(str.replace(/WIB|WITA|WIT/i, '').trim());
+    if (!isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+  } catch (e) {}
+  return str.split(' ')[0].split('T')[0];
 };
 
-const parseToYmd = (dateStr) => {
+export const formatDmy = (dateStr) => {
   if (!dateStr) return '';
-  const clean = String(dateStr).trim().split(' ')[0].split('T')[0];
-  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) {
-    const [d, m, y] = clean.split('/');
-    return `${y}-${m}-${d}`;
+  const ymd = parseToYmd(dateStr);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+    const [y, m, d] = ymd.split('-');
+    return `${d}/${m}/${y}`;
   }
-  return clean;
+  return String(dateStr).trim();
 };
 
 export const classifyFacilityItem = (info) => {
@@ -732,7 +746,7 @@ export const getPemakaianTempatData = (
   const processedApiIds = new Set();
   const processedBankRowIds = new Set();
 
-  // Helper untuk mencari API match
+  // Helper untuk mencari API match secara cerdas & bertingkat
   const findApiMatch = (apiRefId, amount, dateStr, tenantName) => {
     if (apiRefId) {
       const found = apiFasilitas.find(
@@ -743,9 +757,43 @@ export const getPemakaianTempatData = (
       );
       if (found) return found;
     }
-    // Match by amount & date
-    if (amount && dateStr) {
-      const ymd = parseToYmd(dateStr);
+
+    const ymd = dateStr ? parseToYmd(dateStr) : '';
+    const cleanTenant = (tenantName || '').toLowerCase().replace(/^(pt|cv|bapak|ibu|bpk|rombonan|rombongan)\.?\s+/i, '').trim();
+
+    // 1. Match by tenant name & amount
+    if (cleanTenant.length > 2 && amount) {
+      const found = apiFasilitas.find((a) => {
+        const aNom = Number(a.jumlahTransferNumeric || a.jumlahTransfer || a.total_biaya || 0);
+        const aName = (a.nama_penyewa || '').toLowerCase();
+        const matchesName = aName.includes(cleanTenant) || cleanTenant.includes(aName);
+        return matchesName && Math.abs(aNom - amount) < 1;
+      });
+      if (found) return found;
+    }
+
+    // 2. Match by tenant name & date
+    if (cleanTenant.length > 2 && ymd) {
+      const found = apiFasilitas.find((a) => {
+        const aTgl = parseToYmd(a.tanggal_transfer || a.tanggalTransfer || a.tanggal_sewa);
+        const aName = (a.nama_penyewa || '').toLowerCase();
+        const matchesName = aName.includes(cleanTenant) || cleanTenant.includes(aName);
+        return matchesName && aTgl === ymd;
+      });
+      if (found) return found;
+    }
+
+    // 3. Match by tenant name alone (if length > 3)
+    if (cleanTenant.length > 3) {
+      const found = apiFasilitas.find((a) => {
+        const aName = (a.nama_penyewa || '').toLowerCase();
+        return aName.includes(cleanTenant) || cleanTenant.includes(aName);
+      });
+      if (found) return found;
+    }
+
+    // 4. Match by amount & date
+    if (amount && ymd) {
       const found = apiFasilitas.find((a) => {
         const aTgl = parseToYmd(a.tanggal_transfer || a.tanggalTransfer || a.tanggal_sewa);
         const aNom = Number(a.jumlahTransferNumeric || a.jumlahTransfer || a.total_biaya || 0);
@@ -753,20 +801,11 @@ export const getPemakaianTempatData = (
       });
       if (found) return found;
     }
-    // Match by tenant name if exists
-    if (tenantName && tenantName.length > 3) {
-      const tLow = tenantName.toLowerCase();
-      const found = apiFasilitas.find(
-        (a) =>
-          (a.nama_penyewa || '').toLowerCase().includes(tLow) ||
-          tLow.includes((a.nama_penyewa || '').toLowerCase())
-      );
-      if (found) return found;
-    }
+
     return null;
   };
 
-  // 1. Ekstrak dari allReports (Input STSU Harian)
+  // 1. Ekstrak dari allReports (Data yang sudah diinput resmi ke STSU Harian)
   Object.keys(allReports || {})
     .sort()
     .forEach((dateStr) => {
@@ -801,7 +840,7 @@ export const getPemakaianTempatData = (
                   /fasilitas|panggung|lahan|tempat|sound|wireless|auditorium|gazebo|lapangan|gedung|sewa/i.test(
                     target
                   ) &&
-                  !/promo produk/i.test(target)
+                  !/promo produk|banner|spanduk|sampling|selling/i.test(target)
                 ) {
                   // Periksa apakah item memiliki rincian alokasi mutasi bank
                   if (
@@ -822,7 +861,7 @@ export const getPemakaianTempatData = (
                         apiMatch?.tanggal_transfer || apiMatch?.tanggalTransfer || ba.bankDate || dateStr
                       );
                       const rawTglPakai = parseToYmd(
-                        apiMatch?.tanggal_sewa || apiMatch?.tanggalPemakaian || ba.tglEvent || activeItem.itemDate || rawTglBayar
+                        apiMatch?.tanggal_sewa || apiMatch?.tanggalPemakaian || ba.tglEvent || ba.tanggal_sewa || (activeItem?.itemDate !== dateStr ? activeItem?.itemDate : null) || rawTglBayar
                       );
                       const lokasi = (apiMatch?.lokasi_sewa || ba.location || activeItem.itemNote || '').trim();
                       const luas = Number(apiMatch?.luas_lahan || ba.luas_lahan || 0);
@@ -863,7 +902,7 @@ export const getPemakaianTempatData = (
                       apiMatch?.tanggal_transfer || apiMatch?.tanggalTransfer || dateStr
                     );
                     const rawTglPakai = parseToYmd(
-                      apiMatch?.tanggal_sewa || apiMatch?.tanggalPemakaian || activeItem?.itemDate || rawTglBayar
+                      apiMatch?.tanggal_sewa || apiMatch?.tanggalPemakaian || (activeItem?.itemDate !== dateStr ? activeItem?.itemDate : null) || rawTglBayar
                     );
                     const lokasi = (apiMatch?.lokasi_sewa || activeItem?.location || itemNote || '').trim();
                     const luas = Number(apiMatch?.luas_lahan || 0);
@@ -900,15 +939,21 @@ export const getPemakaianTempatData = (
       }
     });
 
-  // 2. Gabungkan dengan Bank Rows yang belum masuk allReports
+  // 2. Gabungkan dengan Bank Rows yang SUDAH DIPASANGKAN dan belum masuk allReports
   if (Array.isArray(bankRows)) {
     bankRows.forEach((row) => {
       if (processedBankRowIds.has(row.id)) return;
+      if (row.apiRefId && processedApiIds.has(String(row.apiRefId))) return;
+
       const rowYmd = parseToYmd(row.date);
       if (!rowYmd.startsWith(monthStr)) return;
 
-      const matchedTo = (row.matchedTo || '').toLowerCase();
-      if (/fasilitas|lahan|tempat|panggung|auditorium|wireles/i.test(matchedTo)) {
+      // Hanya data yang SUDAH DIPASANGKAN (matched atau linked)
+      const isPaired = row.status === 'matched' || row.status === 'linked' || Boolean(row.matchedTo);
+      if (!isPaired) return;
+
+      const matchedTo = (row.matchedTo || row.category || '').toLowerCase();
+      if (/fasilitas|lahan|tempat|panggung|auditorium|wireles|gazebo/i.test(matchedTo) && !/promo produk|banner|spanduk|sampling|selling/i.test(matchedTo)) {
         const amt = Number(row.amount || 0);
         if (amt <= 0) return;
 
@@ -917,13 +962,13 @@ export const getPemakaianTempatData = (
 
         const penyewa = (apiMatch?.nama_penyewa || row.tenant || row.description || 'Penyewa Fasilitas').trim();
         const rawTglBayar = parseToYmd(apiMatch?.tanggal_transfer || apiMatch?.tanggalTransfer || rowYmd);
-        const rawTglPakai = parseToYmd(apiMatch?.tanggal_sewa || apiMatch?.tanggalPemakaian || row.tglEvent || rawTglBayar);
+        const rawTglPakai = parseToYmd(apiMatch?.tanggal_sewa || apiMatch?.tanggalPemakaian || row.tglEvent || (row.itemDate !== rowYmd ? row.itemDate : null) || rawTglBayar);
         const lokasi = (apiMatch?.lokasi_sewa || row.location || '').trim();
         const luas = Number(apiMatch?.luas_lahan || 0);
 
         const classification = classifyFacilityItem({
           catName: 'Pemakaian Fasilitas',
-          itemName: row.matchedTo,
+          itemName: row.matchedTo || 'Sewa Fasilitas',
           lokasi,
           note: `${row.description || ''} ${penyewa}`,
           nominal: amt,
@@ -947,54 +992,6 @@ export const getPemakaianTempatData = (
       }
     });
   }
-
-  // 3. Masukkan transaksi dari API Tarik Fasilitas untuk bulan ini yang belum ada di laporan
-  apiFasilitas.forEach((api) => {
-    const apiIdStr = String(api.id || api.docId || api.id_sewa || '');
-    if (processedApiIds.has(apiIdStr)) return;
-
-    const tglTf = parseToYmd(api.tanggal_transfer || api.tanggalTransfer);
-    const tglSewa = parseToYmd(api.tanggal_sewa || api.tanggalPemakaian);
-
-    // Transaksi relevan jika tanggal bayar di bulan ini ATAU tanggal sewa di bulan ini
-    const isThisMonth =
-      (tglTf && tglTf.startsWith(monthStr)) ||
-      (!tglTf && tglSewa && tglSewa.startsWith(monthStr));
-    if (!isThisMonth) return;
-
-    const amt = Number(api.jumlahTransferNumeric || api.jumlahTransfer || api.total_biaya || 0);
-    if (amt <= 0) return;
-
-    const penyewa = (api.nama_penyewa || '-').trim();
-    const rawTglBayar = tglTf || tglSewa || `${monthStr}-01`;
-    const rawTglPakai = tglSewa || rawTglBayar;
-    const lokasi = (api.lokasi_sewa || '').trim();
-    const luas = Number(api.luas_lahan || 0);
-
-    const classification = classifyFacilityItem({
-      catName: api.kategori || 'Pemakaian Fasilitas',
-      itemName: api.tipe_transaksi || 'Sewa Fasilitas',
-      lokasi,
-      note: `${api.keterangan || ''} ${api.keterangan_transaksi || ''}`,
-      nominal: amt,
-      luas_lahan: luas
-    });
-
-    const facilities = {};
-    facilities[classification.key] = classification.value;
-
-    rawRows.push({
-      id: `api_${apiIdStr}`,
-      apiRefId: apiIdStr,
-      rawTglBayar,
-      rawTglPakai,
-      penyewa: penyewa || '-',
-      lokasi,
-      keterangan: lokasi || api.keterangan || 'Sewa Fasilitas',
-      facilities,
-      nominal: amt
-    });
-  });
 
   // 4. Urutkan berdasarkan tanggal bayar (rawTglBayar ASC), lalu nama penyewa
   rawRows.sort((a, b) => {
@@ -1099,8 +1096,43 @@ export const getPromoMediaData = (
       );
       if (found) return found;
     }
-    if (amount && dateStr) {
-      const ymd = parseToYmd(dateStr);
+
+    const ymd = dateStr ? parseToYmd(dateStr) : '';
+    const cleanTenant = (tenantName || '').toLowerCase().replace(/^(pt|cv|bapak|ibu|bpk|rombonan|rombongan)\.?\s+/i, '').trim();
+
+    // 1. Match by tenant name & amount
+    if (cleanTenant.length > 2 && amount) {
+      const found = apiPromo.find((a) => {
+        const aNom = Number(a.jumlahTransferNumeric || a.jumlahTransfer || a.totalBiaya || 0);
+        const aName = (a.namaPerusahaan || a.nama_penyewa || a.namaPenandaTangan || '').toLowerCase();
+        const matchesName = aName.includes(cleanTenant) || cleanTenant.includes(aName);
+        return matchesName && Math.abs(aNom - amount) < 1;
+      });
+      if (found) return found;
+    }
+
+    // 2. Match by tenant name & date
+    if (cleanTenant.length > 2 && ymd) {
+      const found = apiPromo.find((a) => {
+        const aTgl = parseToYmd(a.tanggalTransfer || a.tanggal_transfer || a.createdAt);
+        const aName = (a.namaPerusahaan || a.nama_penyewa || a.namaPenandaTangan || '').toLowerCase();
+        const matchesName = aName.includes(cleanTenant) || cleanTenant.includes(aName);
+        return matchesName && aTgl === ymd;
+      });
+      if (found) return found;
+    }
+
+    // 3. Match by tenant name alone (if length > 3)
+    if (cleanTenant.length > 3) {
+      const found = apiPromo.find((a) => {
+        const aName = (a.namaPerusahaan || a.nama_penyewa || a.namaPenandaTangan || '').toLowerCase();
+        return aName.includes(cleanTenant) || cleanTenant.includes(aName);
+      });
+      if (found) return found;
+    }
+
+    // 4. Match by amount & date
+    if (amount && ymd) {
       const found = apiPromo.find((a) => {
         const aTgl = parseToYmd(a.tanggalTransfer || a.tanggal_transfer || a.createdAt);
         const aNom = Number(a.jumlahTransferNumeric || a.jumlahTransfer || a.totalBiaya || 0);
@@ -1108,15 +1140,7 @@ export const getPromoMediaData = (
       });
       if (found) return found;
     }
-    if (tenantName && tenantName.length > 3) {
-      const tLow = tenantName.toLowerCase();
-      const found = apiPromo.find(
-        (a) =>
-          (a.namaPerusahaan || a.nama_penyewa || '').toLowerCase().includes(tLow) ||
-          tLow.includes((a.namaPerusahaan || a.nama_penyewa || '').toLowerCase())
-      );
-      if (found) return found;
-    }
+
     return null;
   };
 
@@ -1158,7 +1182,7 @@ export const getPromoMediaData = (
     return { jHari, jTitik, jBanner, jSpanduk };
   };
 
-  // 1. Ekstrak dari allReports (Input STSU Harian)
+  // 1. Ekstrak dari allReports (Data yang sudah diinput resmi ke STSU Harian)
   Object.keys(allReports || {})
     .sort()
     .forEach((dateStr) => {
@@ -1202,7 +1226,20 @@ export const getPromoMediaData = (
                       const perusahaan = (apiMatch?.namaPerusahaan || apiMatch?.nama_penyewa || ba.tenant || activeItem.itemNote || 'Mitra Promosi').trim();
                       const produk = (apiMatch?.namaProduk || ba.desc || itemName || 'Promosi Produk').trim();
                       const rawTglTf = parseToYmd(apiMatch?.tanggalTransfer || apiMatch?.tanggal_transfer || ba.bankDate || dateStr);
-                      const tglEvent = apiMatch?.tanggalEvent || apiMatch?.tanggalPromo || ba.tglEvent || formatDmy(rawTglTf);
+                      
+                      let tglEvent = apiMatch?.tanggalEvent || apiMatch?.tanggalPromo || apiMatch?.tanggal_sewa || apiMatch?.tanggalPemakaian || ba.tglEvent || '';
+                      if (!tglEvent || tglEvent === '-') {
+                        if (Array.isArray(apiMatch?.selectedDates) && apiMatch.selectedDates.length > 0) {
+                          tglEvent = apiMatch.selectedDates.map(s => {
+                            const dVal = typeof s === 'object' ? (s.date || s.tanggal) : s;
+                            return formatDmy(parseToYmd(dVal)) || dVal;
+                          }).join(', ');
+                        } else {
+                          tglEvent = formatDmy(rawTglTf);
+                        }
+                      } else if (/^\d{4}-\d{2}-\d{2}$/.test(tglEvent)) {
+                        tglEvent = formatDmy(tglEvent);
+                      }
 
                       const parsed = parsePromoDetails(`${target} ${ba.desc || ''} ${ba.location || ''}`, baAmt);
 
@@ -1230,7 +1267,20 @@ export const getPromoMediaData = (
                     const perusahaan = (apiMatch?.namaPerusahaan || apiMatch?.nama_penyewa || activeItem?.tenant || itemNote || 'Mitra Promosi').trim();
                     const produk = (apiMatch?.namaProduk || itemName || 'Promosi Produk').trim();
                     const rawTglTf = parseToYmd(apiMatch?.tanggalTransfer || apiMatch?.tanggal_transfer || dateStr);
-                    const tglEvent = apiMatch?.tanggalEvent || apiMatch?.tanggalPromo || formatDmy(rawTglTf);
+                    
+                    let tglEvent = apiMatch?.tanggalEvent || apiMatch?.tanggalPromo || apiMatch?.tanggal_sewa || apiMatch?.tanggalPemakaian || '';
+                    if (!tglEvent || tglEvent === '-') {
+                      if (Array.isArray(apiMatch?.selectedDates) && apiMatch.selectedDates.length > 0) {
+                        tglEvent = apiMatch.selectedDates.map(s => {
+                          const dVal = typeof s === 'object' ? (s.date || s.tanggal) : s;
+                          return formatDmy(parseToYmd(dVal)) || dVal;
+                        }).join(', ');
+                      } else {
+                        tglEvent = formatDmy(rawTglTf);
+                      }
+                    } else if (/^\d{4}-\d{2}-\d{2}$/.test(tglEvent)) {
+                      tglEvent = formatDmy(tglEvent);
+                    }
 
                     const parsed = parsePromoDetails(`${target} ${itemNote}`, val);
 
@@ -1257,12 +1307,18 @@ export const getPromoMediaData = (
       }
     });
 
-  // 2. Gabungkan dengan Bank Rows
+  // 2. Gabungkan dengan Bank Rows yang SUDAH DIPASANGKAN dan belum masuk allReports
   if (Array.isArray(bankRows)) {
     bankRows.forEach((row) => {
       if (processedBankRowIds.has(row.id)) return;
+      if (row.apiRefId && processedApiIds.has(String(row.apiRefId))) return;
+
       const rowYmd = parseToYmd(row.date);
       if (!rowYmd.startsWith(monthStr)) return;
+
+      // Hanya data mutasi yang SUDAH DIPASANGKAN (matched atau linked)
+      const isPaired = row.status === 'matched' || row.status === 'linked' || Boolean(row.matchedTo);
+      if (!isPaired) return;
 
       const matchedTo = (row.matchedTo || '').toLowerCase();
       if (/promo|promosi|banner|spanduk|sampling|selling/i.test(matchedTo)) {
@@ -1275,7 +1331,20 @@ export const getPromoMediaData = (
         const perusahaan = (apiMatch?.namaPerusahaan || apiMatch?.nama_penyewa || row.tenant || 'Mitra Promosi').trim();
         const produk = (apiMatch?.namaProduk || row.description || row.matchedTo || 'Promosi Produk').trim();
         const rawTglTf = parseToYmd(apiMatch?.tanggalTransfer || apiMatch?.tanggal_transfer || rowYmd);
-        const tglEvent = apiMatch?.tanggalEvent || apiMatch?.tanggalPromo || row.tglEvent || formatDmy(rawTglTf);
+        
+        let tglEvent = apiMatch?.tanggalEvent || apiMatch?.tanggalPromo || apiMatch?.tanggal_sewa || apiMatch?.tanggalPemakaian || row.tglEvent || '';
+        if (!tglEvent || tglEvent === '-') {
+          if (Array.isArray(apiMatch?.selectedDates) && apiMatch.selectedDates.length > 0) {
+            tglEvent = apiMatch.selectedDates.map(s => {
+              const dVal = typeof s === 'object' ? (s.date || s.tanggal) : s;
+              return formatDmy(parseToYmd(dVal)) || dVal;
+            }).join(', ');
+          } else {
+            tglEvent = formatDmy(rawTglTf);
+          }
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(tglEvent)) {
+          tglEvent = formatDmy(tglEvent);
+        }
 
         const parsed = parsePromoDetails(`${matchedTo} ${row.description || ''}`, amt);
 
@@ -1296,38 +1365,6 @@ export const getPromoMediaData = (
       }
     });
   }
-
-  // 3. Masukkan transaksi dari API Tarik Promo untuk bulan ini yang belum masuk
-  apiPromo.forEach((api) => {
-    const apiIdStr = String(api.id || api.docId || api.id_sewa || '');
-    if (processedApiIds.has(apiIdStr)) return;
-
-    const tglTf = parseToYmd(api.tanggalTransfer || api.tanggal_transfer || api.createdAt);
-    if (!tglTf || !tglTf.startsWith(monthStr)) return;
-
-    const amt = Number(api.jumlahTransferNumeric || api.jumlahTransfer || api.totalBiaya || 0);
-    if (amt <= 0) return;
-
-    const perusahaan = (api.namaPerusahaan || api.nama_penyewa || '-').trim();
-    const produk = (api.namaProduk || 'Promosi Produk').trim();
-    const rawTglTf = tglTf;
-    const tglEvent = api.tanggalEvent || api.tanggalPromo || formatDmy(rawTglTf);
-
-    rawRows.push({
-      id: `api_promo_${apiIdStr}`,
-      apiRefId: apiIdStr,
-      rawTglTransfer: rawTglTf,
-      perusahaan,
-      produk,
-      tglEvent,
-      jumlahHari: Number(api.jumlahHari) || 1,
-      jumlahTitik: api.jumlahTitik !== undefined ? Number(api.jumlahTitik) : 1,
-      banner: api.jumlahBanner !== undefined ? Number(api.jumlahBanner) : (api.banner ? Number(api.banner) : 0),
-      spanduk: api.jumlahSpanduk !== undefined ? Number(api.jumlahSpanduk) : (api.spanduk ? Number(api.spanduk) : 0),
-      nominal: amt,
-      keterangan: api.keterangan || ''
-    });
-  });
 
   // 4. Urutkan berdasarkan tanggal transfer (rawTglTransfer ASC), lalu nama perusahaan
   rawRows.sort((a, b) => {

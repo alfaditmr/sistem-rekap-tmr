@@ -33,6 +33,45 @@ export default function FasilitasPromoTable({
     setActiveData(data);
   }, [data]);
 
+  // Background auto-sync data dari API web fasilitas/promo untuk menjamin tanggal pemakaian dan detail terbaru selalu sinkron
+  useEffect(() => {
+    let isMounted = true;
+    const autoSync = async () => {
+      try {
+        const isFas = reportType === 'pemakaian_tempat';
+        const url = isFas
+          ? `https://sistem-informasi-ragunan.vercel.app/api/fasilitas?date=semua`
+          : `https://sistem-informasi-ragunan.vercel.app/api/promo?date=semua`;
+        
+        const res = await fetch(url);
+        const json = await res.json();
+        if (isMounted && json && json.data && json.data.length > 0) {
+          const source = isFas ? 'Fasilitas' : 'Promo';
+          const newItems = json.data.map(d => ({ ...d, source }));
+          let existing = [];
+          try {
+            const saved = localStorage.getItem('tmr_apiData');
+            if (saved) existing = JSON.parse(saved);
+          } catch (e) {}
+          const merged = [...existing.filter(d => d.source !== source), ...newItems];
+          localStorage.setItem('tmr_apiData', JSON.stringify(merged));
+
+          if (isFas) {
+            const updated = getPemakaianTempatData(allReports, categories, monthStr || activeData?.monthStr || '', bankRows, merged);
+            setActiveData(updated);
+          } else {
+            const updated = getPromoMediaData(allReports, categories, monthStr || activeData?.monthStr || '', bankRows, merged);
+            setActiveData(updated);
+          }
+        }
+      } catch (e) {
+        // Abaikan jika offline / koneksi lambat, data lokal tetap digunakan
+      }
+    };
+    autoSync();
+    return () => { isMounted = false; };
+  }, [reportType, monthStr]);
+
   const handleSyncApiFasilitas = async () => {
     setApiLoading(true);
     setApiStatusMsg('Menghubungi API Fasilitas Ragunan...');
