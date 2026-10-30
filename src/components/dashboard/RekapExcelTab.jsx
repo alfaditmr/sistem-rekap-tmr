@@ -144,6 +144,7 @@ export default function RekapExcelTab({
   reportCategories = [],
   allReports = {},
   categories = [],
+  bankRows = [],
   rekonOfficerName = '',
   currentReport = {},
   signatures = {},
@@ -755,7 +756,7 @@ export default function RekapExcelTab({
         exportGateRevenueExcel(getGateRevenueData(allReports, categories, excelReportMonth), signatures);
         break;
       case 'pemakaian_tempat':
-        exportPemakaianTempatExcel(getPemakaianTempatData(allReports, categories, excelReportMonth), signatures);
+        exportPemakaianTempatExcel(getPemakaianTempatData(allReports, categories, excelReportMonth, bankRows), signatures);
         break;
       case 'rekap_promo':
         exportPromoMediaExcel(getPromoMediaData(allReports, categories, excelReportMonth), signatures);
@@ -1098,8 +1099,17 @@ export default function RekapExcelTab({
 
             // E. Laporan Sewa Tempat & Promosi
             if (selectedReportType === 'pemakaian_tempat') {
-              const data = getPemakaianTempatData(allReports, categories, excelReportMonth);
-              return <FasilitasPromoTable reportType="pemakaian_tempat" data={data} />;
+              const data = getPemakaianTempatData(allReports, categories, excelReportMonth, bankRows);
+              return (
+                <FasilitasPromoTable
+                  reportType="pemakaian_tempat"
+                  data={data}
+                  monthStr={excelReportMonth}
+                  allReports={allReports}
+                  categories={categories}
+                  bankRows={bankRows}
+                />
+              );
             }
             if (selectedReportType === 'rekap_promo') {
               const data = getPromoMediaData(allReports, categories, excelReportMonth);

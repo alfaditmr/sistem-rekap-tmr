@@ -3,6 +3,7 @@
  * acuan folder 'format laporan' (UP Taman Margasatwa Ragunan - DKI Jakarta).
  */
 import { formatRp, safeString, formatTanggalTtd } from './formatters';
+import { FASILITAS_COLUMNS } from './reportDataHelper';
 
 const getHeaderStyles = () => `
   <meta charset="utf-8">
@@ -415,36 +416,45 @@ export const exportStsuKasDaerahExcel = (data, signatures) => {
 // =========================================================================
 // 7. Ekspor Rekap Pemakaian Tempat & Fasilitas (REKAP PEMAKAIAN TEMPAT 2026.xlsx)
 // =========================================================================
+// =========================================================================
+// 7. Ekspor Rekap Pemakaian Tempat & Fasilitas (Format REKAP PEMAKAIAN TEMPAT 2026.xlsx)
+// Layout persis Gambar 1 dengan ekspansi 14 kolom fasilitas dari Gambar 2
+// =========================================================================
 export const exportPemakaianTempatExcel = (data, signatures) => {
-  const { year, monthName, rows, totalNominal } = data;
+  const { year, monthName, rows = [], totalNominal = 0, facilityTotals = {}, columns = FASILITAS_COLUMNS } = data;
+  const colCount = 4 + columns.length + 2;
+
   let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
   <head>${getHeaderStyles()}</head>
   <body>
     <table>
-      <tr><th colspan="7" class="title-main">DINAS PERTAMANAN DAN HUTAN KOTA PROVINSI DKI JAKARTA</th></tr>
-      <tr><th colspan="7" class="title-sub">REKAPITULASI PEMAKAIAN TEMPAT DAN FASILITAS TMR</th></tr>
-      <tr><th colspan="7" class="title-sub">BULAN ${monthName.toUpperCase()} ${year}</th></tr>
-      <tr><th colspan="7" style="border:none; height:10px;"></th></tr>
+      <tr><th colspan="${colCount}" class="title-main">REKAPITULASI DATA PEMAKAIAN FASILITAS BULAN ${monthName.toUpperCase()} ${year}</th></tr>
+      <tr><th colspan="${colCount}" class="title-sub">UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN</th></tr>
+      <tr><th colspan="${colCount}" class="title-sub">DINAS PERTAMANAN DAN HUTAN KOTA PROVINSI DKI JAKARTA</th></tr>
+      <tr><th colspan="${colCount}" style="border:none; height:12px;"></th></tr>
       <tr>
-        <th class="th-green">No</th>
-        <th class="th-green">Tanggal Transfer / STSU</th>
-        <th class="th-green">Nama / Instansi Penyewa</th>
-        <th class="th-green">Tanggal Pemakaian</th>
-        <th class="th-green">Jenis Fasilitas / Lokasi</th>
-        <th class="th-amber">Pendapatan (Rp)</th>
-        <th class="th-green">Keterangan</th>
+        <th class="th-green" style="width:35px;">No</th>
+        <th class="th-green" style="min-width:100px;">Tanggal Bayar<br/>( Transfer )</th>
+        <th class="th-green" style="min-width:180px;">Nama / Instansi</th>
+        <th class="th-green" style="min-width:100px;">Tanggal Pemakaian</th>
+        ${columns.map(c => `<th class="th-green" style="min-width:65px; font-size:10px;">${c.label}</th>`).join('')}
+        <th class="th-amber" style="min-width:110px;">Pendapatan ( Rp )</th>
+        <th class="th-green" style="min-width:120px;">Keterangan</th>
       </tr>`;
 
   if (rows.length === 0) {
-    html += `<tr><td colspan="7" class="center" style="padding:15px; color:#666;">Belum ada data pemakaian tempat / fasilitas pada bulan ini.</td></tr>`;
+    html += `<tr><td colspan="${colCount}" class="center" style="padding:15px; color:#666;">Belum ada data pemakaian tempat / fasilitas pada bulan ini.</td></tr>`;
   } else {
     rows.forEach(r => {
       html += `<tr>
-        <td class="center">${r.no}</td>
-        <td class="center">${r.tglBayar}</td>
-        <td>${safeString(r.penyewa)}</td>
-        <td class="center">${r.tglPakai}</td>
-        <td>${safeString(r.jenisFasilitas)}</td>
+        <td class="center font-bold">${r.no}</td>
+        <td class="center font-mono">${r.tglBayarDisplay || ''}</td>
+        <td style="font-weight:bold;">${safeString(r.penyewa)}</td>
+        <td class="center font-mono">${r.tglPakaiFormatted || ''}</td>
+        ${columns.map(c => {
+          const val = r.facilities ? r.facilities[c.key] : '';
+          return `<td class="center font-bold">${val !== undefined && val !== null && val !== '' ? val : ''}</td>`;
+        }).join('')}
         <td class="num font-bold">${formatRp(r.nominal)}</td>
         <td>${safeString(r.keterangan)}</td>
       </tr>`;
@@ -452,7 +462,11 @@ export const exportPemakaianTempatExcel = (data, signatures) => {
   }
 
   html += `<tr class="total-row">
-    <td colspan="5" class="center font-bold">TOTAL PENDAPATAN SEWA TEMPAT</td>
+    <td colspan="4" class="center font-bold">TOTAL PENDAPATAN BULAN ${monthName.toUpperCase()}</td>
+    ${columns.map(c => {
+      const tot = facilityTotals[c.key] || 0;
+      return `<td class="center font-bold">${tot > 0 ? tot : ''}</td>`;
+    }).join('')}
     <td class="num font-bold">${formatRp(totalNominal)}</td>
     <td></td>
   </tr></table>`;
@@ -460,7 +474,7 @@ export const exportPemakaianTempatExcel = (data, signatures) => {
   html += renderSignatures(signatures);
   html += `</body></html>`;
 
-  triggerDownload(html, `REKAP PEMAKAIAN TEMPAT ${year} - ${monthName.toUpperCase()}.xls`);
+  triggerDownload(html, `REKAP PEMAKAIAN TEMPAT DAN FASILITAS ${year} - ${monthName.toUpperCase()}.xls`);
 };
 
 // =========================================================================

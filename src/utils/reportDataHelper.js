@@ -574,63 +574,482 @@ export const getStsuKasDaerahData = (allReports, categories, monthStr) => {
   };
 };
 
-/**
- * 7. Data Pemakaian Tempat & Fasilitas (format REKAP PEMAKAIAN TEMPAT 2026.xlsx)
- */
-export const getPemakaianTempatData = (allReports, categories, monthStr) => {
-  const { year, month, monthName } = getMonthDaysMetadata(monthStr);
-  const rows = [];
-  let totalNominal = 0;
-  let no = 1;
+// =========================================================================
+// 7. Data Pemakaian Tempat & Fasilitas (Format REKAP PEMAKAIAN TEMPAT 2026.xlsx)
+// Header Fasilitas disesuaikan dengan 13 sub-kategori resmi bertanda merah + Lain-lain:
+// Film Cerita, Film Iklan, Program Televisi, Pre-Wedding, Lahan M2, Spanduk Promosi,
+// Banner Promosi, Panggung, Gedung Informasi, Gedung Auditorium, Sound System,
+// Wireles, Pemutaran Film Satwa, Lain-Lain.
+// =========================================================================
 
-  Object.keys(allReports).sort().forEach(dateStr => {
-    if (dateStr.startsWith(monthStr)) {
-      const dayAll = allReports[dateStr];
-      Object.keys(dayAll).forEach(tKey => {
-        // Ambil dari dokumen lain-lain atau kategori fasilitas
-        const typeData = dayAll[tKey];
-        if (typeData?.formData) {
-          Object.keys(typeData.formData).forEach(fKey => {
-            const val = Number(typeData.formData[fKey]) || 0;
-            if (val > 0) {
-              let itemName = '';
-              let catName = '';
-              const parts = fKey.split('_');
-              if (parts.length >= 3 && parts[0] === 'cat') {
-                const catId = `${parts[0]}_${parts[1]}`;
-                const itemId = parts[2] === 'item' && parts[3] ? `${parts[2]}_${parts[3]}` : parts[2];
-                const cat = categories.find(c => c.id === catId);
-                const it = cat?.items?.find(i => i.id === itemId);
-                catName = cat?.name || '';
-                itemName = it?.name || '';
-              }
+export const FASILITAS_COLUMNS = [
+  { key: 'film_cerita', label: 'Film Cerita', shortLabel: 'Film Cerita' },
+  { key: 'film_iklan', label: 'Film Iklan', shortLabel: 'Film Iklan' },
+  { key: 'program_tv', label: 'Program Televisi', shortLabel: 'Program TV' },
+  { key: 'prewedding', label: 'Pre-Wedding', shortLabel: 'Pre-Wed' },
+  { key: 'lahan', label: 'Lahan M2', shortLabel: 'Lahan M2', isLahan: true },
+  { key: 'spanduk', label: 'Spanduk Promosi', shortLabel: 'Spanduk' },
+  { key: 'banner', label: 'Banner Promosi', shortLabel: 'Banner' },
+  { key: 'panggung', label: 'Panggung', shortLabel: 'Panggung' },
+  { key: 'gedung_info', label: 'Gedung Informasi', shortLabel: 'Gedung Info' },
+  { key: 'auditorium', label: 'Gedung Auditorium', shortLabel: 'Auditorium' },
+  { key: 'sound', label: 'Sound System', shortLabel: 'Sound Sys' },
+  { key: 'wireles', label: 'Wireles', shortLabel: 'Wireles' },
+  { key: 'film_satwa', label: 'Film Satwa', shortLabel: 'Film Satwa' },
+  { key: 'lain_lain', label: 'Lain - Lain', shortLabel: 'Lain-lain' }
+];
 
-              const target = `${catName} ${itemName} ${fKey}`.toLowerCase();
-              if (
-                /fasilitas|panggung|lahan|tempat|sound|wireless|auditorium|gazebo|lapangan|gedung/i.test(target) &&
-                !/banner|spanduk|promo produk/i.test(target)
-              ) {
-                // Ekstrak note penyewa jika ada di fKey
-                const itemNote = parts[5] || '';
-                rows.push({
-                  no: no++,
-                  tglBayar: dateStr,
-                  penyewa: itemNote || 'Penyewa Tempat/Fasilitas',
-                  tglPakai: dateStr,
-                  jenisFasilitas: itemName || 'Pemakaian Tempat / Lahan',
-                  nominal: val,
-                  keterangan: catName || 'Sewa Fasilitas'
-                });
-                totalNominal += val;
-              }
-            }
-          });
-        }
-      });
+const formatDmy = (dateStr) => {
+  if (!dateStr) return '';
+  const clean = String(dateStr).trim().split(' ')[0].split('T')[0];
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) return clean;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+    const [y, m, d] = clean.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  return clean;
+};
+
+const parseToYmd = (dateStr) => {
+  if (!dateStr) return '';
+  const clean = String(dateStr).trim().split(' ')[0].split('T')[0];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) {
+    const [d, m, y] = clean.split('/');
+    return `${y}-${m}-${d}`;
+  }
+  return clean;
+};
+
+export const classifyFacilityItem = (info) => {
+  const cat = (info.catName || info.kategori || '').toLowerCase();
+  const sub = (info.itemName || info.subKategori || info.tipe_transaksi || '').toLowerCase();
+  const loc = (info.lokasi || info.lokasi_sewa || '').toLowerCase();
+  const note = (info.note || info.keterangan || info.catatan || info.keterangan_transaksi || '').toLowerCase();
+  const target = `${cat} ${sub} ${loc} ${note}`;
+
+  const nominal = Number(info.nominal || info.jumlahTransferNumeric || info.jumlahTransfer || info.amount || 0);
+  const luasParam = Number(info.luas_lahan || info.luasLahan || 0);
+
+  // 1. Film Cerita
+  if (/film cerita/i.test(target)) return { key: 'film_cerita', value: 1 };
+
+  // 2. Film Iklan
+  if (/film iklan|iklan/i.test(target) && !/cerita/i.test(target)) return { key: 'film_iklan', value: 1 };
+
+  // 3. Program TV
+  if (/program televisi|televisi|acara tv|shooting tv/i.test(target)) return { key: 'program_tv', value: 1 };
+
+  // 4. Prewedding
+  if (/pre-wedding|prewedding|pre wed|foto nikah/i.test(target)) return { key: 'prewedding', value: 1 };
+
+  // 5. Spanduk Promosi
+  if (/spanduk/i.test(target) && !/banner/i.test(target)) return { key: 'spanduk', value: 1 };
+
+  // 6. Banner Promosi
+  if (/banner|umbul/i.test(target)) return { key: 'banner', value: 1 };
+
+  // 7. Gedung Auditorium
+  if (/auditorium|gedung auditorium|aula serbaguna/i.test(target)) return { key: 'auditorium', value: 1 };
+
+  // 8. Gedung Informasi
+  if (/gedung informasi|ruang informasi/i.test(target)) return { key: 'gedung_info', value: 1 };
+
+  // 9. Sound System
+  if (/sound system|sound/i.test(target) && !/wireles|wireless/i.test(target)) return { key: 'sound', value: 1 };
+
+  // 10. Wireles
+  if (/wireles|wireless/i.test(target)) {
+    const qty = nominal >= 100000 ? Math.round(nominal / 100000) : 1;
+    return { key: 'wireles', value: qty };
+  }
+
+  // 11. Film Satwa
+  if (/film satwa|pemutaran film/i.test(target)) return { key: 'film_satwa', value: 1 };
+
+  // 12. Lahan Terbuka / Lahan M2
+  if (
+    /lahan|lapangan|lap\s|lap\.|lap\b|lap atm|lap tsik|lap beringin|lap sebrang|lap timur/i.test(target) ||
+    luasParam > 0
+  ) {
+    let luasan = luasParam;
+    if (!luasan) {
+      const match = target.match(/(\d+)\s*(?:m2|m²|m\b|meter)/i);
+      if (match) {
+        luasan = parseInt(match[1], 10);
+      } else if (nominal > 0) {
+        luasan = Math.round(nominal / 2000);
+      }
     }
+    return { key: 'lahan', value: luasan || 50, luasan: luasan || 50 };
+  }
+
+  // 13. Panggung / Pendopo (TSA 1, TSA 2, TSA 3, TSA 4, Teras Informasi, Gazebo)
+  if (
+    /panggung|pendopo|tsa 1|tsa 2|tsa 3|tsa 4|teras informasi|gazebo/i.test(target)
+  ) {
+    let qty = 1;
+    if (/tsa 1 dan 4/i.test(target) || nominal === 750000) {
+      qty = 3;
+    } else if (/tsa 1/i.test(target) && !/sebrang/i.test(target) && nominal >= 500000) {
+      qty = Math.round(nominal / 250000);
+    } else if (nominal >= 250000) {
+      qty = Math.max(1, Math.round(nominal / 250000));
+    }
+    return { key: 'panggung', value: qty };
+  }
+
+  return { key: 'lain_lain', value: 1 };
+};
+
+export const getPemakaianTempatData = (
+  allReports = {},
+  categories = [],
+  monthStr = '',
+  bankRows = [],
+  optionalApiData = null
+) => {
+  const { year, month, monthName } = getMonthDaysMetadata(monthStr);
+
+  // Ambil data API Fasilitas dari parameter atau localStorage
+  let apiList = optionalApiData;
+  if (!apiList && typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const saved = localStorage.getItem('tmr_apiData');
+      if (saved) apiList = JSON.parse(saved);
+    } catch (e) {}
+  }
+  if (!Array.isArray(apiList)) apiList = [];
+
+  // Filter hanya data fasilitas
+  const apiFasilitas = apiList.filter(
+    (a) =>
+      a.source === 'Fasilitas' ||
+      a.tipe_transaksi === 'Sewa Fasilitas' ||
+      a.kategori === 'Pemakaian Fasilitas' ||
+      !a.source
+  );
+
+  const rawRows = [];
+  const processedApiIds = new Set();
+  const processedBankRowIds = new Set();
+
+  // Helper untuk mencari API match
+  const findApiMatch = (apiRefId, amount, dateStr, tenantName) => {
+    if (apiRefId) {
+      const found = apiFasilitas.find(
+        (a) =>
+          String(a.id) === String(apiRefId) ||
+          String(a.docId) === String(apiRefId) ||
+          String(a.id_sewa) === String(apiRefId)
+      );
+      if (found) return found;
+    }
+    // Match by amount & date
+    if (amount && dateStr) {
+      const ymd = parseToYmd(dateStr);
+      const found = apiFasilitas.find((a) => {
+        const aTgl = parseToYmd(a.tanggal_transfer || a.tanggalTransfer || a.tanggal_sewa);
+        const aNom = Number(a.jumlahTransferNumeric || a.jumlahTransfer || a.total_biaya || 0);
+        return aTgl === ymd && Math.abs(aNom - amount) < 1;
+      });
+      if (found) return found;
+    }
+    // Match by tenant name if exists
+    if (tenantName && tenantName.length > 3) {
+      const tLow = tenantName.toLowerCase();
+      const found = apiFasilitas.find(
+        (a) =>
+          (a.nama_penyewa || '').toLowerCase().includes(tLow) ||
+          tLow.includes((a.nama_penyewa || '').toLowerCase())
+      );
+      if (found) return found;
+    }
+    return null;
+  };
+
+  // 1. Ekstrak dari allReports (Input STSU Harian)
+  Object.keys(allReports || {})
+    .sort()
+    .forEach((dateStr) => {
+      if (dateStr.startsWith(monthStr)) {
+        const dayAll = allReports[dateStr] || {};
+        Object.keys(dayAll).forEach((tKey) => {
+          const typeData = dayAll[tKey];
+          if (typeData?.formData) {
+            const activeItems = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
+
+            Object.keys(typeData.formData).forEach((fKey) => {
+              const val = Number(typeData.formData[fKey]) || 0;
+              if (val > 0) {
+                let itemName = '';
+                let catName = '';
+                const parts = fKey.split('_');
+                let activeItem = null;
+                if (parts.length >= 3 && parts[0] === 'cat') {
+                  const catId = `${parts[0]}_${parts[1]}`;
+                  const itemId = parts[2] === 'item' && parts[3] ? `${parts[2]}_${parts[3]}` : parts[2];
+                  const cat = categories.find((c) => c.id === catId);
+                  const it = cat?.items?.find((i) => i.id === itemId);
+                  catName = cat?.name || '';
+                  itemName = it?.name || '';
+                  activeItem = activeItems.find(
+                    (ai) => ai.catId === catId && (ai.itemId === itemId || ai.id === itemId)
+                  );
+                }
+
+                const target = `${catName} ${itemName} ${fKey}`.toLowerCase();
+                if (
+                  /fasilitas|panggung|lahan|tempat|sound|wireless|auditorium|gazebo|lapangan|gedung|sewa/i.test(
+                    target
+                  ) &&
+                  !/promo produk/i.test(target)
+                ) {
+                  // Periksa apakah item memiliki rincian alokasi mutasi bank
+                  if (
+                    activeItem &&
+                    Array.isArray(activeItem.bankAllocations) &&
+                    activeItem.bankAllocations.length > 0
+                  ) {
+                    activeItem.bankAllocations.forEach((ba, bIdx) => {
+                      const baAmt = Number(ba.amount || 0);
+                      if (baAmt <= 0) return;
+                      if (ba.bankRowId) processedBankRowIds.add(ba.bankRowId);
+
+                      const apiMatch = findApiMatch(ba.apiRefId, baAmt, ba.bankDate || dateStr, ba.tenant);
+                      if (apiMatch) processedApiIds.add(String(apiMatch.id || apiMatch.docId || apiMatch.id_sewa));
+
+                      const penyewa = (apiMatch?.nama_penyewa || ba.tenant || activeItem.itemNote || 'Penyewa Fasilitas').trim();
+                      const rawTglBayar = parseToYmd(
+                        apiMatch?.tanggal_transfer || apiMatch?.tanggalTransfer || ba.bankDate || dateStr
+                      );
+                      const rawTglPakai = parseToYmd(
+                        apiMatch?.tanggal_sewa || apiMatch?.tanggalPemakaian || ba.tglEvent || activeItem.itemDate || rawTglBayar
+                      );
+                      const lokasi = (apiMatch?.lokasi_sewa || ba.location || activeItem.itemNote || '').trim();
+                      const luas = Number(apiMatch?.luas_lahan || ba.luas_lahan || 0);
+
+                      const classification = classifyFacilityItem({
+                        catName,
+                        itemName,
+                        lokasi,
+                        note: `${ba.desc || ''} ${penyewa}`,
+                        nominal: baAmt,
+                        luas_lahan: luas
+                      });
+
+                      const facilities = {};
+                      facilities[classification.key] = classification.value;
+
+                      rawRows.push({
+                        id: `${dateStr}_${fKey}_ba_${bIdx}`,
+                        apiRefId: ba.apiRefId || apiMatch?.id || '',
+                        rawTglBayar,
+                        rawTglPakai,
+                        penyewa: penyewa || 'Penyewa Fasilitas',
+                        lokasi,
+                        keterangan: lokasi || catName || 'Sewa Fasilitas',
+                        facilities,
+                        nominal: baAmt
+                      });
+                    });
+                  } else {
+                    // Single item input
+                    const itemNote = activeItem?.itemNote || parts[5] || '';
+                    const apiMatch = findApiMatch(activeItem?.apiRefId, val, dateStr, itemNote);
+                    if (apiMatch) processedApiIds.add(String(apiMatch.id || apiMatch.docId || apiMatch.id_sewa));
+                    if (activeItem?.bankMatchRowId) processedBankRowIds.add(activeItem.bankMatchRowId);
+
+                    const penyewa = (apiMatch?.nama_penyewa || activeItem?.tenant || itemNote || 'Penyewa Fasilitas').trim();
+                    const rawTglBayar = parseToYmd(
+                      apiMatch?.tanggal_transfer || apiMatch?.tanggalTransfer || dateStr
+                    );
+                    const rawTglPakai = parseToYmd(
+                      apiMatch?.tanggal_sewa || apiMatch?.tanggalPemakaian || activeItem?.itemDate || rawTglBayar
+                    );
+                    const lokasi = (apiMatch?.lokasi_sewa || activeItem?.location || itemNote || '').trim();
+                    const luas = Number(apiMatch?.luas_lahan || 0);
+
+                    const classification = classifyFacilityItem({
+                      catName,
+                      itemName,
+                      lokasi,
+                      note: `${itemNote} ${penyewa}`,
+                      nominal: val,
+                      luas_lahan: luas
+                    });
+
+                    const facilities = {};
+                    facilities[classification.key] = classification.value;
+
+                    rawRows.push({
+                      id: `${dateStr}_${fKey}`,
+                      apiRefId: activeItem?.apiRefId || apiMatch?.id || '',
+                      rawTglBayar,
+                      rawTglPakai,
+                      penyewa: penyewa || 'Penyewa Fasilitas',
+                      lokasi,
+                      keterangan: lokasi || catName || 'Sewa Fasilitas',
+                      facilities,
+                      nominal: val
+                    });
+                  }
+                }
+              }
+            });
+          }
+        });
+      }
+    });
+
+  // 2. Gabungkan dengan Bank Rows yang belum masuk allReports
+  if (Array.isArray(bankRows)) {
+    bankRows.forEach((row) => {
+      if (processedBankRowIds.has(row.id)) return;
+      const rowYmd = parseToYmd(row.date);
+      if (!rowYmd.startsWith(monthStr)) return;
+
+      const matchedTo = (row.matchedTo || '').toLowerCase();
+      if (/fasilitas|lahan|tempat|panggung|auditorium|wireles/i.test(matchedTo)) {
+        const amt = Number(row.amount || 0);
+        if (amt <= 0) return;
+
+        const apiMatch = findApiMatch(row.apiRefId, amt, rowYmd, row.tenant);
+        if (apiMatch) processedApiIds.add(String(apiMatch.id || apiMatch.docId || apiMatch.id_sewa));
+
+        const penyewa = (apiMatch?.nama_penyewa || row.tenant || row.description || 'Penyewa Fasilitas').trim();
+        const rawTglBayar = parseToYmd(apiMatch?.tanggal_transfer || apiMatch?.tanggalTransfer || rowYmd);
+        const rawTglPakai = parseToYmd(apiMatch?.tanggal_sewa || apiMatch?.tanggalPemakaian || row.tglEvent || rawTglBayar);
+        const lokasi = (apiMatch?.lokasi_sewa || row.location || '').trim();
+        const luas = Number(apiMatch?.luas_lahan || 0);
+
+        const classification = classifyFacilityItem({
+          catName: 'Pemakaian Fasilitas',
+          itemName: row.matchedTo,
+          lokasi,
+          note: `${row.description || ''} ${penyewa}`,
+          nominal: amt,
+          luas_lahan: luas
+        });
+
+        const facilities = {};
+        facilities[classification.key] = classification.value;
+
+        rawRows.push({
+          id: `bank_${row.id}`,
+          apiRefId: row.apiRefId || apiMatch?.id || '',
+          rawTglBayar,
+          rawTglPakai,
+          penyewa: penyewa || 'Penyewa Fasilitas',
+          lokasi,
+          keterangan: lokasi || 'Sewa Fasilitas',
+          facilities,
+          nominal: amt
+        });
+      }
+    });
+  }
+
+  // 3. Masukkan transaksi dari API Tarik Fasilitas untuk bulan ini yang belum ada di laporan
+  apiFasilitas.forEach((api) => {
+    const apiIdStr = String(api.id || api.docId || api.id_sewa || '');
+    if (processedApiIds.has(apiIdStr)) return;
+
+    const tglTf = parseToYmd(api.tanggal_transfer || api.tanggalTransfer);
+    const tglSewa = parseToYmd(api.tanggal_sewa || api.tanggalPemakaian);
+
+    // Transaksi relevan jika tanggal bayar di bulan ini ATAU tanggal sewa di bulan ini
+    const isThisMonth =
+      (tglTf && tglTf.startsWith(monthStr)) ||
+      (!tglTf && tglSewa && tglSewa.startsWith(monthStr));
+    if (!isThisMonth) return;
+
+    const amt = Number(api.jumlahTransferNumeric || api.jumlahTransfer || api.total_biaya || 0);
+    if (amt <= 0) return;
+
+    const penyewa = (api.nama_penyewa || '-').trim();
+    const rawTglBayar = tglTf || tglSewa || `${monthStr}-01`;
+    const rawTglPakai = tglSewa || rawTglBayar;
+    const lokasi = (api.lokasi_sewa || '').trim();
+    const luas = Number(api.luas_lahan || 0);
+
+    const classification = classifyFacilityItem({
+      catName: api.kategori || 'Pemakaian Fasilitas',
+      itemName: api.tipe_transaksi || 'Sewa Fasilitas',
+      lokasi,
+      note: `${api.keterangan || ''} ${api.keterangan_transaksi || ''}`,
+      nominal: amt,
+      luas_lahan: luas
+    });
+
+    const facilities = {};
+    facilities[classification.key] = classification.value;
+
+    rawRows.push({
+      id: `api_${apiIdStr}`,
+      apiRefId: apiIdStr,
+      rawTglBayar,
+      rawTglPakai,
+      penyewa: penyewa || '-',
+      lokasi,
+      keterangan: lokasi || api.keterangan || 'Sewa Fasilitas',
+      facilities,
+      nominal: amt
+    });
   });
 
-  return { year, month, monthName, rows, totalNominal };
+  // 4. Urutkan berdasarkan tanggal bayar (rawTglBayar ASC), lalu nama penyewa
+  rawRows.sort((a, b) => {
+    if (a.rawTglBayar !== b.rawTglBayar) {
+      return a.rawTglBayar.localeCompare(b.rawTglBayar);
+    }
+    return (a.penyewa || '').localeCompare(b.penyewa || '');
+  });
+
+  // 5. Format tampilan dan hitung total per kolom fasilitas
+  const facilityTotals = {};
+  FASILITAS_COLUMNS.forEach((col) => {
+    facilityTotals[col.key] = 0;
+  });
+  let totalNominal = 0;
+
+  const rows = rawRows.map((r, idx) => {
+    const tglBayarFormatted = formatDmy(r.rawTglBayar);
+    const tglPakaiFormatted = formatDmy(r.rawTglPakai);
+
+    // Grouping tanggal bayar (kosong jika tanggal sama dengan baris sebelumnya, persis Gambar 1)
+    const isFirstOfDate = idx === 0 || formatDmy(rawRows[idx - 1].rawTglBayar) !== tglBayarFormatted;
+    const tglBayarDisplay = isFirstOfDate ? tglBayarFormatted : '';
+
+    // Akumulasi total kolom
+    FASILITAS_COLUMNS.forEach((col) => {
+      const val = Number(r.facilities[col.key] || 0);
+      if (val > 0) {
+        facilityTotals[col.key] += val;
+      }
+    });
+    totalNominal += r.nominal;
+
+    return {
+      ...r,
+      no: idx + 1,
+      tglBayarFormatted,
+      tglPakaiFormatted,
+      tglBayarDisplay,
+      isFirstOfDate
+    };
+  });
+
+  return {
+    year,
+    month,
+    monthName,
+    rows,
+    columns: FASILITAS_COLUMNS,
+    facilityTotals,
+    totalNominal,
+    totalKegiatan: rows.length
+  };
 };
 
 /**

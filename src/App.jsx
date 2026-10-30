@@ -43,7 +43,7 @@ import {
 // 🔴 FUNGSI PEMANGGILAN API GEMINI (LLM) 
 // ==========================================
 const callGeminiAPI = async (prompt, systemInstruction) => {
-  const apiKey = ""; 
+  const apiKey = "";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
   const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: systemInstruction }] } };
   for (let i = 0; i < 5; i++) {
@@ -246,12 +246,12 @@ export const reconcileOrphanBankItems = (reports, rows) => {
       return item.bankAllocations.map(ba => {
         let desc = ba.desc || ba.tenant || "";
         if (!desc || desc === "Mutasi Bank" || desc === "Transaksi Sebelumnya") {
-          const matchedRow = safeRows.find(r => 
+          const matchedRow = safeRows.find(r =>
             (ba.bankRowId && r.id === ba.bankRowId) ||
             (ba.bankDate && r.date === ba.bankDate && Number(r.amount) >= Number(ba.amount))
           );
           if (matchedRow) {
-            desc = matchedRow.tenant 
+            desc = matchedRow.tenant
               ? (matchedRow.location && matchedRow.location !== matchedRow.tenant ? `${matchedRow.tenant} - ${matchedRow.location}` : matchedRow.tenant)
               : (matchedRow.description || (matchedRow.date ? `Mutasi (${matchedRow.date})` : "Mutasi Bank"));
           }
@@ -270,11 +270,11 @@ export const reconcileOrphanBankItems = (reports, rows) => {
     }
     const nominal = Number(docFormData?.[itemKey] || docFormData?.[itemKey.split("_note_")[0]] || docFormData?.[itemKey.split("_date_")[0]] || docFormData?.[item.catId + "_" + (item.itemId || item.id)] || item.originBankAllocAmount || 0);
     if (nominal > 0 || item.bankMatchDate || item.bankMatchRowId) {
-      const matchedRow = safeRows.find(r => 
+      const matchedRow = safeRows.find(r =>
         (item.bankMatchRowId && r.id === item.bankMatchRowId) ||
         (item.bankMatchDate && r.date === item.bankMatchDate && Number(r.amount) >= nominal)
       );
-      const desc = matchedRow?.tenant 
+      const desc = matchedRow?.tenant
         ? (matchedRow.location && matchedRow.location !== matchedRow.tenant ? `${matchedRow.tenant} - ${matchedRow.location}` : matchedRow.tenant)
         : (item.itemNote || matchedRow?.description || (item.bankMatchDate ? `Mutasi (${item.bankMatchDate})` : "Mutasi Bank"));
 
@@ -327,8 +327,8 @@ export const reconcileOrphanBankItems = (reports, rows) => {
         docData.activeItems.forEach(sourceItem => {
           if (!sourceItem) return;
 
-          let targetItem = targetDoc.activeItems.find(ti => 
-            ti && ti.catId === sourceItem.catId && 
+          let targetItem = targetDoc.activeItems.find(ti =>
+            ti && ti.catId === sourceItem.catId &&
             ((ti.itemId || "direct") === (sourceItem.itemId || "direct"))
           );
 
@@ -354,7 +354,7 @@ export const reconcileOrphanBankItems = (reports, rows) => {
             const sourceAllocs = extractItemAllocations(sourceItem, docData.formData);
 
             sourceAllocs.forEach(sa => {
-              const alreadyExists = targetItem.bankAllocations.some(ba => 
+              const alreadyExists = targetItem.bankAllocations.some(ba =>
                 (sa.bankRowId && ba.bankRowId === sa.bankRowId && ba.bankRowId !== "prior_0") ||
                 (sa.bankDate && ba.bankDate === sa.bankDate && Number(ba.amount) === Number(sa.amount))
               );
@@ -366,8 +366,8 @@ export const reconcileOrphanBankItems = (reports, rows) => {
             if (!Array.isArray(targetItem.bankMatchRowIds)) {
               targetItem.bankMatchRowIds = targetItem.bankMatchRowId ? [targetItem.bankMatchRowId] : [];
             }
-            const sRowIds = Array.isArray(sourceItem.bankMatchRowIds) 
-              ? sourceItem.bankMatchRowIds 
+            const sRowIds = Array.isArray(sourceItem.bankMatchRowIds)
+              ? sourceItem.bankMatchRowIds
               : (sourceItem.bankMatchRowId ? [sourceItem.bankMatchRowId] : []);
             sRowIds.forEach(id => {
               if (id && !targetItem.bankMatchRowIds.includes(id)) targetItem.bankMatchRowIds.push(id);
@@ -471,7 +471,7 @@ export const reconcileOrphanBankItems = (reports, rows) => {
   // tapi statusnya masih 'pending' di bankRows, sembuhkan menjadi 'matched' secara komprehensif
   safeRows.forEach(r => {
     if (!r) return;
-    const alloc = activeReportAllocations.find(a => 
+    const alloc = activeReportAllocations.find(a =>
       (r.id && a.rowId && r.id === a.rowId) ||
       (a.amount > 0 && a.date && r.date === a.date && Number(r.amount) === a.amount) ||
       (a.amount > 0 && a.date && r.date && (r.date.includes(a.date) || a.date.includes(r.date)) && Number(r.amount) === a.amount)
@@ -536,7 +536,7 @@ export const reconcileOrphanBankItems = (reports, rows) => {
         if (itemRowIds.length > 0) {
           // Cek apakah ada mutasi pendukung yang aktif (berdasarkan ID, tanggal, atau alokasi aktif)
           const hasActiveAllocation = Array.isArray(item.bankAllocations) && item.bankAllocations.some(isAllocationActive);
-          const hasActiveRow = itemRowIds.some(id => activeBankRowIds.has(id)) || 
+          const hasActiveRow = itemRowIds.some(id => activeBankRowIds.has(id)) ||
             (item.bankMatchDate && activeBankDates.has(item.bankMatchDate)) ||
             hasActiveAllocation;
           if (!hasActiveRow) {
@@ -627,14 +627,14 @@ export default function App() {
   const [pdfLoading, setPdfLoading] = useState(false);
 
   const [editNoteModal, setEditNoteModal] = useState({ isOpen: false, group: null, item: null, newNote: '' });
-  const [saveToast, setSaveToast] = useState({ show: false, message: '' }); 
+  const [saveToast, setSaveToast] = useState({ show: false, message: '' });
 
   // --- STATE RUANG TRANSIT ---
-  const [transitModal, setTransitModal] = useState({ 
+  const [transitModal, setTransitModal] = useState({
     isOpen: false, step: 'confirm_date', source: '3a',
-    targetDate: getLocalYMD(), 
+    targetDate: getLocalYMD(),
     isLoading: false, data: [], error: '', isOverwriting: false,
-    iwmDiskon: [] 
+    iwmDiskon: []
   });
 
   const [printMode, setPrintMode] = useState('pdf');
@@ -648,24 +648,24 @@ export default function App() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const [dbReady, setDbReady] = useState(false);
-  const [syncStatus, setSyncStatus] = useState('offline'); 
+  const [syncStatus, setSyncStatus] = useState('offline');
   const [isGeneratingUraian, setIsGeneratingUraian] = useState(false);
   const [bankRows, setBankRows] = useState(() => {
     try {
       const saved = localStorage.getItem('tmr_v19_bankRows');
       return saved ? ensureBankRowIds(JSON.parse(saved)) : [];
-    } catch(e) { return []; }
+    } catch (e) { return []; }
   });
 
   useEffect(() => {
-    try { localStorage.setItem('tmr_v19_bankRows', JSON.stringify(bankRows)); } catch(e) {}
+    try { localStorage.setItem('tmr_v19_bankRows', JSON.stringify(bankRows)); } catch (e) { }
   }, [bankRows]);
 
   // --- REPORT EXCEL & REKON STATE ---
   const [excelReportMonth, setExcelReportMonth] = useState(() => getLocalYMD().substring(0, 7)); // Format YYYY-MM
   const [selectedReportType, setSelectedReportType] = useState('rekapitulasi');
   const [rekonOfficerName, setRekonOfficerName] = useState(''); // Default Fallback
-  
+
   const reportCategories = ['E-Ticketing Old Gate', 'Ticket Online', 'Ticket Vending Machine (TVM)', 'E-Ticketing New Gate'];
 
   useEffect(() => {
@@ -684,23 +684,23 @@ export default function App() {
       setAuthReady(true);
       // Auto-fill officer name with logged in user email/name gracefully
       if (currentUser && !rekonOfficerName) {
-         let name = currentUser.displayName;
-         if (!name && currentUser.email) {
-             name = currentUser.email.split('@')[0];
-             name = name.charAt(0).toUpperCase() + name.slice(1);
-         }
-         setRekonOfficerName(name || 'Petugas Rekon');
+        let name = currentUser.displayName;
+        if (!name && currentUser.email) {
+          name = currentUser.email.split('@')[0];
+          name = name.charAt(0).toUpperCase() + name.slice(1);
+        }
+        setRekonOfficerName(name || 'Petugas Rekon');
       }
     });
     return () => unsub();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError(''); setIsLoggingIn(true);
-    try { await signInWithEmailAndPassword(auth, email, password); } 
-    catch (err) { setLoginError('Akses Ditolak! Email atau Password salah.'); } 
+    try { await signInWithEmailAndPassword(auth, email, password); }
+    catch (err) { setLoginError('Akses Ditolak! Email atau Password salah.'); }
     finally { setIsLoggingIn(false); }
   };
 
@@ -710,7 +710,7 @@ export default function App() {
 
   const getInitialState = (key, defaultValue) => {
     if (typeof window === 'undefined') return defaultValue;
-    try { const saved = window.localStorage.getItem(key); if (saved) return JSON.parse(saved); } catch (e) {}
+    try { const saved = window.localStorage.getItem(key); if (saved) return JSON.parse(saved); } catch (e) { }
     return defaultValue;
   };
 
@@ -740,8 +740,8 @@ export default function App() {
   const [activeMasterMenu, setActiveMasterMenu] = useState('menu');
 
   const [reportDate, setReportDate] = useState(getLocalYMD());
-  const [activeType, setActiveType] = useState('utama'); 
-  const [activeLainIndex, setActiveLainIndex] = useState(1); 
+  const [activeType, setActiveType] = useState('utama');
+  const [activeLainIndex, setActiveLainIndex] = useState(1);
 
   const [selectedCatToAdd, setSelectedCatToAdd] = useState('');
   const [selectedItemToAdd, setSelectedItemToAdd] = useState('');
@@ -935,33 +935,43 @@ export default function App() {
         const newBankPartitions = partitionBankRowsByMonth(allBankRows);
         const newReportPartitions = partitionReportsByMonth(allRep);
 
+        const forceAll = Boolean(options.forceAllPartitions);
+
         // Deteksi bulan mutasi bank yang mengalami perubahan
-        const changedBankMonths = [];
-        const allBankMonthKeys = new Set([
-          ...Object.keys(newBankPartitions),
-          ...Object.keys(previousBankMonthsRef.current)
-        ]);
-        allBankMonthKeys.forEach(m => {
-          const rows = newBankPartitions[m] || [];
-          const hash = JSON.stringify(rows);
-          if (hash !== previousBankMonthsRef.current[m]) {
-            changedBankMonths.push(m);
-          }
-        });
+        const changedBankMonths = forceAll
+          ? Object.keys(newBankPartitions)
+          : [];
+        if (!forceAll) {
+          const allBankMonthKeys = new Set([
+            ...Object.keys(newBankPartitions),
+            ...Object.keys(previousBankMonthsRef.current)
+          ]);
+          allBankMonthKeys.forEach(m => {
+            const rows = newBankPartitions[m] || [];
+            const hash = JSON.stringify(rows);
+            if (hash !== previousBankMonthsRef.current[m]) {
+              changedBankMonths.push(m);
+            }
+          });
+        }
 
         // Deteksi bulan laporan STSU yang mengalami perubahan
-        const changedReportMonths = [];
-        const allReportMonthKeys = new Set([
-          ...Object.keys(newReportPartitions),
-          ...Object.keys(previousReportMonthsRef.current)
-        ]);
-        allReportMonthKeys.forEach(m => {
-          const rep = newReportPartitions[m] || {};
-          const hash = JSON.stringify(rep);
-          if (hash !== previousReportMonthsRef.current[m]) {
-            changedReportMonths.push(m);
-          }
-        });
+        const changedReportMonths = forceAll
+          ? Object.keys(newReportPartitions)
+          : [];
+        if (!forceAll) {
+          const allReportMonthKeys = new Set([
+            ...Object.keys(newReportPartitions),
+            ...Object.keys(previousReportMonthsRef.current)
+          ]);
+          allReportMonthKeys.forEach(m => {
+            const rep = newReportPartitions[m] || {};
+            const hash = JSON.stringify(rep);
+            if (hash !== previousReportMonthsRef.current[m]) {
+              changedReportMonths.push(m);
+            }
+          });
+        }
 
         // Deteksi perubahan konfigurasi master (ttd, kategori, target, status tutup buku)
         const currentConfig = {
@@ -971,7 +981,7 @@ export default function App() {
           closedMonths: stateRef.current.closedMonths || {}
         };
         const configHash = JSON.stringify(currentConfig);
-        const configChanged = configHash !== previousConfigRef.current;
+        const configChanged = forceAll || (configHash !== previousConfigRef.current);
 
         const writePromises = [];
 
@@ -1019,7 +1029,7 @@ export default function App() {
         // Tunggu penyelesaian partisi yang ringan (hanya ~15 KB, ~150 ms)
         if (writePromises.length > 0) {
           await Promise.all(writePromises);
-          
+
           changedBankMonths.forEach(m => {
             previousBankMonthsRef.current[m] = JSON.stringify(newBankPartitions[m] || []);
           });
@@ -1121,8 +1131,8 @@ export default function App() {
     }
     await saveState({ closedMonths: current }, {
       immediate: true,
-      showToastMessage: shouldClose 
-        ? `Periode ${monthKey} berhasil DITUTUP BUKU (Data Terkunci Aman)!` 
+      showToastMessage: shouldClose
+        ? `Periode ${monthKey} berhasil DITUTUP BUKU (Data Terkunci Aman)!`
         : `Kunci periode ${monthKey} berhasil DIBUKA untuk revisi.`
     });
   };
@@ -1134,24 +1144,83 @@ export default function App() {
   const handleDownloadBackup = () => {
     try {
       const current = stateRef.current;
+      const allRep = current.allReports || {};
+      const allBank = current.bankRows || [];
+      const cats = current.categories || [];
+      const sigs = current.signatures || {};
+      const tgts = current.targets || {};
+      const closed = current.closedMonths || {};
+
+      // Hitung ringkasan pendapatan & mutasi secara komprehensif
+      let totalRevenue = 0;
+      const reportDates = Object.keys(allRep).sort();
+      reportDates.forEach(d => {
+        const dayData = allRep[d];
+        if (dayData && typeof dayData === 'object') {
+          Object.values(dayData).forEach(doc => {
+            if (doc && doc.formData && typeof doc.formData === 'object') {
+              Object.values(doc.formData).forEach(val => {
+                const n = Number(val);
+                if (!isNaN(n) && n > 0) totalRevenue += n;
+              });
+            }
+          });
+        }
+      });
+
+      let totalBankCredit = 0;
+      allBank.forEach(r => {
+        const amt = Number(r.amount || 0);
+        if (!isNaN(amt) && amt > 0) totalBankCredit += amt;
+      });
+
+      const bankPartitions = partitionBankRowsByMonth(allBank);
+      const repPartitions = partitionReportsByMonth(allRep);
+      const allMonths = Array.from(new Set([
+        ...Object.keys(bankPartitions),
+        ...Object.keys(repPartitions),
+        ...Object.keys(closed)
+      ])).filter(Boolean).sort().reverse();
+
+      const earliestDate = reportDates.length > 0 ? reportDates[0] : null;
+      const latestDate = reportDates.length > 0 ? reportDates[reportDates.length - 1] : null;
+
+      const now = new Date();
+      const exportIso = now.toISOString();
+      const exportLocalStr = now.toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }) + ' WIB';
+
       const backupData = {
         app: "Sistem Rekap STSU - TMR Ragunan",
         version: "tmr_v19",
-        exportedAt: new Date().toISOString(),
+        exportedAt: exportIso,
+        exportedAtLocal: exportLocalStr,
         metadata: {
-          totalReports: Object.keys(current.allReports || {}).length,
-          totalBankRows: (current.bankRows || []).length,
-          totalCategories: (current.categories || []).length,
-          hasSignatures: !!current.signatures,
-          closedMonthsCount: Object.keys(current.closedMonths || {}).length
+          totalReports: reportDates.length,
+          totalBankRows: allBank.length,
+          totalCategories: cats.length,
+          hasSignatures: Boolean(sigs && sigs.leftName && sigs.rightName),
+          closedMonthsCount: Object.keys(closed).length,
+          closedMonthsList: Object.keys(closed),
+          totalRevenue: totalRevenue,
+          totalBankCredit: totalBankCredit,
+          dateRange: { earliest: earliestDate, latest: latestDate },
+          months: allMonths,
+          apiIpAddress: apiIpAddress || 'localhost'
         },
         data: {
-          allReports: current.allReports || {},
-          bankRows: current.bankRows || [],
-          signatures: current.signatures || {},
-          categories: current.categories || [],
-          targets: current.targets || {},
-          closedMonths: current.closedMonths || {}
+          allReports: allRep,
+          bankRows: allBank,
+          signatures: sigs,
+          categories: cats,
+          targets: tgts,
+          closedMonths: closed,
+          apiIpAddress: apiIpAddress || 'localhost'
         }
       };
 
@@ -1159,13 +1228,24 @@ export default function App() {
       const blob = new Blob([jsonStr], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      const dateStr = getLocalYMD ? getLocalYMD() : new Date().toISOString().split("T")[0];
+      const datePart = (getLocalYMD ? getLocalYMD() : exportIso.split("T")[0]);
+      const timePart = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
       a.href = url;
-      a.download = `backup_tmr_ragunan_${dateStr}.json`;
+      a.download = `backup_tmr_ragunan_${datePart}_${timePart}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+
+      const backupInfo = {
+        date: exportIso,
+        dateFormatted: exportLocalStr,
+        fileName: `backup_tmr_ragunan_${datePart}_${timePart}.json`,
+        reportsCount: reportDates.length,
+        bankCount: allBank.length,
+        totalRevenue: totalRevenue
+      };
+      safeSetLocalStorage('tmr_v19_lastBackupInfo', backupInfo);
 
       showToast("Berhasil mengunduh file cadangan database (.json)!");
     } catch (err) {
@@ -1186,27 +1266,73 @@ export default function App() {
           throw new Error("Format file JSON tidak sesuai dengan standar cadangan TMR Ragunan.");
         }
 
-        const repCount = Object.keys(payload.allReports || {}).length;
-        const rowCount = (payload.bankRows || []).length;
-        const exportDate = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString('id-ID') : 'Tidak diketahui';
+        const rawReports = payload.allReports || {};
+        const rawBankRows = ensureBankRowIds(payload.bankRows || []);
+
+        // Rekonsiliasi orphan dan pastikan konsistensi alokasi mutasi bank
+        const { cleanReports, cleanRows } = reconcileOrphanBankItems(rawReports, rawBankRows);
+        const safeReports = cleanReports;
+        const safeBankRows = cleanRows || rawBankRows;
+
+        const repCount = Object.keys(safeReports).length;
+        const rowCount = safeBankRows.length;
+        const catCount = (payload.categories || []).length;
+        const exportDate = parsed.exportedAtLocal || (parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString('id-ID') : 'Tidak diketahui');
+        const metaRevenue = parsed.metadata?.totalRevenue;
+
+        let revenueSummary = '';
+        if (metaRevenue) {
+          revenueSummary = `\n• Total Pendapatan STSU: Rp ${Number(metaRevenue).toLocaleString('id-ID')}`;
+        }
 
         const confirmMsg = `Pulihkan database dari file cadangan ini?\n\n` +
-          `• Tanggal Backup: ${exportDate}\n` +
-          `• Laporan STSU: ${repCount} hari\n` +
+          `• File: ${file.name} (${(file.size / 1024).toFixed(1)} KB)\n` +
+          `• Tanggal Cadangan: ${exportDate}\n` +
+          `• Laporan STSU: ${repCount} hari${revenueSummary}\n` +
           `• Mutasi Bank: ${rowCount} baris transaksi\n` +
-          `• Kategori: ${(payload.categories || []).length} pos\n\n` +
-          `PERINGATAN: Seluruh data di Cloud saat ini akan diselaraskan dan diperbarui dengan isi file cadangan ini.`;
+          `• Master Kategori: ${catCount} pos\n` +
+          `• Status Tutup Buku: ${Object.keys(payload.closedMonths || {}).length} bulan terkunci\n\n` +
+          `PERINGATAN: Seluruh data di Cloud saat ini akan diselaraskan dan diperbarui secara menyeluruh dengan isi file cadangan ini.`;
 
         if (window.confirm(confirmMsg)) {
           showToast("Sedang memulihkan database ke Cloud...");
+
+          if (payload.apiIpAddress) {
+            setApiIpAddress(payload.apiIpAddress);
+            safeSetLocalStorage('tmr_v19_api_ip', payload.apiIpAddress);
+          }
+
+          // Reset delta hash agar semua partisi dipaksa tulis ulang ke Firestore
+          previousBankMonthsRef.current = {};
+          previousReportMonthsRef.current = {};
+          previousConfigRef.current = '';
+
           await saveState({
-            allReports: payload.allReports || {},
-            bankRows: payload.bankRows || [],
+            allReports: safeReports,
+            bankRows: safeBankRows,
             signatures: payload.signatures || stateRef.current.signatures,
             categories: payload.categories || stateRef.current.categories,
             targets: payload.targets || stateRef.current.targets,
-            closedMonths: payload.closedMonths || stateRef.current.closedMonths || {}
-          }, { immediate: true, showToastMessage: "Database berhasil dipulihkan 100% dari file cadangan!" });
+            closedMonths: payload.closedMonths || {}
+          }, {
+            immediate: true,
+            forceAllPartitions: true,
+            showToastMessage: "Database berhasil dipulihkan 100% dari file cadangan!"
+          });
+
+          // Segera update cold storage master
+          scheduleMasterColdBackup(0);
+
+          const restoreInfo = {
+            date: new Date().toISOString(),
+            dateFormatted: new Date().toLocaleDateString('id-ID', {
+              day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
+            }) + ' WIB',
+            fileName: file.name,
+            reportsCount: repCount,
+            bankCount: rowCount
+          };
+          safeSetLocalStorage('tmr_v19_lastRestoreInfo', restoreInfo);
         }
       } catch (err) {
         console.error("Restore error:", err);
@@ -1314,7 +1440,7 @@ export default function App() {
               if (ld.categories) loadedCats = ld.categories;
               if (ld.targets) loadedTargets = ld.targets;
             }
-          } catch(e) {}
+          } catch (e) { }
         }
 
         if (Object.keys(loadedReports).length === 0) {
@@ -1328,7 +1454,7 @@ export default function App() {
               if (dd.categories) loadedCats = dd.categories;
               if (dd.targets) loadedTargets = dd.targets;
             }
-          } catch(e) {}
+          } catch (e) { }
         }
 
         // 4. Fallback ke state lokal jika database cloud benar-benar baru
@@ -1719,7 +1845,7 @@ export default function App() {
   const activeTypeKey = useMemo(() => { return activeType === 'utama' ? 'utama' : (activeLainIndex === 1 ? 'lain' : `lain_${activeLainIndex}`); }, [activeType, activeLainIndex]);
 
   const lainDocIndices = useMemo(() => {
-    const dayData = allReports[reportDate] || {}; const indices = [1]; 
+    const dayData = allReports[reportDate] || {}; const indices = [1];
     Object.keys(dayData).forEach(k => { if (k.startsWith('lain_')) { const num = parseInt(k.split('_')[1], 10); if (!isNaN(num) && !indices.includes(num)) indices.push(num); } });
     return indices.sort((a, b) => a - b);
   }, [allReports, reportDate]);
@@ -1756,7 +1882,7 @@ export default function App() {
       const keyToRemove = indexToRemove === 1 ? 'lain' : `lain_${indexToRemove}`;
       const docToRemove = dayData[keyToRemove] || {};
       const itemsToReset = Array.isArray(docToRemove.activeItems) ? docToRemove.activeItems : [];
-      
+
       const rowIdsToPending = [];
       itemsToReset.forEach(it => {
         if (it && it.bankMatched) {
@@ -1764,7 +1890,7 @@ export default function App() {
           else if (it.bankMatchRowId) rowIdsToPending.push(it.bankMatchRowId);
         }
       });
-      
+
       const baseBankRows = stateRef.current.bankRows;
       let newBankRows = baseBankRows;
       if (rowIdsToPending.length > 0) {
@@ -1779,7 +1905,7 @@ export default function App() {
         });
         setBankRows(newBankRows);
       }
-      
+
       delete dayData[keyToRemove];
       const newReports = { ...baseReports, [reportDate]: dayData };
       setAllReports(newReports);
@@ -1813,42 +1939,42 @@ export default function App() {
     const targetKey = docTypeKey && dayData[docTypeKey] ? docTypeKey : (dayData['utama'] ? 'utama' : Object.keys(dayData)[0] || 'utama');
     const typeData = dayData[targetKey] || { sequence: '', signatureDate: dateStr, activeItems: [], formData: {} };
     let newReports;
-    
-    if (isSusulan && Array.isArray(susulanKeys)) {
-       const susulanMeta = typeData.susulanMeta || {};
-       const newSusulanMeta = { ...susulanMeta };
-       
-       // Apply the value to all merged keys in this susulan row
-       [].concat(susulanKeys).forEach(k => {
-           if(k) {
-               newSusulanMeta[k] = {
-                   ...(newSusulanMeta[k] || {}),
-                   [field]: value
-               };
-           }
-       });
 
-       newReports = {
-           ...baseReports,
-           [dateStr]: {
-               ...dayData,
-               [targetKey]: {
-                   ...typeData,
-                   susulanMeta: newSusulanMeta
-               }
-           }
-       };
+    if (isSusulan && Array.isArray(susulanKeys)) {
+      const susulanMeta = typeData.susulanMeta || {};
+      const newSusulanMeta = { ...susulanMeta };
+
+      // Apply the value to all merged keys in this susulan row
+      [].concat(susulanKeys).forEach(k => {
+        if (k) {
+          newSusulanMeta[k] = {
+            ...(newSusulanMeta[k] || {}),
+            [field]: value
+          };
+        }
+      });
+
+      newReports = {
+        ...baseReports,
+        [dateStr]: {
+          ...dayData,
+          [targetKey]: {
+            ...typeData,
+            susulanMeta: newSusulanMeta
+          }
+        }
+      };
     } else if (!isSusulan) {
-        newReports = {
-            ...baseReports,
-            [dateStr]: {
-                ...dayData,
-                [targetKey]: {
-                    ...typeData,
-                    [field]: value
-                }
-            }
-        };
+      newReports = {
+        ...baseReports,
+        [dateStr]: {
+          ...dayData,
+          [targetKey]: {
+            ...typeData,
+            [field]: value
+          }
+        }
+      };
     }
     if (newReports) {
       setAllReports(newReports);
@@ -1891,7 +2017,7 @@ export default function App() {
       const dayData = baseReports[reportDate] || {};
       const typeData = dayData[activeTypeKey] || {};
       const itemsToReset = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
-      
+
       const rowIdsToPending = [];
       itemsToReset.forEach(it => {
         if (it && it.bankMatched) {
@@ -1899,7 +2025,7 @@ export default function App() {
           else if (it.bankMatchRowId) rowIdsToPending.push(it.bankMatchRowId);
         }
       });
-      
+
       const baseBankRows = stateRef.current.bankRows;
       let newBankRows = baseBankRows;
       if (rowIdsToPending.length > 0) {
@@ -1949,7 +2075,7 @@ export default function App() {
 
     const inputKey = getActiveItemKey(newItem.catId, newItem.itemId, newItem.isSusulan, newItem.validDate, newItem.itemDate, newItem.itemNote);
     const initialNominal = Number(String(manualNominalToAdd).replace(/[^0-9]/g, '')) || 0;
-    
+
     const baseReports = stateRef.current.allReports;
     const dayData = { ...(baseReports[reportDate] || {}) };
 
@@ -1985,7 +2111,7 @@ export default function App() {
 
     const typeData = dayData[targetDocKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
     const currentItems = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
-    
+
     const existing = currentItems.find(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) === inputKey);
 
     if (!existing) {
@@ -2032,10 +2158,10 @@ export default function App() {
         showToast('Item sudah ada dalam daftar transaksi.');
       }
     }
-    
+
     const cat = categories.find(c => c.id === selectedCatToAdd);
     if (cat && Array.isArray(cat.items) && cat.items.length === 0) setSelectedCatToAdd('');
-    setSelectedItemToAdd(''); 
+    setSelectedItemToAdd('');
     setManualNominalToAdd('');
     setLainItemNote('');
     setTimeout(() => { if (typeof document !== 'undefined') { const inputElement = document.getElementById(`input_${inputKey}`); if (inputElement) inputElement.focus(); } }, 100);
@@ -2048,42 +2174,42 @@ export default function App() {
     }
     const baseBankRows = stateRef.current.bankRows;
     let newBankRows = baseBankRows;
-    
+
     const rowIdsToPending = [];
     if (itemToRemove.bankMatched) {
-        if (Array.isArray(itemToRemove.bankMatchRowIds) && itemToRemove.bankMatchRowIds.length > 0) {
-            rowIdsToPending.push(...itemToRemove.bankMatchRowIds);
-        } else if (itemToRemove.bankMatchRowId) {
-            rowIdsToPending.push(itemToRemove.bankMatchRowId);
-        }
+      if (Array.isArray(itemToRemove.bankMatchRowIds) && itemToRemove.bankMatchRowIds.length > 0) {
+        rowIdsToPending.push(...itemToRemove.bankMatchRowIds);
+      } else if (itemToRemove.bankMatchRowId) {
+        rowIdsToPending.push(itemToRemove.bankMatchRowId);
+      }
     }
 
     if (rowIdsToPending.length > 0) {
-        newBankRows = baseBankRows.map(r => {
-            if (rowIdsToPending.includes(r.id)) {
-                const updated = { ...r, status: 'pending' };
-                delete updated.linkedTo;
-                delete updated.matchedTo;
-                return updated;
-            }
-            return r;
-        });
-        setBankRows(newBankRows);
+      newBankRows = baseBankRows.map(r => {
+        if (rowIdsToPending.includes(r.id)) {
+          const updated = { ...r, status: 'pending' };
+          delete updated.linkedTo;
+          delete updated.matchedTo;
+          return updated;
+        }
+        return r;
+      });
+      setBankRows(newBankRows);
     }
 
     const keyToRemove = providedKey || getActiveItemKey(itemToRemove.catId, itemToRemove.itemId || itemToRemove.id, itemToRemove.isSusulan, itemToRemove.validDate, itemToRemove.itemDate, itemToRemove.itemNote);
-    
+
     const baseReports = stateRef.current.allReports;
-    const dayData = baseReports[reportDate] || {}; 
+    const dayData = baseReports[reportDate] || {};
     const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
     const newActive = (typeData.activeItems || []).filter(i => getActiveItemKey(i.catId, i.itemId || i.id, i.isSusulan, i.validDate, i.itemDate, i.itemNote) !== keyToRemove);
-    const newFormData = { ...(typeData.formData || {}) }; 
+    const newFormData = { ...(typeData.formData || {}) };
     delete newFormData[keyToRemove];
     delete newFormData[keyToRemove + '_buktiUrl'];
-    
+
     const updatedTypeData = { ...typeData, activeItems: newActive, formData: newFormData };
     const newReports = { ...baseReports, [reportDate]: { ...dayData, [activeTypeKey]: updatedTypeData } };
-    
+
     setAllReports(newReports);
     saveToFirebaseDirectly(newReports, newBankRows);
     showToast('Item berhasil dihapus!');
@@ -2096,7 +2222,7 @@ export default function App() {
     }
     const rawValue = value.replace(/[^0-9]/g, '');
     const numVal = Number(rawValue) || 0;
-    
+
     const baseReports = stateRef.current.allReports;
     const dayData = baseReports[reportDate] || {};
     const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
@@ -2114,7 +2240,7 @@ export default function App() {
         [activeTypeKey]: updatedTypeData
       }
     };
-    
+
     saveState({ allReports: newReports }, { immediate: false });
   };
 
@@ -2125,7 +2251,7 @@ export default function App() {
       const prompt = `Rapikan catatan singkat berikut menjadi satu frasa resmi yang baku untuk STSU. Langsung berikan hasilnya. Catatan: "${lainItemNote}"`;
       const result = await callGeminiAPI(prompt, "Asisten admin STSU.");
       setLainItemNote(result.trim());
-    } catch (e) {} finally { setIsGeneratingUraian(false); }
+    } catch (e) { } finally { setIsGeneratingUraian(false); }
   };
 
   const openEditNote = (group, item) => { setEditNoteModal({ isOpen: true, group, item, newNote: item.itemNote || '' }); };
@@ -2134,7 +2260,7 @@ export default function App() {
     if (trimmedNew && trimmedNew !== oldNote) {
       const oldKey = getActiveItemKey(group.catId, item.itemId || item.id, group.isSusulan, group.validDate, group.itemDate, oldNote);
       const newKey = getActiveItemKey(group.catId, item.itemId || item.id, group.isSusulan, group.validDate, group.itemDate, trimmedNew);
-      
+
       const baseReports = stateRef.current.allReports;
       const dayData = baseReports[reportDate] || {};
       const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
@@ -2189,7 +2315,7 @@ export default function App() {
 
   const executeFetchData = async (isOverwrite) => {
     setTransitModal(prev => ({ ...prev, step: 'loading', isOverwriting: isOverwrite, error: '' }));
-    
+
     try {
       let fetchedData = [];
       let diskonData = [];
@@ -2215,9 +2341,9 @@ export default function App() {
       setTransitModal(prev => ({ ...prev, step: 'mapping', data: mappedData, iwmDiskon: diskonData }));
 
     } catch (err) {
-      setTransitModal(prev => ({ 
-        ...prev, step: 'error', 
-        error: `Gagal terhubung ke Bot API Python. Error: ${err.message}. Pastikan file Python sedang berjalan!` 
+      setTransitModal(prev => ({
+        ...prev, step: 'error',
+        error: `Gagal terhubung ke Bot API Python. Error: ${err.message}. Pastikan file Python sedang berjalan!`
       }));
     }
   };
@@ -2236,9 +2362,9 @@ export default function App() {
     }
     const baseReports = stateRef.current.allReports;
     const newReports = JSON.parse(JSON.stringify(baseReports));
-    const dayData = newReports[reportDate] || {}; 
+    const dayData = newReports[reportDate] || {};
     const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
-    
+
     const baseBankRows = stateRef.current.bankRows;
     let newBankRows = baseBankRows;
 
@@ -2270,34 +2396,34 @@ export default function App() {
 
     transitModal.data.forEach(t => {
       if (t.mappedCat && t.mappedItem) {
-        
-        const finalNote = activeType === 'lain' ? (lainItemNote || '') : ''; 
+
+        const finalNote = activeType === 'lain' ? (lainItemNote || '') : '';
         const key = getActiveItemKey(t.mappedCat, t.mappedItem, isAddingSusulan, susulanValidDate, lainItemDate, finalNote);
         const exists = newItems.find(i => getActiveItemKey(i.catId, i.itemId, i.isSusulan, i.validDate, i.itemDate, i.itemNote) === key);
-        
+
         if (!exists) {
-          newItems.push({ 
-            catId: t.mappedCat, 
-            itemId: t.mappedItem, 
-            isSusulan: isAddingSusulan, 
-            validDate: susulanValidDate, 
-            itemDate: lainItemDate, 
-            itemNote: finalNote 
+          newItems.push({
+            catId: t.mappedCat,
+            itemId: t.mappedItem,
+            isSusulan: isAddingSusulan,
+            validDate: susulanValidDate,
+            itemDate: lainItemDate,
+            itemNote: finalNote
           });
         }
-        
+
         // Agregasi akhir saat disuntikkan ke STSU form
         newFormData[key] = (newFormData[key] || 0) + Number(t.amount);
       }
     });
-    
+
     typeData.activeItems = newItems;
     typeData.formData = newFormData;
     newReports[reportDate] = { ...dayData, [activeTypeKey]: typeData };
-    
+
     setAllReports(newReports);
     saveToFirebaseDirectly(newReports, newBankRows);
-    
+
     const is3a = transitModal.source === '3a';
     closeTransitModal();
     showToast(`Berhasil! Data dari Bot ${is3a ? '3A' : 'IWM'} telah disuntikkan dan otomatis digabungkan pada STSU.`);
@@ -2310,7 +2436,7 @@ export default function App() {
   const availableItemsToAdd = useMemo(() => {
     if (!selectedCatToAdd) return []; const cat = categories.find(c => c.id === selectedCatToAdd); if (!cat) return [];
     const activeI = Array.isArray(currentReport.activeItems) ? currentReport.activeItems : [];
-    
+
     const isAdded = (iId) => {
       if (activeType === 'utama') return activeI.some(a => a.catId === selectedCatToAdd && a.itemId === iId && !!a.isSusulan === isAddingSusulan && (a.validDate || '') === (susulanValidDate || '') && !a.itemNote);
       else return activeI.some(a => a.catId === selectedCatToAdd && a.itemId === iId && (a.itemDate || '') === (lainItemDate || '') && (a.itemNote || '') === (lainItemNote.trim() || ''));
@@ -2374,13 +2500,13 @@ export default function App() {
 
   const { subtotals, grandTotal } = useMemo(() => {
     let gt = 0; const subs = {}; const cForm = currentReport.formData || {};
-    activeGroups.forEach(group => { 
-      let sub = 0; 
-      group.activeItems.forEach(item => { 
-        sub += Number(cForm[getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate, item.itemNote)]) || 0; 
-      }); 
-      subs[group.groupId] = sub; 
-      gt += sub; 
+    activeGroups.forEach(group => {
+      let sub = 0;
+      group.activeItems.forEach(item => {
+        sub += Number(cForm[getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate, item.itemNote)]) || 0;
+      });
+      subs[group.groupId] = sub;
+      gt += sub;
     });
     return { subtotals: subs, grandTotal: gt };
   }, [currentReport.formData, activeGroups]);
@@ -2556,861 +2682,862 @@ export default function App() {
       />
 
       {topLevelRoute === 'home' && (
-             <div className="min-h-[90vh] flex flex-col items-center justify-center p-4">
-                 <h1 className="text-5xl font-black text-gray-800 mb-2 text-center drop-shadow-sm">Master Menu Admin</h1>
-                 <p className="text-gray-500 mb-12 text-center font-medium">Sistem Informasi Manajemen Pendapatan Taman Margasatwa Ragunan</p>
+        <div className="min-h-[90vh] flex flex-col items-center justify-center p-4">
+          <h1 className="text-5xl font-black text-gray-800 mb-2 text-center drop-shadow-sm">Master Menu Admin</h1>
+          <p className="text-gray-500 mb-12 text-center font-medium">Sistem Informasi Manajemen Pendapatan Taman Margasatwa Ragunan</p>
 
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-5xl">
-                     <button onClick={() => setTopLevelRoute('target')} className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-200 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 flex flex-col items-center text-center gap-6 group overflow-hidden">
-                         <div className="w-24 h-24 rounded-3xl bg-amber-50 text-amber-500 flex items-center justify-center group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-white transition-all duration-300 shadow-inner"><Sparkles size={48}/></div>
-                         <div>
-                             <h3 className="font-black text-gray-800 text-2xl mb-2">Target Pendapatan</h3>
-                             <p className="text-sm text-gray-500">Manajemen master target pendapatan & pembagian cerdas AI otomatis.</p>
-                         </div>
-                     </button>
-                     
-                     <button onClick={() => setTopLevelRoute('operasional')} className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-200 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 flex flex-col items-center text-center gap-6 group overflow-hidden">
-                         <div className="w-24 h-24 rounded-3xl bg-green-50 text-green-500 flex items-center justify-center group-hover:scale-110 group-hover:bg-green-500 group-hover:text-white transition-all duration-300 shadow-inner"><Edit size={48}/></div>
-                         <div>
-                             <h3 className="font-black text-gray-800 text-2xl mb-2">Input Harian</h3>
-                             <p className="text-sm text-gray-500">Sistem input transaksi STSU, pencetakan resi NCR, & sinkronisasi bot mutasi.</p>
-                         </div>
-                     </button>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-5xl">
+            <button onClick={() => setTopLevelRoute('target')} className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-200 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 flex flex-col items-center text-center gap-6 group overflow-hidden">
+              <div className="w-24 h-24 rounded-3xl bg-amber-50 text-amber-500 flex items-center justify-center group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-white transition-all duration-300 shadow-inner"><Sparkles size={48} /></div>
+              <div>
+                <h3 className="font-black text-gray-800 text-2xl mb-2">Target Pendapatan</h3>
+                <p className="text-sm text-gray-500">Manajemen master target pendapatan & pembagian cerdas AI otomatis.</p>
+              </div>
+            </button>
 
-                     <button onClick={() => setTopLevelRoute('dashboard')} className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-200 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 flex flex-col items-center text-center gap-6 group overflow-hidden">
-                         <div className="w-24 h-24 rounded-3xl bg-blue-50 text-blue-500 flex items-center justify-center group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all duration-300 shadow-inner"><FileText size={48}/></div>
-                         <div>
-                             <h3 className="font-black text-gray-800 text-2xl mb-2">Pusat Laporan</h3>
-                             <p className="text-sm text-gray-500">Visualisasi pencapaian, rekapitulasi performa, dan dashboard analitik data.</p>
-                         </div>
-                     </button>
-                 </div>
-                 
-                 <div className="mt-16 text-center text-xs text-gray-400 font-medium">
-                    <p>Logged in as: {user?.email}</p>
-                    <button onClick={handleLogout} className="mt-4 text-red-500 hover:text-red-700 flex items-center justify-center gap-1 mx-auto bg-red-50 px-3 py-1.5 rounded-full"><LogOut size={14}/> Keluar Aplikasi</button>
-                 </div>
-             </div>
+            <button onClick={() => setTopLevelRoute('operasional')} className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-200 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 flex flex-col items-center text-center gap-6 group overflow-hidden">
+              <div className="w-24 h-24 rounded-3xl bg-green-50 text-green-500 flex items-center justify-center group-hover:scale-110 group-hover:bg-green-500 group-hover:text-white transition-all duration-300 shadow-inner"><Edit size={48} /></div>
+              <div>
+                <h3 className="font-black text-gray-800 text-2xl mb-2">Input Harian</h3>
+                <p className="text-sm text-gray-500">Sistem input transaksi STSU, pencetakan resi NCR, & sinkronisasi bot mutasi.</p>
+              </div>
+            </button>
+
+            <button onClick={() => setTopLevelRoute('dashboard')} className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-200 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 flex flex-col items-center text-center gap-6 group overflow-hidden">
+              <div className="w-24 h-24 rounded-3xl bg-blue-50 text-blue-500 flex items-center justify-center group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all duration-300 shadow-inner"><FileText size={48} /></div>
+              <div>
+                <h3 className="font-black text-gray-800 text-2xl mb-2">Pusat Laporan</h3>
+                <p className="text-sm text-gray-500">Visualisasi pencapaian, rekapitulasi performa, dan dashboard analitik data.</p>
+              </div>
+            </button>
+          </div>
+
+          <div className="mt-16 text-center text-xs text-gray-400 font-medium">
+            <p>Logged in as: {user?.email}</p>
+            <button onClick={handleLogout} className="mt-4 text-red-500 hover:text-red-700 flex items-center justify-center gap-1 mx-auto bg-red-50 px-3 py-1.5 rounded-full"><LogOut size={14} /> Keluar Aplikasi</button>
+          </div>
+        </div>
       )}
 
       {topLevelRoute !== 'home' && (
-         <div className="w-full flex flex-col min-h-screen">
-            {/* Top Bar for Back Navigation */}
-            <div className="bg-white border-b border-gray-200 px-4 py-3 flex justify-between items-center sticky top-0 z-[60] no-print shadow-sm">
-               <button onClick={() => setTopLevelRoute('home')} className="flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-green-700 bg-gray-50 hover:bg-green-50 border border-gray-200 hover:border-green-200 px-4 py-2 rounded-lg transition-colors">
-                  <ChevronLeft size={18}/> Kembali ke Menu Utama
-               </button>
-               <div className="font-black text-gray-800 hidden sm:flex items-center gap-2 text-lg">
-                  {topLevelRoute === 'operasional' ? <><Edit className="text-green-600" size={24}/> Operasional Harian</> : topLevelRoute === 'target' ? <><Sparkles className="text-amber-500" size={24}/> Target Pendapatan</> : <><FileText className="text-blue-500" size={24}/> Pusat Laporan</>}
-               </div>
-            </div>
-
-            {topLevelRoute === 'target' && (
-              <div className="max-w-4xl mx-auto px-4 py-6 w-full animate-in fade-in slide-in-from-bottom-4">
-                <TargetManager 
-                  categories={categories} 
-                  targets={targets} 
-                  setTargets={setTargets} 
-                  formatRp={formatRp} 
-                />
-              </div>
-            )}
-
-            {topLevelRoute === 'operasional' && (
-               <>
-      <nav className="bg-green-700 text-white shadow-md sticky top-[60px] z-50 shrink-0 no-print">
-        <div className="max-w-6xl mx-auto px-4 flex justify-between items-center h-16">
-          <div className="font-bold text-lg flex items-center gap-2 mr-4 shrink-0">
-            <Calculator size={24} /> <span className="hidden lg:inline">Sistem Rekap STSU</span>
-            <div 
-              className="ml-0 sm:ml-4 flex items-center gap-1.5 text-[10px] sm:text-xs font-bold px-2.5 py-1 bg-green-900/60 border border-green-500/40 rounded-lg shadow-inner select-none" 
-              title={syncStatus === 'synced' ? 'Semua data tersimpan otomatis di Database Cloud Pusat' : syncStatus === 'syncing' ? 'Menyinkronkan ke Cloud...' : 'Koneksi Offline'}
-            >
-              {syncStatus === 'syncing' ? (
-                <>
-                  <RefreshCw className="animate-spin text-amber-300" size={13}/>
-                  <span className="hidden md:inline text-amber-200">Menyimpan...</span>
-                </>
-              ) : syncStatus === 'synced' ? (
-                <>
-                  <Cloud size={13} className="text-emerald-300"/>
-                  <span className="hidden md:inline text-emerald-100">Tersimpan di Cloud</span>
-                </>
-              ) : (
-                <>
-                  <CloudOff size={13} className="text-red-300"/>
-                  <span className="hidden md:inline text-red-200">Mode Offline</span>
-                </>
-              )}
+        <div className="w-full flex flex-col min-h-screen">
+          {/* Top Bar for Back Navigation */}
+          <div className="bg-white border-b border-gray-200 px-4 py-3 flex justify-between items-center sticky top-0 z-[60] no-print shadow-sm">
+            <button onClick={() => setTopLevelRoute('home')} className="flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-green-700 bg-gray-50 hover:bg-green-50 border border-gray-200 hover:border-green-200 px-4 py-2 rounded-lg transition-colors">
+              <ChevronLeft size={18} /> Kembali ke Menu Utama
+            </button>
+            <div className="font-black text-gray-800 hidden sm:flex items-center gap-2 text-lg">
+              {topLevelRoute === 'operasional' ? <><Edit className="text-green-600" size={24} /> Operasional Harian</> : topLevelRoute === 'target' ? <><Sparkles className="text-amber-500" size={24} /> Target Pendapatan</> : <><FileText className="text-blue-500" size={24} /> Pusat Laporan</>}
             </div>
           </div>
-          <div className="flex space-x-1 sm:space-x-2 shrink-0 overflow-x-auto no-scrollbar items-center">
-            <button onClick={() => handleTabSwitch('kalender')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'kalender' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Kalender</span></button>
-            <button onClick={() => handleTabSwitch('input')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'input' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Edit size={18} /> <span className="hidden md:inline">Input</span></button>
-            <button onClick={() => handleTabSwitch('rekonBank')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'rekonBank' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Database size={18} /> <span className="hidden md:inline">Rekon Bank</span></button>
-            <button onClick={() => handleTabSwitch('settings')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Settings size={18} /> <span className="hidden md:inline">Master</span></button>
-            <button onClick={() => handleTabSwitch('print')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'print' ? 'bg-green-800' : 'hover:bg-green-600'}`}><FileText size={18} /> <span className="hidden md:inline">Cetak</span></button>
-            
-            <div className="pl-2 border-l border-green-600 ml-1 flex items-center gap-2">
-                <span className="text-xs font-bold bg-green-800 px-2 py-1 rounded-md capitalize hidden sm:block">
-                   Hi, {user?.email ? user.email.split('@')[0] : 'User'}
-                </span>
-                <button onClick={handleLogout} className="px-2 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 hover:bg-red-600 transition-colors" title="Keluar Akun"><LogOut size={18} /></button>
+
+          {topLevelRoute === 'target' && (
+            <div className="max-w-4xl mx-auto px-4 py-6 w-full animate-in fade-in slide-in-from-bottom-4">
+              <TargetManager
+                categories={categories}
+                targets={targets}
+                setTargets={setTargets}
+                formatRp={formatRp}
+              />
             </div>
-          </div>
-        </div>
-      </nav>
+          )}
 
-      {/* ============================================================== */}
-      {/* 🔴 TAB: KALENDER */}
-      {/* ============================================================== */}
-      <KalenderTab
-        activeTab={activeTab}
-        allReports={allReports}
-        reportDate={reportDate}
-        closedMonths={closedMonths}
-        isMonthClosed={isMonthClosed}
-        onSelectDay={({ dateStr, type, lainIndex }) => {
-          handleDateChange(dateStr);
-          if (type) setActiveType(type);
-          if (lainIndex !== undefined) setActiveLainIndex(lainIndex);
-          setActiveTab('input');
-          setTopLevelRoute('operasional');
-        }}
-      />
+          {topLevelRoute === 'operasional' && (
+            <>
+              <nav className="bg-green-700 text-white shadow-md sticky top-[60px] z-50 shrink-0 no-print">
+                <div className="max-w-6xl mx-auto px-4 flex justify-between items-center h-16">
+                  <div className="font-bold text-lg flex items-center gap-2 mr-4 shrink-0">
+                    <Calculator size={24} /> <span className="hidden lg:inline">Sistem Rekap STSU</span>
+                    <div
+                      className="ml-0 sm:ml-4 flex items-center gap-1.5 text-[10px] sm:text-xs font-bold px-2.5 py-1 bg-green-900/60 border border-green-500/40 rounded-lg shadow-inner select-none"
+                      title={syncStatus === 'synced' ? 'Semua data tersimpan otomatis di Database Cloud Pusat' : syncStatus === 'syncing' ? 'Menyinkronkan ke Cloud...' : 'Koneksi Offline'}
+                    >
+                      {syncStatus === 'syncing' ? (
+                        <>
+                          <RefreshCw className="animate-spin text-amber-300" size={13} />
+                          <span className="hidden md:inline text-amber-200">Menyimpan...</span>
+                        </>
+                      ) : syncStatus === 'synced' ? (
+                        <>
+                          <Cloud size={13} className="text-emerald-300" />
+                          <span className="hidden md:inline text-emerald-100">Tersimpan di Cloud</span>
+                        </>
+                      ) : (
+                        <>
+                          <CloudOff size={13} className="text-red-300" />
+                          <span className="hidden md:inline text-red-200">Mode Offline</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex space-x-1 sm:space-x-2 shrink-0 overflow-x-auto no-scrollbar items-center">
+                    <button onClick={() => handleTabSwitch('kalender')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'kalender' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Calendar size={18} /> <span className="hidden md:inline">Kalender</span></button>
+                    <button onClick={() => handleTabSwitch('input')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'input' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Edit size={18} /> <span className="hidden md:inline">Input</span></button>
+                    <button onClick={() => handleTabSwitch('rekonBank')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'rekonBank' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Database size={18} /> <span className="hidden md:inline">Rekon Bank</span></button>
+                    <button onClick={() => handleTabSwitch('settings')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-green-800' : 'hover:bg-green-600'}`}><Settings size={18} /> <span className="hidden md:inline">Master</span></button>
+                    <button onClick={() => handleTabSwitch('print')} className={`px-2 sm:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeTab === 'print' ? 'bg-green-800' : 'hover:bg-green-600'}`}><FileText size={18} /> <span className="hidden md:inline">Cetak</span></button>
 
-      {activeTab === 'rekonBank' && (
-          <div className="no-print w-full bg-gray-50 min-h-screen">
-              <RekonBankTab 
-                 syncStatus={syncStatus}
-                 onRefreshCloud={handleManualSync}
-                 isMonthClosed={isMonthClosed}
-                 bankRows={bankRows}
-                 setBankRows={setBankRows}
-                 allReports={allReports}
-                 formatRp={formatRp} 
-                 safeString={safeString} 
-                 categories={categories}
-                 onSaveBankRows={async (newBankRows) => {
-                     const baseReports = stateRef.current.allReports;
-                     setBankRows(newBankRows);
-                     await saveToFirebaseDirectly(baseReports, newBankRows);
-                     showToast(`Berhasil menyimpan ${newBankRows.length} data mutasi bank ke Cloud!`);
-                 }}
-                 onSaveRekon={(bankRow, allocations, apis) => {
+                    <div className="pl-2 border-l border-green-600 ml-1 flex items-center gap-2">
+                      <span className="text-xs font-bold bg-green-800 px-2 py-1 rounded-md capitalize hidden sm:block">
+                        Hi, {user?.email ? user.email.split('@')[0] : 'User'}
+                      </span>
+                      <button onClick={handleLogout} className="px-2 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 hover:bg-red-600 transition-colors" title="Keluar Akun"><LogOut size={18} /></button>
+                    </div>
+                  </div>
+                </div>
+              </nav>
+
+              {/* ============================================================== */}
+              {/* 🔴 TAB: KALENDER */}
+              {/* ============================================================== */}
+              <KalenderTab
+                activeTab={activeTab}
+                allReports={allReports}
+                reportDate={reportDate}
+                closedMonths={closedMonths}
+                isMonthClosed={isMonthClosed}
+                onSelectDay={({ dateStr, type, lainIndex }) => {
+                  handleDateChange(dateStr);
+                  if (type) setActiveType(type);
+                  if (lainIndex !== undefined) setActiveLainIndex(lainIndex);
+                  setActiveTab('input');
+                  setTopLevelRoute('operasional');
+                }}
+              />
+
+              {activeTab === 'rekonBank' && (
+                <div className="no-print w-full bg-gray-50 min-h-screen">
+                  <RekonBankTab
+                    syncStatus={syncStatus}
+                    onRefreshCloud={handleManualSync}
+                    isMonthClosed={isMonthClosed}
+                    bankRows={bankRows}
+                    setBankRows={setBankRows}
+                    allReports={allReports}
+                    formatRp={formatRp}
+                    safeString={safeString}
+                    categories={categories}
+                    onSaveBankRows={async (newBankRows) => {
+                      const baseReports = stateRef.current.allReports;
+                      setBankRows(newBankRows);
+                      await saveToFirebaseDirectly(baseReports, newBankRows);
+                      showToast(`Berhasil menyimpan ${newBankRows.length} data mutasi bank ke Cloud!`);
+                    }}
+                    onSaveRekon={(bankRow, allocations, apis) => {
                       const safeApis = Array.isArray(apis) ? apis : [];
                       // 1. Format Tanggal
                       let ymd = new Date().toISOString().split('T')[0];
                       try {
-                          const cleanStr = (bankRow.date || '').replace(/WIB|WITA|WIT/i, '').trim();
-                          const d = new Date(cleanStr);
-                          if (!isNaN(d.getTime())) {
-                              const y = d.getFullYear();
-                              const m = String(d.getMonth() + 1).padStart(2, '0');
-                              const day = String(d.getDate()).padStart(2, '0');
-                              ymd = `${y}-${m}-${day}`;
-                          }
-                      } catch(e) {}
+                        const cleanStr = (bankRow.date || '').replace(/WIB|WITA|WIT/i, '').trim();
+                        const d = new Date(cleanStr);
+                        if (!isNaN(d.getTime())) {
+                          const y = d.getFullYear();
+                          const m = String(d.getMonth() + 1).padStart(2, '0');
+                          const day = String(d.getDate()).padStart(2, '0');
+                          ymd = `${y}-${m}-${day}`;
+                        }
+                      } catch (e) { }
 
                       const distinctTargetDates = [...new Set(allocations.map(a => a.targetDate || ymd).filter(Boolean))];
                       const primaryTargetDate = distinctTargetDates[0] || ymd;
 
                       if (isMonthClosed(primaryTargetDate) || isMonthClosed(ymd) || distinctTargetDates.some(d => isMonthClosed(d))) {
-                          alert('Periode tanggal yang dipilih telah TUTUP BUKU. Tidak dapat menambah atau mengalokasikan data ke periode yang terkunci.');
-                          return;
+                        alert('Periode tanggal yang dipilih telah TUTUP BUKU. Tidak dapat menambah atau mengalokasikan data ke periode yang terkunci.');
+                        return;
                       }
 
                       // Compute target summary for bankRows
                       let targetSummary = allocations.map(a => {
-                          let n = '';
-                          if (a.categoryId) {
-                              const cat = categories.find(c => c.id === a.categoryId);
-                              if (cat) n += cat.name;
-                          }
-                          return `${n} (Rp ${formatRp(a.amount)})`;
+                        let n = '';
+                        if (a.categoryId) {
+                          const cat = categories.find(c => c.id === a.categoryId);
+                          if (cat) n += cat.name;
+                        }
+                        return `${n} (Rp ${formatRp(a.amount)})`;
                       }).join(', ');
 
                       try {
-                          const baseReports = stateRef.current.allReports;
-                          const newReports = JSON.parse(JSON.stringify(baseReports));
-                          const createdAllocationsSummary = [];
+                        const baseReports = stateRef.current.allReports;
+                        const newReports = JSON.parse(JSON.stringify(baseReports));
+                        const createdAllocationsSummary = [];
 
-                          const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
-                          const targetIndex = baseBankRows.findIndex(r => 
-                              (bankRow.id && r.id && r.id === bankRow.id) ||
-                              (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && (r.description || '').trim() === (bankRow.description || '').trim()) ||
-                              (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount))
-                          );
-                          const effectiveRowId = (targetIndex >= 0 && baseBankRows[targetIndex].id) 
-                              ? baseBankRows[targetIndex].id 
-                              : (bankRow.id || `bank_${Date.now()}`);
-                          
-                           allocations.forEach(alloc => {
-                               const allocYmd = alloc.targetDate || ymd;
-                               if (!newReports[allocYmd]) {
-                                   newReports[allocYmd] = {};
-                               }
-                               const dayData = newReports[allocYmd];
-                               
-                               const cat = categories.find(c => c.id === alloc.categoryId);
-                               if (!cat) return; // Kategori wajib
-                               
-                               let theItemId = alloc.itemId;
-                               if (!theItemId || !cat.items || cat.items.length === 0) {
-                                   theItemId = 'direct';
-                               }
+                        const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
+                        const targetIndex = baseBankRows.findIndex(r =>
+                          (bankRow.id && r.id && r.id === bankRow.id) ||
+                          (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && (r.description || '').trim() === (bankRow.description || '').trim()) ||
+                          (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount))
+                        );
+                        const effectiveRowId = (targetIndex >= 0 && baseBankRows[targetIndex].id)
+                          ? baseBankRows[targetIndex].id
+                          : (bankRow.id || `bank_${Date.now()}`);
 
-                               let docKey = 'utama'; 
-                               if (cat.type === 'lain') {
-                                   let targetIndexDoc = 1;
-                                   while (true) {
-                                       const candidateKey = targetIndexDoc === 1 ? 'lain' : `lain_${targetIndexDoc}`;
-                                       const candidateDoc = dayData[candidateKey];
-                                       
-                                       if (!candidateDoc || !Array.isArray(candidateDoc.activeItems) || candidateDoc.activeItems.length === 0) {
-                                           docKey = candidateKey;
-                                           break;
-                                       }
-                                       
-                                       const allSameCategory = candidateDoc.activeItems.every(i => i.catId === cat.id);
-                                       
-                                       if (allSameCategory) {
-                                           docKey = candidateKey;
-                                           break;
-                                       }
-                                       
-                                       targetIndexDoc++;
-                                   }
-                               }
+                        allocations.forEach(alloc => {
+                          const allocYmd = alloc.targetDate || ymd;
+                          if (!newReports[allocYmd]) {
+                            newReports[allocYmd] = {};
+                          }
+                          const dayData = newReports[allocYmd];
 
-                               if (!dayData[docKey]) {
-                                   dayData[docKey] = { sequence: '', signatureDate: allocYmd, activeItems: [], formData: {} };
-                               }
-                               if (!dayData[docKey].formData) dayData[docKey].formData = {};
-                               if (!Array.isArray(dayData[docKey].activeItems)) dayData[docKey].activeItems = [];
+                          const cat = categories.find(c => c.id === alloc.categoryId);
+                          if (!cat) return; // Kategori wajib
 
-                               const typeData = dayData[docKey];
-
-                               const apiItem = safeApis.find(a => String(a.id) === String(alloc.apiRefId));
-                               const rawProofUrl = alloc.proofUrl || apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || bankRow.proofUrl || '';
-                               const isBase64Proof = (typeof rawProofUrl === 'string' && rawProofUrl.startsWith('data:image'));
-                               // Untuk menjaga performa dan batas 1MB Firestore, URL base64 disimpan pada mutasi bank saja
-                               const cleanProofUrl = isBase64Proof ? '' : rawProofUrl;
-
-                               const tenantLabel = alloc.tenant || (apiItem ? (apiItem.nama_penyewa || apiItem.namaPerusahaan || '') : '');
-                               const locationLabel = alloc.location || (apiItem ? (apiItem.lokasi_sewa || apiItem.namaProduk || '') : '');
-                               const displayDesc = tenantLabel
-                                 ? (locationLabel && locationLabel !== tenantLabel ? `${tenantLabel} - ${locationLabel}` : tenantLabel)
-                                 : (alloc.description || bankRow.description || 'Mutasi Bank');
-
-                               const allocAmount = Number(alloc.amount || 0);
-
-                               const newAllocationDetail = {
-                                   bankRowId: effectiveRowId,
-                                   bankDate: bankRow.date,
-                                   amount: allocAmount,
-                                   desc: displayDesc,
-                                   tenant: tenantLabel,
-                                   location: locationLabel,
-                                   apiRefId: alloc.apiRefId || '',
-                                   proofUrl: cleanProofUrl
-                               };
-
-                               // 🔴 PENCARIAN ITEM SECARA IDENTITAS POS (KATEGORI & ITEM):
-                               // Tidak terpengaruh hash catatan lama sehingga akumulasi nominal 100% akurat
-                               let existingItem = typeData.activeItems.find(i => {
-                                   if (!i || typeof i !== 'object') return false;
-                                   const matchCat = (i.catId === cat.id);
-                                   const matchItem = (theItemId === 'direct')
-                                       ? (i.itemId === 'direct' || i.id === 'direct' || !i.itemId)
-                                       : (i.itemId === theItemId || i.id === theItemId);
-                                   return matchCat && matchItem;
-                               });
-
-                               let itemKey = '';
-                               const wasNew = !existingItem;
-
-                               if (existingItem) {
-                                   // Item sudah ada di laporan harian
-                                   itemKey = getActiveItemKey(existingItem.catId, existingItem.itemId || existingItem.id, existingItem.isSusulan, existingItem.validDate, existingItem.itemDate, existingItem.itemNote);
-                                   const priorNominal = Number(typeData.formData[itemKey] || typeData.formData[`${existingItem.catId}_${existingItem.itemId || existingItem.id}`] || 0);
-
-                                   const priorRowId = existingItem.originBankRowId || existingItem.bankMatchRowId || 'prior_0';
-                                   const priorDate = existingItem.originBankDate || existingItem.bankMatchDate || '';
-
-                                   if (!Array.isArray(existingItem.bankAllocations)) {
-                                       existingItem.bankAllocations = [];
-                                       if (priorNominal > 0) {
-                                           const existingApi = safeApis.find(a => String(a.id) === String(existingItem.apiRefId));
-                                           const priorTenant = existingApi ? (existingApi.nama_penyewa || existingApi.namaPerusahaan || '') : (existingItem.itemNote || '');
-                                           const priorLoc = existingApi ? (existingApi.lokasi_sewa || existingApi.namaProduk || '') : '';
-                                           const priorLabel = priorTenant
-                                               ? (priorLoc && priorLoc !== priorTenant ? `${priorTenant} - ${priorLoc}` : priorTenant)
-                                               : (priorDate ? `Mutasi (${priorDate})` : 'Transaksi Sebelumnya');
-                                           existingItem.bankAllocations.push({
-                                               bankRowId: priorRowId,
-                                               bankDate: priorDate,
-                                               amount: priorNominal,
-                                               desc: priorLabel,
-                                               tenant: priorTenant,
-                                               location: priorLoc,
-                                               apiRefId: existingItem.apiRefId || '',
-                                               proofUrl: existingItem.proofUrl || ''
-                                           });
-                                       }
-                                   }
-
-                                   existingItem.bankMatched = true;
-                                   if (!Array.isArray(existingItem.bankMatchRowIds)) {
-                                       existingItem.bankMatchRowIds = priorRowId ? [priorRowId] : [];
-                                   }
-                                   if (!existingItem.bankMatchRowIds.includes(effectiveRowId)) {
-                                       existingItem.bankMatchRowIds.push(effectiveRowId);
-                                   }
-                                   existingItem.bankMatchRowId = effectiveRowId;
-                                   existingItem.bankMatchDate = bankRow.date;
-
-                                   const existingAllocIdx = existingItem.bankAllocations.findIndex(ba => 
-                                       (ba.bankRowId === effectiveRowId && ba.bankRowId !== 'prior_0' && ba.bankRowId !== priorRowId) || 
-                                       (ba.bankDate === bankRow.date && Number(ba.amount) === allocAmount)
-                                   );
-
-                                   if (existingAllocIdx >= 0) {
-                                       existingItem.bankAllocations[existingAllocIdx] = {
-                                           ...existingItem.bankAllocations[existingAllocIdx],
-                                           ...newAllocationDetail
-                                       };
-                                   } else {
-                                       existingItem.bankAllocations.push(newAllocationDetail);
-                                   }
-
-                                   // Total akumulasi seluruh alokasi mutasi yang terpasang
-                                   const sumAlloc = existingItem.bankAllocations.reduce((sum, ba) => sum + Number(ba.amount || 0), 0);
-                                   typeData.formData[itemKey] = sumAlloc > 0 ? sumAlloc : (priorNominal + allocAmount);
-
-                                   if (alloc.apiRefId) existingItem.apiRefId = alloc.apiRefId;
-                                   if (cleanProofUrl) existingItem.proofUrl = cleanProofUrl;
-
-                               } else {
-                                   // Item baru untuk laporan harian
-                                   const newItem = {
-                                       catId: cat.id,
-                                       itemId: theItemId,
-                                       bankMatched: true,
-                                       bankMatchRowId: effectiveRowId,
-                                       bankMatchDate: bankRow.date,
-                                       bankMatchRowIds: [effectiveRowId],
-                                       createdFromBank: true,
-                                       originBankRowId: effectiveRowId,
-                                       originBankDate: bankRow.date,
-                                       originBankAllocAmount: allocAmount,
-                                       bankAllocations: [newAllocationDetail],
-                                       ...(alloc.apiRefId ? { apiRefId: alloc.apiRefId } : {}),
-                                       ...(cleanProofUrl ? { proofUrl: cleanProofUrl } : {})
-                                   };
-
-                                   if (docKey === 'lain' || docKey.startsWith('lain_')) {
-                                       newItem.itemDate = allocYmd; 
-                                       if (alloc.description) newItem.itemNote = alloc.description.trim();
-                                   }
-
-                                   itemKey = getActiveItemKey(newItem.catId, newItem.itemId, newItem.isSusulan, newItem.validDate, newItem.itemDate, newItem.itemNote);
-                                   typeData.activeItems.push(newItem);
-                                   typeData.formData[itemKey] = allocAmount;
-                               }
-                               
-                               if (cleanProofUrl) {
-                                   typeData.formData[itemKey + '_buktiUrl'] = cleanProofUrl;
-                               }
-                               
-                               createdAllocationsSummary.push({
-                                   date: allocYmd,
-                                   docKey: docKey,
-                                   itemKey: itemKey,
-                                   amount: allocAmount,
-                                   wasNewItem: wasNew
-                               });
-                           });
-
-                           let matchedProofUrl = '';
-                            let matchedApiRefIds = [];
-                            allocations.forEach(alloc => {
-                                if (alloc.proofUrl) matchedProofUrl = alloc.proofUrl;
-                                if (alloc.apiRefId) {
-                                    matchedApiRefIds.push(alloc.apiRefId);
-                                    const apiItem = safeApis.find(a => String(a.id) === String(alloc.apiRefId));
-                                    const url = alloc.proofUrl || apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
-                                    if (url) matchedProofUrl = url;
-                                }
-                            });
-
-                            const newBankRows = baseBankRows.map((r, idx) => {
-                               const isTarget = (targetIndex >= 0 && idx === targetIndex) ||
-                                   (bankRow.id && r.id && r.id === bankRow.id) ||
-                                   (r.id && r.id === effectiveRowId) ||
-                                   (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount));
-                               if (isTarget) {
-                                    const finalProofUrl = matchedProofUrl || r.proofUrl || bankRow.proofUrl || '';
-                                    return { 
-                                        ...r, 
-                                        id: r.id || effectiveRowId,
-                                        status: 'matched', 
-                                        isFromInputBaru: true,
-                                        inputBaruAllocations: createdAllocationsSummary,
-                                        matchedTo: targetSummary,
-                                        linkedTo: { 
-                                            date: primaryTargetDate, 
-                                            dates: distinctTargetDates, 
-                                            groupName: targetSummary, 
-                                            proofUrl: finalProofUrl 
-                                        },
-                                        proofUrl: finalProofUrl,
-                                        apiRefId: matchedApiRefIds[0] || r.apiRefId || bankRow.apiRefId || '',
-                                        apiRefIds: matchedApiRefIds.length > 0 ? matchedApiRefIds : (r.apiRefIds || [])
-                                    };
-                                }
-                               return r;
-                           });
-                           
-                           // 🔴 PENYIMPANAN TERPUSAT & SINKRON KE SELURUH STATE, LOCALSTORAGE, DAN FIRESTORE CLOUD
-                           saveState({
-                               allReports: newReports,
-                               bankRows: newBankRows
-                           }, { immediate: true, showToastMessage: `Berhasil menyimpan alokasi rekon ke laporan tanggal ${primaryTargetDate}!` });
-
-                       } catch (err) {
-                           console.error("Error in onSaveRekon:", err);
-                           alert("Terjadi kesalahan saat menyimpan alokasi: " + err.message);
-                       }
-                   }}
-                  onLinkRekon={async (bankRow, targetDate, targetType, targetGroupInfo) => {
-                       if (isMonthClosed(targetDate) || isMonthClosed(bankRow?.date)) {
-                           alert('Periode tanggal ini telah TUTUP BUKU. Tidak dapat memasangkan mutasi ke periode yang terkunci.');
-                           return;
-                       }
-                       const bankAmount = Number(bankRow?.amount || 0);
-                       const groupNominal = Number(targetGroupInfo?.nominal || 0);
-                       if (bankAmount !== groupNominal) {
-                           alert(`Pemasangan Ditolak!\nNominal mutasi bank (Rp ${formatRp(bankAmount)}) tidak sesuai dengan nominal dashboard (Rp ${formatRp(groupNominal)}).\nNominal harus sama persis.`);
-                           return;
-                       }
-                       try {
-                           const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
-                           const targetIndex = baseBankRows.findIndex(r => 
-                               (bankRow.id && r.id && r.id === bankRow.id) ||
-                               (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && r.description === bankRow.description)
-                           );
-                           const effectiveRowId = (targetIndex >= 0 && baseBankRows[targetIndex].id) 
-                               ? baseBankRows[targetIndex].id 
-                               : (bankRow.id || `bank_${Date.now()}`);
-
-                           // 1. Construct new reports
-                           const baseReports = stateRef.current.allReports;
-                           const newReports = { ...baseReports };
-                           const dayData = { ...(newReports[targetDate] || {}) };
-                           const typeData = { ...(dayData[targetType] || { formData: {}, activeItems: [] }) };
-                           const safeActiveItems = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
-                           const newActiveItems = [...safeActiveItems];
-                          
-                           targetGroupInfo.itemIndices.forEach(idx => {
-                               if (newActiveItems[idx]) {
-                                   const it = newActiveItems[idx];
-                                   const existingRowIds = Array.isArray(it.bankMatchRowIds) ? it.bankMatchRowIds : (it.bankMatchRowId ? [it.bankMatchRowId] : []);
-                                   const updatedRowIds = existingRowIds.includes(effectiveRowId) ? existingRowIds : [...existingRowIds, effectiveRowId];
-                                   newActiveItems[idx] = { 
-                                       ...it, 
-                                       bankMatched: true, 
-                                       bankMatchDate: bankRow.date,
-                                       bankMatchRowId: effectiveRowId,
-                                       bankMatchRowIds: updatedRowIds,
-                                        originBankAllocAmount: groupNominal
-                                   };
-                               }
-                           });
-                          
-                           dayData[targetType] = { ...typeData, activeItems: newActiveItems };
-                           newReports[targetDate] = dayData;
-                          
-                           // 2. Construct new bank rows
-                           let linkedProofUrl = '';
-                           targetGroupInfo.itemIndices.forEach(idx => {
-                               if (newActiveItems[idx]) {
-                                   const it = newActiveItems[idx];
-                                   let itemKey = `${it.catId}_${it.itemId || it.id}`;
-                                   if (it.itemDate) itemKey += `_date_${it.itemDate}`;
-                                   if (it.itemNote) {
-                                       let h = 0; for(let j=0; j<it.itemNote.length; j++){ h=((h<<5)-h)+it.itemNote.charCodeAt(j); h=h&h; }
-                                       itemKey += `_note_${Math.abs(h)}`;
-                                   }
-                                   const u = it.proofUrl || typeData.formData?.[itemKey + '_buktiUrl'];
-                                   if (u) linkedProofUrl = u;
-                               }
-                           });
-
-                           const newBankRows = baseBankRows.map((r, idx) => {
-                               const isTarget = (targetIndex >= 0 && idx === targetIndex) ||
-                                   (bankRow.id && r.id && r.id === bankRow.id) ||
-                                   (r.id && r.id === effectiveRowId) ||
-                                   (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && r.description === bankRow.description);
-                               if (isTarget) {
-                                   return { 
-                                       ...r, 
-                                       id: r.id || effectiveRowId,
-                                       status: 'linked', 
-                                       linkedTo: { date: targetDate, groupName: targetGroupInfo.name, proofUrl: linkedProofUrl || r.proofUrl || '' },
-                                       proofUrl: linkedProofUrl || r.proofUrl || ''
-                                   };
-                               }
-                               return r;
-                           });
-
-                           // 3. Set states
-                           setAllReports(newReports);
-                           setBankRows(newBankRows);
-                          
-                           saveToFirebaseDirectly(newReports, newBankRows);
-
-                           showToast(`Berhasil memasangkan mutasi dengan pendapatan tanggal ${targetDate}!`);
-                       } catch (err) {
-                           console.error("Error in onLinkRekon:", err);
-                           alert("Gagal memasangkan data: " + err.message);
-                       }
-                  }}
-                  onUpdateBankRow={(rowId, updates) => {
-                       const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
-                       const newBankRows = baseBankRows.map(r => {
-                           if (r.id === rowId) {
-                               const updated = { ...r, ...updates };
-                               if (updates.proofUrl && updated.linkedTo) {
-                                   updated.linkedTo = { ...updated.linkedTo, proofUrl: updates.proofUrl };
-                               }
-                               return updated;
-                           }
-                           return r;
-                       });
-                       setBankRows(newBankRows);
-                       saveToFirebaseDirectly(stateRef.current.allReports, newBankRows);
-                   }}
-                  onUnlinkBankRow={async (bankRow) => {
-                     if (isMonthClosed(bankRow?.date) || (bankRow?.linkedTo?.date && isMonthClosed(bankRow.linkedTo.date))) {
-                         alert('Periode tanggal ini telah TUTUP BUKU. Status pasangan mutasi bank tidak dapat dibatalkan atau dilepas.');
-                         return;
-                     }
-                     try {
-                         const baseReports = stateRef.current.allReports;
-                          const newReports = JSON.parse(JSON.stringify(baseReports));
-                          
-                          const isFromInputBaru = 
-                              bankRow.status === 'matched' || 
-                              !!bankRow.isFromInputBaru || 
-                              (Array.isArray(bankRow.inputBaruAllocations) && bankRow.inputBaruAllocations.length > 0) || 
-                              (!!bankRow.matchedTo && bankRow.status !== 'linked');
-
-                          if (isFromInputBaru) {
-                              // ==============================================================
-                              // 🔴 JIKA MUTASI DIBUAT DARI "INPUT BARU":
-                              // Data pendapatan di dashboard harus DIHAPUS (nominal dikurangi/dihapus,
-                              // dan item dibuang dari activeItems).
-                              // ==============================================================
-                              if (Array.isArray(bankRow.inputBaruAllocations) && bankRow.inputBaruAllocations.length > 0) {
-                                  bankRow.inputBaruAllocations.forEach(alloc => {
-                                      const dayData = newReports[alloc.date];
-                                      if (!dayData || !dayData[alloc.docKey]) return;
-                                      const typeData = dayData[alloc.docKey];
-                                      
-                                      if (typeData.formData && typeData.formData[alloc.itemKey] !== undefined) {
-                                          const curr = Number(typeData.formData[alloc.itemKey] || 0);
-                                          const rem = curr - Number(alloc.amount || 0);
-                                          if (rem <= 0) {
-                                              delete typeData.formData[alloc.itemKey];
-                                              delete typeData.formData[alloc.itemKey + '_buktiUrl'];
-                                          } else {
-                                              typeData.formData[alloc.itemKey] = rem;
-                                          }
-                                      }
-
-                                      if (Array.isArray(typeData.activeItems)) {
-                                          typeData.activeItems = typeData.activeItems.filter(item => {
-                                              if (!item) return false;
-                                              let k = `${item.catId}_${item.itemId || item.id}`;
-                                              if (item.itemDate) k += `_date_${item.itemDate}`;
-                                              if (item.itemNote) {
-                                                  let h = 0; for(let j=0; j<item.itemNote.length; j++){ h=((h<<5)-h)+item.itemNote.charCodeAt(j); h=h&h; }
-                                                  k += `_note_${Math.abs(h)}`;
-                                              }
-                                               if (k === alloc.itemKey) {
-                                                   const rem = Number(typeData.formData?.[alloc.itemKey] || 0);
-                                                   if (rem > 0) {
-                                                       if (Array.isArray(item.bankAllocations)) {
-                                                           item.bankAllocations = item.bankAllocations.filter(ba => ba.bankRowId !== bankRow.id);
-                                                       }
-                                                       if (Array.isArray(item.bankMatchRowIds)) {
-                                                           item.bankMatchRowIds = item.bankMatchRowIds.filter(id => id !== bankRow.id);
-                                                           if (item.bankMatchRowIds.length > 0) {
-                                                               item.bankMatchRowId = item.bankMatchRowIds[0];
-                                                           }
-                                                       }
-                                                       return true;
-                                                   }
-                                                   return false;
-                                               }
-                                              return true;
-                                          });
-                                      }
-                                      if (alloc.docKey.startsWith('lain_') && Array.isArray(typeData.activeItems) && typeData.activeItems.length === 0) {
-                                          delete dayData[alloc.docKey];
-                                      }
-                                  });
-                              } else {
-                                  // Fallback untuk mutasi Input Baru sebelumnya (seperti kasus Pedagang Tikar)
-                                  Object.keys(newReports).forEach(date => {
-                                      Object.keys(newReports[date] || {}).forEach(type => {
-                                          const typeData = newReports[date]?.[type];
-                                          if (!typeData || !Array.isArray(typeData.activeItems)) return;
-                                          
-                                          typeData.activeItems = typeData.activeItems.filter(item => {
-                                              if (!item) return false;
-                                              const matchesId = (bankRow.id && (item.bankMatchRowId === bankRow.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(bankRow.id)) || item.originBankRowId === bankRow.id));
-                                              const matchesDate = !bankRow.id && !item.bankMatchRowId && (item.bankMatchDate === bankRow.date || item.originBankDate === bankRow.date);
-
-                                              if (matchesId || matchesDate) {
-                                                  let itemKey = `${item.catId}_${item.itemId || item.id}`;
-                                                  if (item.itemDate) itemKey += `_date_${item.itemDate}`;
-                                                  if (item.itemNote) {
-                                                      let h = 0; for(let j=0; j<item.itemNote.length; j++){ h=((h<<5)-h)+item.itemNote.charCodeAt(j); h=h&h; }
-                                                      itemKey += `_note_${Math.abs(h)}`;
-                                                  }
-                                                  if (typeData.formData) {
-                                                      delete typeData.formData[itemKey];
-                                                      delete typeData.formData[itemKey + '_buktiUrl'];
-                                                  }
-                                                  return false; // Hapus item dari activeItems
-                                              }
-                                              return true;
-                                          });
-
-                                          if (type.startsWith('lain_') && Array.isArray(typeData.activeItems) && typeData.activeItems.length === 0) {
-                                              delete newReports[date][type];
-                                          }
-                                      });
-                                  });
-                              }
-                          } else {
-                              // ==============================================================
-                              // 🔴 JIKA MUTASI DARI "PASANGKAN":
-                              // Data memang sudah ada di dashboard sebelum dipasangkan.
-                              // HANYA lepaskan status pasangan (bankMatched), TIDAK MENGHAPUS
-                              // item maupun nominal di formData!
-                              // ==============================================================
-                              Object.keys(newReports).forEach(date => {
-                                  Object.keys(newReports[date]).forEach(type => {
-                                      if (newReports[date][type] && Array.isArray(newReports[date][type].activeItems)) {
-                                          newReports[date][type].activeItems = newReports[date][type].activeItems.map(item => {
-                                              if (item) {
-                                                  const matchesId = (bankRow.id && (item.bankMatchRowId === bankRow.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(bankRow.id))));
-                                                  const matchesDate = !bankRow.id && !item.bankMatchRowId && item.bankMatchDate === bankRow.date;
-                                                  
-                                                  if (matchesId || matchesDate) {
-                                                      const newItem = { ...item };
-                                                      if (Array.isArray(newItem.bankMatchRowIds)) {
-                                                          newItem.bankMatchRowIds = newItem.bankMatchRowIds.filter(id => id !== bankRow.id);
-                                                          if (newItem.bankMatchRowIds.length === 0) {
-                                                              delete newItem.bankMatched;
-                                                              delete newItem.bankMatchDate;
-                                                              delete newItem.bankMatchRowId;
-                                                              delete newItem.bankMatchRowIds;
-                                                          } else {
-                                                              newItem.bankMatchRowId = newItem.bankMatchRowIds[newItem.bankMatchRowIds.length - 1];
-                                                          }
-                                                      } else {
-                                                          delete newItem.bankMatched;
-                                                          delete newItem.bankMatchDate;
-                                                          delete newItem.bankMatchRowId;
-                                                      }
-                                                      return newItem;
-                                                  }
-                                              }
-                                              return item;
-                                          });
-                                      }
-                                  });
-                              });
+                          let theItemId = alloc.itemId;
+                          if (!theItemId || !cat.items || cat.items.length === 0) {
+                            theItemId = 'direct';
                           }
 
-                          const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
-                           const newBankRows = baseBankRows.map(r => {
-                               if (r.id === bankRow.id || (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && r.description === bankRow.description)) {
-                                  const updated = { ...r, status: 'pending' };
-                                  delete updated.linkedTo;
-                                  delete updated.matchedTo;
-                                  delete updated.isFromInputBaru;
-                                  delete updated.inputBaruAllocations;
-                                  return updated;
+                          let docKey = 'utama';
+                          if (cat.type === 'lain') {
+                            let targetIndexDoc = 1;
+                            while (true) {
+                              const candidateKey = targetIndexDoc === 1 ? 'lain' : `lain_${targetIndexDoc}`;
+                              const candidateDoc = dayData[candidateKey];
+
+                              if (!candidateDoc || !Array.isArray(candidateDoc.activeItems) || candidateDoc.activeItems.length === 0) {
+                                docKey = candidateKey;
+                                break;
                               }
-                              return r;
+
+                              const allSameCategory = candidateDoc.activeItems.every(i => i.catId === cat.id);
+
+                              if (allSameCategory) {
+                                docKey = candidateKey;
+                                break;
+                              }
+
+                              targetIndexDoc++;
+                            }
+                          }
+
+                          if (!dayData[docKey]) {
+                            dayData[docKey] = { sequence: '', signatureDate: allocYmd, activeItems: [], formData: {} };
+                          }
+                          if (!dayData[docKey].formData) dayData[docKey].formData = {};
+                          if (!Array.isArray(dayData[docKey].activeItems)) dayData[docKey].activeItems = [];
+
+                          const typeData = dayData[docKey];
+
+                          const apiItem = safeApis.find(a => String(a.id) === String(alloc.apiRefId));
+                          const rawProofUrl = alloc.proofUrl || apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || bankRow.proofUrl || '';
+                          const isBase64Proof = (typeof rawProofUrl === 'string' && rawProofUrl.startsWith('data:image'));
+                          // Untuk menjaga performa dan batas 1MB Firestore, URL base64 disimpan pada mutasi bank saja
+                          const cleanProofUrl = isBase64Proof ? '' : rawProofUrl;
+
+                          const tenantLabel = alloc.tenant || (apiItem ? (apiItem.nama_penyewa || apiItem.namaPerusahaan || '') : '');
+                          const locationLabel = alloc.location || (apiItem ? (apiItem.lokasi_sewa || apiItem.namaProduk || '') : '');
+                          const displayDesc = tenantLabel
+                            ? (locationLabel && locationLabel !== tenantLabel ? `${tenantLabel} - ${locationLabel}` : tenantLabel)
+                            : (alloc.description || bankRow.description || 'Mutasi Bank');
+
+                          const allocAmount = Number(alloc.amount || 0);
+
+                          const newAllocationDetail = {
+                            bankRowId: effectiveRowId,
+                            bankDate: bankRow.date,
+                            amount: allocAmount,
+                            desc: displayDesc,
+                            tenant: tenantLabel,
+                            location: locationLabel,
+                            apiRefId: alloc.apiRefId || '',
+                            proofUrl: cleanProofUrl
+                          };
+
+                          // 🔴 PENCARIAN ITEM SECARA IDENTITAS POS (KATEGORI & ITEM):
+                          // Tidak terpengaruh hash catatan lama sehingga akumulasi nominal 100% akurat
+                          let existingItem = typeData.activeItems.find(i => {
+                            if (!i || typeof i !== 'object') return false;
+                            const matchCat = (i.catId === cat.id);
+                            const matchItem = (theItemId === 'direct')
+                              ? (i.itemId === 'direct' || i.id === 'direct' || !i.itemId)
+                              : (i.itemId === theItemId || i.id === theItemId);
+                            return matchCat && matchItem;
                           });
-                          
-                          setAllReports(newReports);
-                          setBankRows(newBankRows);
-                          
-                          showToast('Status pasangan mutasi bank berhasil dibatalkan!');
-                          saveToFirebaseDirectly(newReports, newBankRows);
+
+                          let itemKey = '';
+                          const wasNew = !existingItem;
+
+                          if (existingItem) {
+                            // Item sudah ada di laporan harian
+                            itemKey = getActiveItemKey(existingItem.catId, existingItem.itemId || existingItem.id, existingItem.isSusulan, existingItem.validDate, existingItem.itemDate, existingItem.itemNote);
+                            const priorNominal = Number(typeData.formData[itemKey] || typeData.formData[`${existingItem.catId}_${existingItem.itemId || existingItem.id}`] || 0);
+
+                            const priorRowId = existingItem.originBankRowId || existingItem.bankMatchRowId || 'prior_0';
+                            const priorDate = existingItem.originBankDate || existingItem.bankMatchDate || '';
+
+                            if (!Array.isArray(existingItem.bankAllocations)) {
+                              existingItem.bankAllocations = [];
+                              if (priorNominal > 0) {
+                                const existingApi = safeApis.find(a => String(a.id) === String(existingItem.apiRefId));
+                                const priorTenant = existingApi ? (existingApi.nama_penyewa || existingApi.namaPerusahaan || '') : (existingItem.itemNote || '');
+                                const priorLoc = existingApi ? (existingApi.lokasi_sewa || existingApi.namaProduk || '') : '';
+                                const priorLabel = priorTenant
+                                  ? (priorLoc && priorLoc !== priorTenant ? `${priorTenant} - ${priorLoc}` : priorTenant)
+                                  : (priorDate ? `Mutasi (${priorDate})` : 'Transaksi Sebelumnya');
+                                existingItem.bankAllocations.push({
+                                  bankRowId: priorRowId,
+                                  bankDate: priorDate,
+                                  amount: priorNominal,
+                                  desc: priorLabel,
+                                  tenant: priorTenant,
+                                  location: priorLoc,
+                                  apiRefId: existingItem.apiRefId || '',
+                                  proofUrl: existingItem.proofUrl || ''
+                                });
+                              }
+                            }
+
+                            existingItem.bankMatched = true;
+                            if (!Array.isArray(existingItem.bankMatchRowIds)) {
+                              existingItem.bankMatchRowIds = priorRowId ? [priorRowId] : [];
+                            }
+                            if (!existingItem.bankMatchRowIds.includes(effectiveRowId)) {
+                              existingItem.bankMatchRowIds.push(effectiveRowId);
+                            }
+                            existingItem.bankMatchRowId = effectiveRowId;
+                            existingItem.bankMatchDate = bankRow.date;
+
+                            const existingAllocIdx = existingItem.bankAllocations.findIndex(ba =>
+                              (ba.bankRowId === effectiveRowId && ba.bankRowId !== 'prior_0' && ba.bankRowId !== priorRowId) ||
+                              (ba.bankDate === bankRow.date && Number(ba.amount) === allocAmount)
+                            );
+
+                            if (existingAllocIdx >= 0) {
+                              existingItem.bankAllocations[existingAllocIdx] = {
+                                ...existingItem.bankAllocations[existingAllocIdx],
+                                ...newAllocationDetail
+                              };
+                            } else {
+                              existingItem.bankAllocations.push(newAllocationDetail);
+                            }
+
+                            // Total akumulasi seluruh alokasi mutasi yang terpasang
+                            const sumAlloc = existingItem.bankAllocations.reduce((sum, ba) => sum + Number(ba.amount || 0), 0);
+                            typeData.formData[itemKey] = sumAlloc > 0 ? sumAlloc : (priorNominal + allocAmount);
+
+                            if (alloc.apiRefId) existingItem.apiRefId = alloc.apiRefId;
+                            if (cleanProofUrl) existingItem.proofUrl = cleanProofUrl;
+
+                          } else {
+                            // Item baru untuk laporan harian
+                            const newItem = {
+                              catId: cat.id,
+                              itemId: theItemId,
+                              bankMatched: true,
+                              bankMatchRowId: effectiveRowId,
+                              bankMatchDate: bankRow.date,
+                              bankMatchRowIds: [effectiveRowId],
+                              createdFromBank: true,
+                              originBankRowId: effectiveRowId,
+                              originBankDate: bankRow.date,
+                              originBankAllocAmount: allocAmount,
+                              bankAllocations: [newAllocationDetail],
+                              ...(alloc.apiRefId ? { apiRefId: alloc.apiRefId } : {}),
+                              ...(cleanProofUrl ? { proofUrl: cleanProofUrl } : {})
+                            };
+
+                            if (docKey === 'lain' || docKey.startsWith('lain_')) {
+                              newItem.itemDate = allocYmd;
+                              if (alloc.description) newItem.itemNote = alloc.description.trim();
+                            }
+
+                            itemKey = getActiveItemKey(newItem.catId, newItem.itemId, newItem.isSusulan, newItem.validDate, newItem.itemDate, newItem.itemNote);
+                            typeData.activeItems.push(newItem);
+                            typeData.formData[itemKey] = allocAmount;
+                          }
+
+                          if (cleanProofUrl) {
+                            typeData.formData[itemKey + '_buktiUrl'] = cleanProofUrl;
+                          }
+
+                          createdAllocationsSummary.push({
+                            date: allocYmd,
+                            docKey: docKey,
+                            itemKey: itemKey,
+                            amount: allocAmount,
+                            wasNewItem: wasNew
+                          });
+                        });
+
+                        let matchedProofUrl = '';
+                        let matchedApiRefIds = [];
+                        allocations.forEach(alloc => {
+                          if (alloc.proofUrl) matchedProofUrl = alloc.proofUrl;
+                          if (alloc.apiRefId) {
+                            matchedApiRefIds.push(alloc.apiRefId);
+                            const apiItem = safeApis.find(a => String(a.id) === String(alloc.apiRefId));
+                            const url = alloc.proofUrl || apiItem?.buktiTransferUrl || apiItem?.buktiTransferDocUrl || apiItem?.pksDriveUrl || '';
+                            if (url) matchedProofUrl = url;
+                          }
+                        });
+
+                        const newBankRows = baseBankRows.map((r, idx) => {
+                          const isTarget = (targetIndex >= 0 && idx === targetIndex) ||
+                            (bankRow.id && r.id && r.id === bankRow.id) ||
+                            (r.id && r.id === effectiveRowId) ||
+                            (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount));
+                          if (isTarget) {
+                            const finalProofUrl = matchedProofUrl || r.proofUrl || bankRow.proofUrl || '';
+                            return {
+                              ...r,
+                              id: r.id || effectiveRowId,
+                              status: 'matched',
+                              isFromInputBaru: true,
+                              inputBaruAllocations: createdAllocationsSummary,
+                              matchedTo: targetSummary,
+                              linkedTo: {
+                                date: primaryTargetDate,
+                                dates: distinctTargetDates,
+                                groupName: targetSummary,
+                                proofUrl: finalProofUrl
+                              },
+                              proofUrl: finalProofUrl,
+                              apiRefId: matchedApiRefIds[0] || r.apiRefId || bankRow.apiRefId || '',
+                              apiRefIds: matchedApiRefIds.length > 0 ? matchedApiRefIds : (r.apiRefIds || [])
+                            };
+                          }
+                          return r;
+                        });
+
+                        // 🔴 PENYIMPANAN TERPUSAT & SINKRON KE SELURUH STATE, LOCALSTORAGE, DAN FIRESTORE CLOUD
+                        saveState({
+                          allReports: newReports,
+                          bankRows: newBankRows
+                        }, { immediate: true, showToastMessage: `Berhasil menyimpan alokasi rekon ke laporan tanggal ${primaryTargetDate}!` });
+
                       } catch (err) {
-                          console.error("Error unlinking:", err);
-                          alert("Gagal membatalkan pasangan: " + err.message);
+                        console.error("Error in onSaveRekon:", err);
+                        alert("Terjadi kesalahan saat menyimpan alokasi: " + err.message);
                       }
-                  }}
+                    }}
+                    onLinkRekon={async (bankRow, targetDate, targetType, targetGroupInfo) => {
+                      if (isMonthClosed(targetDate) || isMonthClosed(bankRow?.date)) {
+                        alert('Periode tanggal ini telah TUTUP BUKU. Tidak dapat memasangkan mutasi ke periode yang terkunci.');
+                        return;
+                      }
+                      const bankAmount = Number(bankRow?.amount || 0);
+                      const groupNominal = Number(targetGroupInfo?.nominal || 0);
+                      if (bankAmount !== groupNominal) {
+                        alert(`Pemasangan Ditolak!\nNominal mutasi bank (Rp ${formatRp(bankAmount)}) tidak sesuai dengan nominal dashboard (Rp ${formatRp(groupNominal)}).\nNominal harus sama persis.`);
+                        return;
+                      }
+                      try {
+                        const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
+                        const targetIndex = baseBankRows.findIndex(r =>
+                          (bankRow.id && r.id && r.id === bankRow.id) ||
+                          (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && r.description === bankRow.description)
+                        );
+                        const effectiveRowId = (targetIndex >= 0 && baseBankRows[targetIndex].id)
+                          ? baseBankRows[targetIndex].id
+                          : (bankRow.id || `bank_${Date.now()}`);
+
+                        // 1. Construct new reports
+                        const baseReports = stateRef.current.allReports;
+                        const newReports = { ...baseReports };
+                        const dayData = { ...(newReports[targetDate] || {}) };
+                        const typeData = { ...(dayData[targetType] || { formData: {}, activeItems: [] }) };
+                        const safeActiveItems = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
+                        const newActiveItems = [...safeActiveItems];
+
+                        targetGroupInfo.itemIndices.forEach(idx => {
+                          if (newActiveItems[idx]) {
+                            const it = newActiveItems[idx];
+                            const existingRowIds = Array.isArray(it.bankMatchRowIds) ? it.bankMatchRowIds : (it.bankMatchRowId ? [it.bankMatchRowId] : []);
+                            const updatedRowIds = existingRowIds.includes(effectiveRowId) ? existingRowIds : [...existingRowIds, effectiveRowId];
+                            newActiveItems[idx] = {
+                              ...it,
+                              bankMatched: true,
+                              bankMatchDate: bankRow.date,
+                              bankMatchRowId: effectiveRowId,
+                              bankMatchRowIds: updatedRowIds,
+                              originBankAllocAmount: groupNominal
+                            };
+                          }
+                        });
+
+                        dayData[targetType] = { ...typeData, activeItems: newActiveItems };
+                        newReports[targetDate] = dayData;
+
+                        // 2. Construct new bank rows
+                        let linkedProofUrl = '';
+                        targetGroupInfo.itemIndices.forEach(idx => {
+                          if (newActiveItems[idx]) {
+                            const it = newActiveItems[idx];
+                            let itemKey = `${it.catId}_${it.itemId || it.id}`;
+                            if (it.itemDate) itemKey += `_date_${it.itemDate}`;
+                            if (it.itemNote) {
+                              let h = 0; for (let j = 0; j < it.itemNote.length; j++) { h = ((h << 5) - h) + it.itemNote.charCodeAt(j); h = h & h; }
+                              itemKey += `_note_${Math.abs(h)}`;
+                            }
+                            const u = it.proofUrl || typeData.formData?.[itemKey + '_buktiUrl'];
+                            if (u) linkedProofUrl = u;
+                          }
+                        });
+
+                        const newBankRows = baseBankRows.map((r, idx) => {
+                          const isTarget = (targetIndex >= 0 && idx === targetIndex) ||
+                            (bankRow.id && r.id && r.id === bankRow.id) ||
+                            (r.id && r.id === effectiveRowId) ||
+                            (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && r.description === bankRow.description);
+                          if (isTarget) {
+                            return {
+                              ...r,
+                              id: r.id || effectiveRowId,
+                              status: 'linked',
+                              linkedTo: { date: targetDate, groupName: targetGroupInfo.name, proofUrl: linkedProofUrl || r.proofUrl || '' },
+                              proofUrl: linkedProofUrl || r.proofUrl || ''
+                            };
+                          }
+                          return r;
+                        });
+
+                        // 3. Set states
+                        setAllReports(newReports);
+                        setBankRows(newBankRows);
+
+                        saveToFirebaseDirectly(newReports, newBankRows);
+
+                        showToast(`Berhasil memasangkan mutasi dengan pendapatan tanggal ${targetDate}!`);
+                      } catch (err) {
+                        console.error("Error in onLinkRekon:", err);
+                        alert("Gagal memasangkan data: " + err.message);
+                      }
+                    }}
+                    onUpdateBankRow={(rowId, updates) => {
+                      const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
+                      const newBankRows = baseBankRows.map(r => {
+                        if (r.id === rowId) {
+                          const updated = { ...r, ...updates };
+                          if (updates.proofUrl && updated.linkedTo) {
+                            updated.linkedTo = { ...updated.linkedTo, proofUrl: updates.proofUrl };
+                          }
+                          return updated;
+                        }
+                        return r;
+                      });
+                      setBankRows(newBankRows);
+                      saveToFirebaseDirectly(stateRef.current.allReports, newBankRows);
+                    }}
+                    onUnlinkBankRow={async (bankRow) => {
+                      if (isMonthClosed(bankRow?.date) || (bankRow?.linkedTo?.date && isMonthClosed(bankRow.linkedTo.date))) {
+                        alert('Periode tanggal ini telah TUTUP BUKU. Status pasangan mutasi bank tidak dapat dibatalkan atau dilepas.');
+                        return;
+                      }
+                      try {
+                        const baseReports = stateRef.current.allReports;
+                        const newReports = JSON.parse(JSON.stringify(baseReports));
+
+                        const isFromInputBaru =
+                          bankRow.status === 'matched' ||
+                          !!bankRow.isFromInputBaru ||
+                          (Array.isArray(bankRow.inputBaruAllocations) && bankRow.inputBaruAllocations.length > 0) ||
+                          (!!bankRow.matchedTo && bankRow.status !== 'linked');
+
+                        if (isFromInputBaru) {
+                          // ==============================================================
+                          // 🔴 JIKA MUTASI DIBUAT DARI "INPUT BARU":
+                          // Data pendapatan di dashboard harus DIHAPUS (nominal dikurangi/dihapus,
+                          // dan item dibuang dari activeItems).
+                          // ==============================================================
+                          if (Array.isArray(bankRow.inputBaruAllocations) && bankRow.inputBaruAllocations.length > 0) {
+                            bankRow.inputBaruAllocations.forEach(alloc => {
+                              const dayData = newReports[alloc.date];
+                              if (!dayData || !dayData[alloc.docKey]) return;
+                              const typeData = dayData[alloc.docKey];
+
+                              if (typeData.formData && typeData.formData[alloc.itemKey] !== undefined) {
+                                const curr = Number(typeData.formData[alloc.itemKey] || 0);
+                                const rem = curr - Number(alloc.amount || 0);
+                                if (rem <= 0) {
+                                  delete typeData.formData[alloc.itemKey];
+                                  delete typeData.formData[alloc.itemKey + '_buktiUrl'];
+                                } else {
+                                  typeData.formData[alloc.itemKey] = rem;
+                                }
+                              }
+
+                              if (Array.isArray(typeData.activeItems)) {
+                                typeData.activeItems = typeData.activeItems.filter(item => {
+                                  if (!item) return false;
+                                  let k = `${item.catId}_${item.itemId || item.id}`;
+                                  if (item.itemDate) k += `_date_${item.itemDate}`;
+                                  if (item.itemNote) {
+                                    let h = 0; for (let j = 0; j < item.itemNote.length; j++) { h = ((h << 5) - h) + item.itemNote.charCodeAt(j); h = h & h; }
+                                    k += `_note_${Math.abs(h)}`;
+                                  }
+                                  if (k === alloc.itemKey) {
+                                    const rem = Number(typeData.formData?.[alloc.itemKey] || 0);
+                                    if (rem > 0) {
+                                      if (Array.isArray(item.bankAllocations)) {
+                                        item.bankAllocations = item.bankAllocations.filter(ba => ba.bankRowId !== bankRow.id);
+                                      }
+                                      if (Array.isArray(item.bankMatchRowIds)) {
+                                        item.bankMatchRowIds = item.bankMatchRowIds.filter(id => id !== bankRow.id);
+                                        if (item.bankMatchRowIds.length > 0) {
+                                          item.bankMatchRowId = item.bankMatchRowIds[0];
+                                        }
+                                      }
+                                      return true;
+                                    }
+                                    return false;
+                                  }
+                                  return true;
+                                });
+                              }
+                              if (alloc.docKey.startsWith('lain_') && Array.isArray(typeData.activeItems) && typeData.activeItems.length === 0) {
+                                delete dayData[alloc.docKey];
+                              }
+                            });
+                          } else {
+                            // Fallback untuk mutasi Input Baru sebelumnya (seperti kasus Pedagang Tikar)
+                            Object.keys(newReports).forEach(date => {
+                              Object.keys(newReports[date] || {}).forEach(type => {
+                                const typeData = newReports[date]?.[type];
+                                if (!typeData || !Array.isArray(typeData.activeItems)) return;
+
+                                typeData.activeItems = typeData.activeItems.filter(item => {
+                                  if (!item) return false;
+                                  const matchesId = (bankRow.id && (item.bankMatchRowId === bankRow.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(bankRow.id)) || item.originBankRowId === bankRow.id));
+                                  const matchesDate = !bankRow.id && !item.bankMatchRowId && (item.bankMatchDate === bankRow.date || item.originBankDate === bankRow.date);
+
+                                  if (matchesId || matchesDate) {
+                                    let itemKey = `${item.catId}_${item.itemId || item.id}`;
+                                    if (item.itemDate) itemKey += `_date_${item.itemDate}`;
+                                    if (item.itemNote) {
+                                      let h = 0; for (let j = 0; j < item.itemNote.length; j++) { h = ((h << 5) - h) + item.itemNote.charCodeAt(j); h = h & h; }
+                                      itemKey += `_note_${Math.abs(h)}`;
+                                    }
+                                    if (typeData.formData) {
+                                      delete typeData.formData[itemKey];
+                                      delete typeData.formData[itemKey + '_buktiUrl'];
+                                    }
+                                    return false; // Hapus item dari activeItems
+                                  }
+                                  return true;
+                                });
+
+                                if (type.startsWith('lain_') && Array.isArray(typeData.activeItems) && typeData.activeItems.length === 0) {
+                                  delete newReports[date][type];
+                                }
+                              });
+                            });
+                          }
+                        } else {
+                          // ==============================================================
+                          // 🔴 JIKA MUTASI DARI "PASANGKAN":
+                          // Data memang sudah ada di dashboard sebelum dipasangkan.
+                          // HANYA lepaskan status pasangan (bankMatched), TIDAK MENGHAPUS
+                          // item maupun nominal di formData!
+                          // ==============================================================
+                          Object.keys(newReports).forEach(date => {
+                            Object.keys(newReports[date]).forEach(type => {
+                              if (newReports[date][type] && Array.isArray(newReports[date][type].activeItems)) {
+                                newReports[date][type].activeItems = newReports[date][type].activeItems.map(item => {
+                                  if (item) {
+                                    const matchesId = (bankRow.id && (item.bankMatchRowId === bankRow.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(bankRow.id))));
+                                    const matchesDate = !bankRow.id && !item.bankMatchRowId && item.bankMatchDate === bankRow.date;
+
+                                    if (matchesId || matchesDate) {
+                                      const newItem = { ...item };
+                                      if (Array.isArray(newItem.bankMatchRowIds)) {
+                                        newItem.bankMatchRowIds = newItem.bankMatchRowIds.filter(id => id !== bankRow.id);
+                                        if (newItem.bankMatchRowIds.length === 0) {
+                                          delete newItem.bankMatched;
+                                          delete newItem.bankMatchDate;
+                                          delete newItem.bankMatchRowId;
+                                          delete newItem.bankMatchRowIds;
+                                        } else {
+                                          newItem.bankMatchRowId = newItem.bankMatchRowIds[newItem.bankMatchRowIds.length - 1];
+                                        }
+                                      } else {
+                                        delete newItem.bankMatched;
+                                        delete newItem.bankMatchDate;
+                                        delete newItem.bankMatchRowId;
+                                      }
+                                      return newItem;
+                                    }
+                                  }
+                                  return item;
+                                });
+                              }
+                            });
+                          });
+                        }
+
+                        const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
+                        const newBankRows = baseBankRows.map(r => {
+                          if (r.id === bankRow.id || (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && r.description === bankRow.description)) {
+                            const updated = { ...r, status: 'pending' };
+                            delete updated.linkedTo;
+                            delete updated.matchedTo;
+                            delete updated.isFromInputBaru;
+                            delete updated.inputBaruAllocations;
+                            return updated;
+                          }
+                          return r;
+                        });
+
+                        setAllReports(newReports);
+                        setBankRows(newBankRows);
+
+                        showToast('Status pasangan mutasi bank berhasil dibatalkan!');
+                        saveToFirebaseDirectly(newReports, newBankRows);
+                      } catch (err) {
+                        console.error("Error unlinking:", err);
+                        alert("Gagal membatalkan pasangan: " + err.message);
+                      }
+                    }}
+                  />
+                </div>
+              )}
+
+
+              {/* ============================================================== */}
+              {/* 🔴 TAB: INPUT */}
+              {/* ============================================================== */}
+              <InputHarianTab
+                activeTab={activeTab}
+                activeType={activeType}
+                handleTypeSwitch={handleTypeSwitch}
+                handleOpenTransit3A={handleOpenTransit3A}
+                handleOpenTransitIWM={handleOpenTransitIWM}
+                lainDocIndices={lainDocIndices}
+                activeLainIndex={activeLainIndex}
+                setActiveLainIndex={setActiveLainIndex}
+                handleAddLainDoc={handleAddLainDoc}
+                handleRemoveLainDoc={handleRemoveLainDoc}
+                reportDate={reportDate}
+                handleDateChange={handleDateChange}
+                currentReport={currentReport}
+                handleSignatureDateChange={handleSignatureDateChange}
+                handleSequenceChange={handleSequenceChange}
+                computedStsuNo={computedStsuNo}
+                grandTotal={grandTotal}
+                isAddingSusulan={isAddingSusulan}
+                setIsAddingSusulan={setIsAddingSusulan}
+                susulanValidDate={susulanValidDate}
+                setSusulanValidDate={setSusulanValidDate}
+                lainItemDate={lainItemDate}
+                setLainItemDate={setLainItemDate}
+                selectedCatToAdd={selectedCatToAdd}
+                setSelectedCatToAdd={setSelectedCatToAdd}
+                handleCatChange={handleCatChange}
+                filteredCategories={filteredCategories}
+                selectedItemToAdd={selectedItemToAdd}
+                setSelectedItemToAdd={setSelectedItemToAdd}
+                availableItemsToAdd={availableItemsToAdd}
+                manualNominalToAdd={manualNominalToAdd}
+                setManualNominalToAdd={setManualNominalToAdd}
+                lainItemNote={lainItemNote}
+                setLainItemNote={setLainItemNote}
+                handleGenerateUraian={handleGenerateUraian}
+                isGeneratingUraian={isGeneratingUraian}
+                handleAddActiveItem={handleAddActiveItem}
+                activeGroups={activeGroups}
+                handleRemoveActiveItem={handleRemoveActiveItem}
+                openEditNote={openEditNote}
+                handleInputChange={handleInputChange}
+                triggerSaveToFirebase={() => {
+                  flushPendingSave();
+                }}
+                subtotals={subtotals}
+                clearCurrentReport={clearCurrentReport}
+                handleForceSave={handleForceSave}
+                isMonthClosed={isMonthClosed(reportDate)}
+                closedInfo={(closedMonths || {})[getPartitionMonth(reportDate)]}
+                onViewDraftCetak={() => {
+                  setActiveTab('print');
+                  setPrintMode('pdf');
+                }}
               />
-          </div>
-      )}
+
+              {/* ============================================================== */}
+              {/* 🔴 TAB: SETTINGS (MASTER) */}
+              {/* ============================================================== */}
+              <MasterSettingsTab
+                activeTab={activeTab}
+                activeMasterMenu={activeMasterMenu}
+                setActiveMasterMenu={setActiveMasterMenu}
+                apiIpAddress={apiIpAddress}
+                setApiIpAddress={setApiIpAddress}
+                signatures={signatures}
+                setSignatures={handleUpdateSignatures}
+                handleForceSave={handleForceSave}
+                categories={categories}
+                moveCategory={moveCategory}
+                updateCategory={updateCategory}
+                deleteCategory={deleteCategory}
+                moveItem={moveItem}
+                updateItemName={updateItemName}
+                deleteItem={deleteItem}
+                addItem={addItem}
+                addCategory={addCategory}
+                allReports={allReports}
+                bankRows={bankRows}
+                formatRp={formatRp}
+                closedMonths={closedMonths}
+                onToggleCloseMonth={handleToggleCloseMonth}
+                onDownloadBackup={handleDownloadBackup}
+                onRestoreBackup={handleRestoreBackup}
+              />
+
+              {/* ============================================================== */}
+              {/* 🔴 TAB: PRINT & NCR DOT MATRIX */}
+              {/* ============================================================== */}
+              <PrintPreviewTab
+                activeTab={activeTab}
+                printMode={printMode}
+                setPrintMode={setPrintMode}
+                selectedNcrGroup={selectedNcrGroup}
+                setSelectedNcrGroup={setSelectedNcrGroup}
+                activeType={activeType}
+                activeGroups={activeGroups}
+                setActiveTab={setActiveTab}
+                handleDownloadPDF={handleDownloadPDF}
+                pdfLoading={pdfLoading}
+                handlePrint={handlePrint}
+                reportDate={reportDate}
+                computedStsuNo={computedStsuNo}
+                subtotals={subtotals}
+                grandTotal={grandTotal}
+                currentReport={currentReport}
+                signatures={signatures}
+                categories={categories}
+                allReports={allReports}
+                activeLainIndex={activeLainIndex}
+                handleSequenceChange={handleSequenceChange}
+                handleSignatureDateChange={handleSignatureDateChange}
+                isMonthClosed={isMonthClosed(reportDate)}
+              />
+
+            </>
+          )}
+
+          {topLevelRoute === 'dashboard' && (
+            <div className="max-w-6xl mx-auto px-4 py-6 no-print w-full animate-in fade-in slide-in-from-bottom-4">
 
 
-      {/* ============================================================== */}
-      {/* 🔴 TAB: INPUT */}
-      {/* ============================================================== */}
-      <InputHarianTab
-        activeTab={activeTab}
-        activeType={activeType}
-        handleTypeSwitch={handleTypeSwitch}
-        handleOpenTransit3A={handleOpenTransit3A}
-        handleOpenTransitIWM={handleOpenTransitIWM}
-        lainDocIndices={lainDocIndices}
-        activeLainIndex={activeLainIndex}
-        setActiveLainIndex={setActiveLainIndex}
-        handleAddLainDoc={handleAddLainDoc}
-        handleRemoveLainDoc={handleRemoveLainDoc}
-        reportDate={reportDate}
-        handleDateChange={handleDateChange}
-        currentReport={currentReport}
-        handleSignatureDateChange={handleSignatureDateChange}
-        handleSequenceChange={handleSequenceChange}
-        computedStsuNo={computedStsuNo}
-        grandTotal={grandTotal}
-        isAddingSusulan={isAddingSusulan}
-        setIsAddingSusulan={setIsAddingSusulan}
-        susulanValidDate={susulanValidDate}
-        setSusulanValidDate={setSusulanValidDate}
-        lainItemDate={lainItemDate}
-        setLainItemDate={setLainItemDate}
-        selectedCatToAdd={selectedCatToAdd}
-        setSelectedCatToAdd={setSelectedCatToAdd}
-        handleCatChange={handleCatChange}
-        filteredCategories={filteredCategories}
-        selectedItemToAdd={selectedItemToAdd}
-        setSelectedItemToAdd={setSelectedItemToAdd}
-        availableItemsToAdd={availableItemsToAdd}
-        manualNominalToAdd={manualNominalToAdd}
-        setManualNominalToAdd={setManualNominalToAdd}
-        lainItemNote={lainItemNote}
-        setLainItemNote={setLainItemNote}
-        handleGenerateUraian={handleGenerateUraian}
-        isGeneratingUraian={isGeneratingUraian}
-        handleAddActiveItem={handleAddActiveItem}
-        activeGroups={activeGroups}
-        handleRemoveActiveItem={handleRemoveActiveItem}
-        openEditNote={openEditNote}
-        handleInputChange={handleInputChange}
-        triggerSaveToFirebase={() => {
-          flushPendingSave();
-        }}
-        subtotals={subtotals}
-        clearCurrentReport={clearCurrentReport}
-        handleForceSave={handleForceSave}
-        isMonthClosed={isMonthClosed(reportDate)}
-        closedInfo={(closedMonths || {})[getPartitionMonth(reportDate)]}
-        onViewDraftCetak={() => {
-          setActiveTab('print');
-          setPrintMode('pdf');
-        }}
-      />
+              {/* 🔴 TAB: LAPORAN (EXCEL) */}
+              {/* ============================================================== */}
+              <RekapExcelTab
+                dashboardTab={dashboardTab}
+                excelReportMonth={excelReportMonth}
+                setExcelReportMonth={setExcelReportMonth}
+                selectedReportType={selectedReportType}
+                setSelectedReportType={setSelectedReportType}
+                reportCategories={reportCategories}
+                allReports={allReports}
+                categories={categories}
+                bankRows={bankRows}
+                rekonOfficerName={rekonOfficerName}
+                currentReport={currentReport}
+                signatures={signatures}
+                handleUpdateRekonRow={handleUpdateRekonRow}
+              />
 
-            {/* ============================================================== */}
-      {/* 🔴 TAB: SETTINGS (MASTER) */}
-      {/* ============================================================== */}
-      <MasterSettingsTab
-        activeTab={activeTab}
-        activeMasterMenu={activeMasterMenu}
-        setActiveMasterMenu={setActiveMasterMenu}
-        apiIpAddress={apiIpAddress}
-        setApiIpAddress={setApiIpAddress}
-        signatures={signatures}
-        setSignatures={handleUpdateSignatures}
-        handleForceSave={handleForceSave}
-        categories={categories}
-        moveCategory={moveCategory}
-        updateCategory={updateCategory}
-        deleteCategory={deleteCategory}
-        moveItem={moveItem}
-        updateItemName={updateItemName}
-        deleteItem={deleteItem}
-        addItem={addItem}
-        addCategory={addCategory}
-        allReports={allReports}
-        bankRows={bankRows}
-        formatRp={formatRp}
-        closedMonths={closedMonths}
-        onToggleCloseMonth={handleToggleCloseMonth}
-        onDownloadBackup={handleDownloadBackup}
-        onRestoreBackup={handleRestoreBackup}
-      />
+            </div>
+          )}
 
-      {/* ============================================================== */}
-      {/* 🔴 TAB: PRINT & NCR DOT MATRIX */}
-      {/* ============================================================== */}
-      <PrintPreviewTab
-        activeTab={activeTab}
-        printMode={printMode}
-        setPrintMode={setPrintMode}
-        selectedNcrGroup={selectedNcrGroup}
-        setSelectedNcrGroup={setSelectedNcrGroup}
-        activeType={activeType}
-        activeGroups={activeGroups}
-        setActiveTab={setActiveTab}
-        handleDownloadPDF={handleDownloadPDF}
-        pdfLoading={pdfLoading}
-        handlePrint={handlePrint}
-        reportDate={reportDate}
-        computedStsuNo={computedStsuNo}
-        subtotals={subtotals}
-        grandTotal={grandTotal}
-        currentReport={currentReport}
-        signatures={signatures}
-        categories={categories}
-        allReports={allReports}
-        activeLainIndex={activeLainIndex}
-        handleSequenceChange={handleSequenceChange}
-        handleSignatureDateChange={handleSignatureDateChange}
-        isMonthClosed={isMonthClosed(reportDate)}
-      />
-
-      </>
-      )}
-
-      {topLevelRoute === 'dashboard' && (
-  <div className="max-w-6xl mx-auto px-4 py-6 no-print w-full animate-in fade-in slide-in-from-bottom-4">
-
-
-      {/* 🔴 TAB: LAPORAN (EXCEL) */}
-      {/* ============================================================== */}
-      <RekapExcelTab
-        dashboardTab={dashboardTab}
-        excelReportMonth={excelReportMonth}
-        setExcelReportMonth={setExcelReportMonth}
-        selectedReportType={selectedReportType}
-        setSelectedReportType={setSelectedReportType}
-        reportCategories={reportCategories}
-        allReports={allReports}
-        categories={categories}
-        rekonOfficerName={rekonOfficerName}
-        currentReport={currentReport}
-        signatures={signatures}
-        handleUpdateRekonRow={handleUpdateRekonRow}
-      />
-
-  </div>
-)}
-
-      </div>
+        </div>
       )}
 
     </div>

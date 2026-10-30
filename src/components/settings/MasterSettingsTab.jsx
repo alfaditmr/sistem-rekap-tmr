@@ -24,7 +24,10 @@ import {
   CheckCircle2,
   AlertCircle,
   Info,
-  Calendar
+  Calendar,
+  Copy,
+  FileText,
+  Check
 } from 'lucide-react';
 import { safeString } from '../../utils/formatters';
 
@@ -154,6 +157,75 @@ export default function MasterSettingsTab({
 
     return Object.values(map).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
   }, [allReports, bankRows, closedMonths]);
+
+  const totalAllRevenue = useMemo(() => {
+    return monthDataList.reduce((acc, m) => acc + (m.totalRevenue || 0), 0);
+  }, [monthDataList]);
+
+  const totalBankAmount = useMemo(() => {
+    return (bankRows || []).reduce((acc, r) => acc + (Number(r?.amount) || 0), 0);
+  }, [bankRows]);
+
+  const [lastBackupInfo, setLastBackupInfo] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tmr_v19_lastBackupInfo');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) { return null; }
+  });
+
+  const [lastRestoreInfo, setLastRestoreInfo] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tmr_v19_lastRestoreInfo');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) { return null; }
+  });
+
+  const [copiedSummary, setCopiedSummary] = useState(false);
+
+  const handleDownloadClick = () => {
+    if (onDownloadBackup) {
+      onDownloadBackup();
+      setTimeout(() => {
+        try {
+          const saved = localStorage.getItem('tmr_v19_lastBackupInfo');
+          if (saved) setLastBackupInfo(JSON.parse(saved));
+        } catch (e) {}
+      }, 500);
+    }
+  };
+
+  const handleRestoreFileSelected = (e) => {
+    const file = e.target.files?.[0];
+    if (file && onRestoreBackup) {
+      onRestoreBackup(file);
+      e.target.value = '';
+      setTimeout(() => {
+        try {
+          const saved = localStorage.getItem('tmr_v19_lastRestoreInfo');
+          if (saved) setLastRestoreInfo(JSON.parse(saved));
+        } catch (e) {}
+      }, 1000);
+    }
+  };
+
+  const handleCopyBackupSummary = () => {
+    const minMonth = monthDataList[monthDataList.length - 1]?.monthKey || '';
+    const maxMonth = monthDataList[0]?.monthKey || '';
+    const summaryText = `[RINGKASAN DATABASE SISTEM REKAP TMR RAGUNAN]\n` +
+      `• Tanggal Cek: ${new Date().toLocaleString('id-ID')}\n` +
+      `• Laporan STSU Terdata: ${Object.keys(allReports || {}).length} hari\n` +
+      `• Total Akumulasi Penerimaan STSU: Rp ${fmt(totalAllRevenue)}\n` +
+      `• Rekening Koran Mutasi Bank: ${(bankRows || []).length} baris (Total Rp ${fmt(totalBankAmount)})\n` +
+      `• Rentang Periode Data: ${monthDataList.length} bulan (${minMonth} s/d ${maxMonth})\n` +
+      `• Status Tutup Buku Bulanan: ${Object.keys(closedMonths || {}).length} bulan terkunci permanen\n` +
+      `• Master Kategori STSU: ${(categories || []).length} pos penerimaan\n` +
+      `• Pejabat Penandatangan: ${signatures?.leftName || '-'} (Kiri) / ${signatures?.rightName || '-'} (Kanan)\n` +
+      `• Bot Integrasi Server IP: ${apiIpAddress || 'localhost'}`;
+
+    navigator.clipboard.writeText(summaryText);
+    setCopiedSummary(true);
+    setTimeout(() => setCopiedSummary(false), 3000);
+  };
 
   if (activeTab !== 'settings') return null;
 
@@ -389,51 +461,127 @@ export default function MasterSettingsTab({
                       <ShieldCheck size={26} className="text-emerald-600" /> Pusat Cadangan & Pemulihan Database
                     </h2>
                     <p className="text-sm text-gray-500 mt-1">
-                      Unduh salinan data lengkap ke komputer / flashdisk Anda, atau pulihkan database kapan pun dibutuhkan.
+                      Pusat kendali cadangan data offline (.json) dan disaster recovery UP Taman Margasatwa Ragunan.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-full text-xs font-bold text-emerald-800">
-                    <CheckCircle size={15} className="text-emerald-600" /> Arsitektur Cloud Aktif & Aman
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyBackupSummary}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-300 text-xs font-bold text-gray-700 bg-white hover:bg-gray-50 shadow-2xs transition-all active:scale-95"
+                      title="Salin ringkasan data database ke clipboard"
+                    >
+                      {copiedSummary ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} className="text-gray-500" />}
+                      <span>{copiedSummary ? 'Tersalin!' : 'Salin Ringkasan'}</span>
+                    </button>
+                    <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-bold text-emerald-800">
+                      <CheckCircle size={15} className="text-emerald-600" /> Cloud Sharding Aktif
+                    </div>
                   </div>
                 </div>
 
-                {/* Ringkasan Data Saat Ini */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
-                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
-                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Laporan STSU</span>
-                    <span className="text-xl font-extrabold text-gray-800">{Object.keys(allReports || {}).length} <span className="text-xs font-normal text-gray-500">hari</span></span>
+                {/* 6 Key Metrics Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6">
+                  {/* Card 1: Hari Laporan */}
+                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100 flex flex-col justify-between">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Laporan STSU</span>
+                    <div className="mt-1">
+                      <span className="text-xl font-extrabold text-gray-900">{Object.keys(allReports || {}).length}</span>
+                      <span className="text-xs text-gray-500 ml-1">hari</span>
+                    </div>
                   </div>
-                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
-                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Mutasi Bank</span>
-                    <span className="text-xl font-extrabold text-gray-800">{(bankRows || []).length} <span className="text-xs font-normal text-gray-500">baris</span></span>
+
+                  {/* Card 2: Total Akumulasi STSU */}
+                  <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-100 flex flex-col justify-between">
+                    <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Total STSU</span>
+                    <div className="mt-1">
+                      <span className="text-sm font-black text-emerald-900 block truncate" title={`Rp ${fmt(totalAllRevenue)}`}>
+                        Rp {fmt(totalAllRevenue)}
+                      </span>
+                    </div>
                   </div>
-                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
-                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Master Kategori</span>
-                    <span className="text-xl font-extrabold text-gray-800">{(categories || []).length} <span className="text-xs font-normal text-gray-500">pos</span></span>
+
+                  {/* Card 3: Mutasi Bank DKI */}
+                  <div className="bg-blue-50/60 p-3.5 rounded-xl border border-blue-100 flex flex-col justify-between">
+                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block">Mutasi Bank</span>
+                    <div className="mt-1">
+                      <span className="text-xl font-extrabold text-blue-900">{(bankRows || []).length}</span>
+                      <span className="text-xs text-blue-600 ml-1">baris</span>
+                    </div>
                   </div>
-                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
-                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Pejabat TTD</span>
-                    <span className="text-xl font-extrabold text-emerald-700">Terkonfigurasi</span>
+
+                  {/* Card 4: Rentang Periode */}
+                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100 flex flex-col justify-between">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Periode Data</span>
+                    <div className="mt-1">
+                      <span className="text-xl font-extrabold text-gray-900">{monthDataList.length}</span>
+                      <span className="text-xs text-gray-500 ml-1">bulan</span>
+                    </div>
                   </div>
+
+                  {/* Card 5: Tutup Buku */}
+                  <div className="bg-indigo-50/60 p-3.5 rounded-xl border border-indigo-100 flex flex-col justify-between">
+                    <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">Tutup Buku</span>
+                    <div className="mt-1">
+                      <span className="text-xl font-extrabold text-indigo-900">{totalClosedCount}</span>
+                      <span className="text-xs text-indigo-600 ml-1">kunci</span>
+                    </div>
+                  </div>
+
+                  {/* Card 6: Master Kategori */}
+                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100 flex flex-col justify-between">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Master Pos</span>
+                    <div className="mt-1">
+                      <span className="text-xl font-extrabold text-gray-900">{(categories || []).length}</span>
+                      <span className="text-xs text-gray-500 ml-1">pos</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Bar Riwayat Backup & Restore */}
+                <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-between text-xs text-gray-600 gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-500">Cadangan Terakhir:</span>
+                    {lastBackupInfo ? (
+                      <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-mono text-[11px]">
+                        {lastBackupInfo.dateFormatted || lastBackupInfo.date} ({lastBackupInfo.reportsCount} hari, {lastBackupInfo.bankCount} mutasi)
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 italic">Belum pernah diunduh pada sesi ini</span>
+                    )}
+                  </div>
+                  {lastRestoreInfo && (
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-gray-500">Pemulihan Terakhir:</span>
+                      <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-mono text-[11px]">
+                        {lastRestoreInfo.dateFormatted} ({lastRestoreInfo.fileName})
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Action Cards: Download & Restore */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Card 1: Download Backup */}
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col justify-between hover:border-emerald-300 transition-all">
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col justify-between hover:border-emerald-300 transition-all group">
                   <div>
-                    <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4 shadow-sm">
+                    <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4 shadow-sm group-hover:scale-105 transition-transform">
                       <Download size={24} />
                     </div>
-                    <h3 className="text-lg font-bold text-gray-800 mb-1.5">Unduh Cadangan (.json)</h3>
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <h3 className="text-lg font-bold text-gray-800">Unduh Cadangan (.json)</h3>
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                        tmr_v19
+                      </span>
+                    </div>
                     <p className="text-xs text-gray-500 leading-relaxed mb-6">
-                      Menyimpan seluruh data (STSU harian, seluruh mutasi bank, tanda tangan, kategori, target) ke dalam 1 file fisik JSON di komputer Anda. Simpan file ini di flashdisk atau Google Drive dinas.
+                      Menyimpan 100% database lengkap (laporan STSU harian, seluruh mutasi bank DKI, tanda tangan NCR, master pos, target anggaran, dan status tutup buku) ke dalam 1 file JSON terenkripsi data.
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={onDownloadBackup}
+                    onClick={handleDownloadClick}
                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all hover:shadow active:scale-[0.99]"
                   >
                     <Download size={18} /> Download Backup Sekarang
@@ -441,9 +589,9 @@ export default function MasterSettingsTab({
                 </div>
 
                 {/* Card 2: Restore Backup */}
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col justify-between hover:border-amber-300 transition-all">
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col justify-between hover:border-amber-300 transition-all group">
                   <div>
-                    <div className="w-12 h-12 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-4 shadow-sm">
+                    <div className="w-12 h-12 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-4 shadow-sm group-hover:scale-105 transition-transform">
                       <Upload size={24} />
                     </div>
                     <h3 className="text-lg font-bold text-gray-800 mb-1.5">Pulihkan Database (.json)</h3>
@@ -452,7 +600,7 @@ export default function MasterSettingsTab({
                     </p>
                     <div className="bg-amber-50 border border-amber-200/80 rounded-lg p-2.5 mb-6 flex items-start gap-2 text-xs text-amber-900">
                       <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-                      <span>Seluruh data di Cloud saat ini akan diselaraskan dengan data file cadangan.</span>
+                      <span>Sistem otomatis melakukan validasi struktur, merapikan alokasi mutasi, dan menyinkronkan seluruh partisi bulanan ke Cloud.</span>
                     </div>
                   </div>
                   <div>
@@ -461,13 +609,7 @@ export default function MasterSettingsTab({
                       accept=".json"
                       id="restore-file-input"
                       className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file && onRestoreBackup) {
-                          onRestoreBackup(file);
-                          e.target.value = '';
-                        }
-                      }}
+                      onChange={handleRestoreFileSelected}
                     />
                     <label
                       htmlFor="restore-file-input"
@@ -479,15 +621,19 @@ export default function MasterSettingsTab({
                 </div>
               </div>
 
-              {/* Panduan Praktis */}
-              <div className="bg-slate-50 rounded-2xl border border-slate-200/80 p-5 text-xs text-slate-700 space-y-2.5">
-                <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                  <HardDrive size={16} className="text-slate-600" /> Panduan Praktis Ketahanan Data TMR Ragunan:
-                </h4>
+              {/* Panduan Praktis & SOP Ketahanan Data */}
+              <div className="bg-slate-50 rounded-2xl border border-slate-200/80 p-5 text-xs text-slate-700 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                    <HardDrive size={16} className="text-slate-600" /> SOP & Panduan Praktis Ketahanan Data TMR Ragunan:
+                  </h4>
+                  <span className="text-[10px] font-bold text-slate-500 font-mono">Disaster Recovery Standard</span>
+                </div>
                 <ul className="list-disc pl-5 space-y-1.5 text-slate-600">
-                  <li><strong>Rekomendasi Waktu Backup:</strong> Lakukan pengunduhan cadangan minimal <strong>1 kali setiap akhir bulan</strong> setelah penutupan buku kas / pelaporan STSU bulanan selesai.</li>
-                  <li><strong>Penyimpanan Ganda:</strong> Simpan file <code>.json</code> hasil unduhan di minimal 2 tempat (contoh: Harddisk PC Kantor & Flashdisk Bendahara atau Google Drive dinas).</li>
-                  <li><strong>Keamanan Data:</strong> File cadangan berisi data nominal dan tanggal transaksi murni, tanpa kata sandi atau data sensitif sistem.</li>
+                  <li><strong>Rekomendasi Waktu Cadangan:</strong> Lakukan pengunduhan cadangan minimal <strong>1 kali setiap akhir pekan</strong> atau setelah <strong>Tutup Buku Bulanan</strong> selesai.</li>
+                  <li><strong>Penyimpanan Ganda (3-2-1 Rule):</strong> Simpan file <code>.json</code> hasil unduhan di minimal 2 tempat terpisah (contoh: Harddisk PC Kantor & Flashdisk Bendahara atau Google Drive kedinasan).</li>
+                  <li><strong>Prosedur Pemulihan (Disaster Recovery):</strong> Jika terjadi kerusakan komputer atau pergantian perangkat kerja, cukup buka web di PC baru, login, masuk ke <em>Pusat Cadangan</em>, dan pilih file <code>.json</code> terbaru. Seluruh database Cloud dan partisi bulanan akan dipulihkan secara instan ke kondisi semula.</li>
+                  <li><strong>Keamanan & Integritas:</strong> File cadangan berisi data transaksi keuangan murni dan konfigurasi pos resmi tanpa kata sandi atau data rahasia akun login.</li>
                 </ul>
               </div>
             </div>
