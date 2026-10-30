@@ -14,7 +14,7 @@ import {
   Maximize2
 } from 'lucide-react';
 import { formatRp, safeString } from '../../../utils/formatters';
-import { FASILITAS_COLUMNS, getPemakaianTempatData, getPromoMediaData } from '../../../utils/reportDataHelper';
+import { FASILITAS_COLUMNS, getPemakaianTempatData, getPromoMediaData, setGlobalApiDataCache, fetchApiDataBackground } from '../../../utils/reportDataHelper';
 
 export default function FasilitasPromoTable({
   reportType,
@@ -22,7 +22,9 @@ export default function FasilitasPromoTable({
   monthStr = '',
   allReports = {},
   categories = [],
-  bankRows = []
+  bankRows = [],
+  apiData = [],
+  onApiDataUpdate
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [apiLoading, setApiLoading] = useState(false);
@@ -38,24 +40,10 @@ export default function FasilitasPromoTable({
     let isMounted = true;
     const autoSync = async () => {
       try {
-        const isFas = reportType === 'pemakaian_tempat';
-        const url = isFas
-          ? `https://sistem-informasi-ragunan.vercel.app/api/fasilitas?date=semua`
-          : `https://sistem-informasi-ragunan.vercel.app/api/promo?date=semua`;
-        
-        const res = await fetch(url);
-        const json = await res.json();
-        if (isMounted && json && json.data && json.data.length > 0) {
-          const source = isFas ? 'Fasilitas' : 'Promo';
-          const newItems = json.data.map(d => ({ ...d, source }));
-          let existing = [];
-          try {
-            const saved = localStorage.getItem('tmr_apiData');
-            if (saved) existing = JSON.parse(saved);
-          } catch (e) {}
-          const merged = [...existing.filter(d => d.source !== source), ...newItems];
-          localStorage.setItem('tmr_apiData', JSON.stringify(merged));
-
+        const merged = await fetchApiDataBackground();
+        if (isMounted && merged && merged.length > 0) {
+          if (onApiDataUpdate) onApiDataUpdate(merged);
+          const isFas = reportType === 'pemakaian_tempat';
           if (isFas) {
             const updated = getPemakaianTempatData(allReports, categories, monthStr || activeData?.monthStr || '', bankRows, merged);
             setActiveData(updated);
@@ -87,7 +75,11 @@ export default function FasilitasPromoTable({
           if (saved) existing = JSON.parse(saved);
         } catch (e) {}
         const merged = [...existing.filter(d => d.source !== 'Fasilitas'), ...newFas];
-        localStorage.setItem('tmr_apiData', JSON.stringify(merged));
+        try {
+          localStorage.setItem('tmr_apiData', JSON.stringify(merged));
+        } catch (e) {}
+        setGlobalApiDataCache(merged);
+        if (onApiDataUpdate) onApiDataUpdate(merged);
 
         // Hitung ulang data laporan fasilitas dengan API data terbaru
         const updated = getPemakaianTempatData(allReports, categories, monthStr || activeData?.monthStr || '', bankRows, merged);
@@ -121,7 +113,11 @@ export default function FasilitasPromoTable({
           if (saved) existing = JSON.parse(saved);
         } catch (e) {}
         const merged = [...existing.filter(d => d.source !== 'Promo'), ...newPromo];
-        localStorage.setItem('tmr_apiData', JSON.stringify(merged));
+        try {
+          localStorage.setItem('tmr_apiData', JSON.stringify(merged));
+        } catch (e) {}
+        setGlobalApiDataCache(merged);
+        if (onApiDataUpdate) onApiDataUpdate(merged);
 
         // Hitung ulang data laporan promo dengan API data terbaru
         const updated = getPromoMediaData(allReports, categories, monthStr || activeData?.monthStr || '', bankRows, merged);

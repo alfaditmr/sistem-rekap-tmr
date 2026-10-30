@@ -3,7 +3,62 @@
  * Menghitung data dinamis dari allReports berdasarkan format template di folder 'format laporan'
  * TANPA merubah data atau struktur asli allReports.
  */
-import { formatRp, safeString, getDayName } from './formatters';
+import { formatRp, safeString, getDayName, getActiveItemKey } from './formatters';
+
+// In-Memory Global Cache untuk API data (Fasilitas & Promo) agar sinkron instan di semua komponen
+let _inMemoryApiData = null;
+
+export const setGlobalApiDataCache = (data) => {
+  if (Array.isArray(data)) {
+    _inMemoryApiData = data;
+  }
+};
+
+export const getGlobalApiDataCache = () => {
+  if (Array.isArray(_inMemoryApiData) && _inMemoryApiData.length > 0) {
+    return _inMemoryApiData;
+  }
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const saved = localStorage.getItem('tmr_apiData');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          _inMemoryApiData = parsed;
+          return parsed;
+        }
+      }
+    } catch (e) {}
+  }
+  return [];
+};
+
+export const fetchApiDataBackground = async () => {
+  try {
+    const [fasRes, proRes] = await Promise.all([
+      fetch('https://sistem-informasi-ragunan.vercel.app/api/fasilitas?date=semua').then(r => r.json()).catch(() => null),
+      fetch('https://sistem-informasi-ragunan.vercel.app/api/promo?date=semua').then(r => r.json()).catch(() => null)
+    ]);
+    const newFas = (fasRes?.data || []).map(d => ({ ...d, source: 'Fasilitas' }));
+    const newPro = (proRes?.data || []).map(d => ({ ...d, source: 'Promo' }));
+    if (newFas.length > 0 || newPro.length > 0) {
+      const existing = getGlobalApiDataCache();
+      const merged = [
+        ...existing.filter(d => d.source !== 'Fasilitas' && d.source !== 'Promo'),
+        ...newFas,
+        ...newPro
+      ];
+      _inMemoryApiData = merged;
+      try {
+        localStorage.setItem('tmr_apiData', JSON.stringify(merged));
+      } catch (e) {}
+      return merged;
+    }
+  } catch (e) {
+    console.warn('fetchApiDataBackground error:', e);
+  }
+  return getGlobalApiDataCache();
+};
 
 // Tarif standar resmi TMR (untuk estimasi jumlah pengunjung jika hanya tersimpan nominal)
 export const TARIF_TMR = {
@@ -723,14 +778,8 @@ export const getPemakaianTempatData = (
 ) => {
   const { year, month, monthName } = getMonthDaysMetadata(monthStr);
 
-  // Ambil data API Fasilitas dari parameter atau localStorage
-  let apiList = optionalApiData;
-  if (!apiList && typeof window !== 'undefined' && window.localStorage) {
-    try {
-      const saved = localStorage.getItem('tmr_apiData');
-      if (saved) apiList = JSON.parse(saved);
-    } catch (e) {}
-  }
+  // Ambil data API Fasilitas dari parameter, in-memory cache, atau localStorage
+  let apiList = optionalApiData || getGlobalApiDataCache();
   if (!Array.isArray(apiList)) apiList = [];
 
   // Filter hanya data fasilitas
@@ -746,7 +795,7 @@ export const getPemakaianTempatData = (
   const processedApiIds = new Set();
   const processedBankRowIds = new Set();
 
-  // Helper untuk mencari API match secara cerdas & bertingkat
+  // Helper untuk mencari API match secara cerdas & bertingkat dengan presisi tanggal sewa nyata
   const findApiMatch = (apiRefId, amount, dateStr, tenantName) => {
     if (apiRefId) {
       const found = apiFasilitas.find(
@@ -759,45 +808,79 @@ export const getPemakaianTempatData = (
     }
 
     const ymd = dateStr ? parseToYmd(dateStr) : '';
+    const month = ymd && ymd.length >= 7 ? ymd.substring(0, 7) : '';
     const cleanTenant = (tenantName || '').toLowerCase().replace(/^(pt|cv|bapak|ibu|bpk|rombonan|rombongan)\.?\s+/i, '').trim();
+    const words = cleanTenant.split(/\s+/).filter(w => w.length >= 3 && !/^(dan|yang|atau|untuk|ex|ke)$/i.test(w));
 
-    // 1. Match by tenant name & amount
-    if (cleanTenant.length > 2 && amount) {
+    const isNameMatch = (aName) => {
+      if (!aName) return false;
+      const aLow = aName.toLowerCase().replace(/^(pt|cv|bapak|ibu|bpk|rombonan|rombongan)\.?\s+/i, '').trim();
+      if (aLow === cleanTenant) return true;
+      if (cleanTenant.length >= 4 && aLow.includes(cleanTenant)) return true;
+      if (aLow.length >= 4 && cleanTenant.includes(aLow)) return true;
+      
+      const aWords = aLow.split(/\s+/).filter(w => w.length >= 3);
+      let matchCount = 0;
+      for (const w of words) {
+        if (aWords.includes(w) || (aLow.includes(w) && w.length >= 4)) {
+          matchCount++;
+        }
+      }
+      return matchCount >= 2 || (matchCount >= 1 && words.length <= 2);
+    };
+
+    // 1. Name Match + Exact Amount + Exact Date (Transfer or Sewa)
+    if (cleanTenant.length >= 3 && amount && ymd) {
       const found = apiFasilitas.find((a) => {
         const aNom = Number(a.jumlahTransferNumeric || a.jumlahTransfer || a.total_biaya || 0);
-        const aName = (a.nama_penyewa || '').toLowerCase();
-        const matchesName = aName.includes(cleanTenant) || cleanTenant.includes(aName);
-        return matchesName && Math.abs(aNom - amount) < 1;
+        const aTglTf = parseToYmd(a.tanggal_transfer || a.tanggalTransfer);
+        const aTglSw = parseToYmd(a.tanggal_sewa || a.tanggalPemakaian);
+        return isNameMatch(a.nama_penyewa) && Math.abs(aNom - amount) < 1 && (aTglTf === ymd || aTglSw === ymd);
       });
       if (found) return found;
     }
 
-    // 2. Match by tenant name & date
-    if (cleanTenant.length > 2 && ymd) {
+    // 2. Name Match + Exact Date
+    if (cleanTenant.length >= 3 && ymd) {
       const found = apiFasilitas.find((a) => {
-        const aTgl = parseToYmd(a.tanggal_transfer || a.tanggalTransfer || a.tanggal_sewa);
-        const aName = (a.nama_penyewa || '').toLowerCase();
-        const matchesName = aName.includes(cleanTenant) || cleanTenant.includes(aName);
-        return matchesName && aTgl === ymd;
+        const aTglTf = parseToYmd(a.tanggal_transfer || a.tanggalTransfer);
+        const aTglSw = parseToYmd(a.tanggal_sewa || a.tanggalPemakaian);
+        return isNameMatch(a.nama_penyewa) && (aTglTf === ymd || aTglSw === ymd);
       });
       if (found) return found;
     }
 
-    // 3. Match by tenant name alone (if length > 3)
-    if (cleanTenant.length > 3) {
+    // 3. Name Match + Same Month + Exact Amount
+    if (cleanTenant.length >= 3 && amount && month) {
       const found = apiFasilitas.find((a) => {
-        const aName = (a.nama_penyewa || '').toLowerCase();
-        return aName.includes(cleanTenant) || cleanTenant.includes(aName);
+        const aNom = Number(a.jumlahTransferNumeric || a.jumlahTransfer || a.total_biaya || 0);
+        const aTglTf = parseToYmd(a.tanggal_transfer || a.tanggalTransfer);
+        return isNameMatch(a.nama_penyewa) && Math.abs(aNom - amount) < 1 && aTglTf.startsWith(month);
       });
       if (found) return found;
     }
 
-    // 4. Match by amount & date
+    // 4. Name Match + Same Month
+    if (cleanTenant.length >= 3 && month) {
+      const found = apiFasilitas.find((a) => {
+        const aTglTf = parseToYmd(a.tanggal_transfer || a.tanggalTransfer);
+        return isNameMatch(a.nama_penyewa) && aTglTf.startsWith(month);
+      });
+      if (found) return found;
+    }
+
+    // 5. Name Match alone (highest confidence)
+    if (cleanTenant.length >= 4) {
+      const found = apiFasilitas.find((a) => isNameMatch(a.nama_penyewa));
+      if (found) return found;
+    }
+
+    // 6. Amount + Date alone (fallback for generic rows like "Penyewa Fasilitas")
     if (amount && ymd) {
       const found = apiFasilitas.find((a) => {
-        const aTgl = parseToYmd(a.tanggal_transfer || a.tanggalTransfer || a.tanggal_sewa);
+        const aTglTf = parseToYmd(a.tanggal_transfer || a.tanggalTransfer);
         const aNom = Number(a.jumlahTransferNumeric || a.jumlahTransfer || a.total_biaya || 0);
-        return aTgl === ymd && Math.abs(aNom - amount) < 1;
+        return aTglTf === ymd && Math.abs(aNom - amount) < 1;
       });
       if (found) return found;
     }
@@ -825,14 +908,23 @@ export const getPemakaianTempatData = (
                 let activeItem = null;
                 if (parts.length >= 3 && parts[0] === 'cat') {
                   const catId = `${parts[0]}_${parts[1]}`;
-                  const itemId = parts[2] === 'item' && parts[3] ? `${parts[2]}_${parts[3]}` : parts[2];
                   const cat = categories.find((c) => c.id === catId);
-                  const it = cat?.items?.find((i) => i.id === itemId);
                   catName = cat?.name || '';
-                  itemName = it?.name || '';
+
+                  // Cari activeItem secara presisi menggunakan getActiveItemKey
                   activeItem = activeItems.find(
-                    (ai) => ai.catId === catId && (ai.itemId === itemId || ai.id === itemId)
+                    (ai) => getActiveItemKey(ai.catId, ai.itemId || ai.id, ai.isSusulan, ai.validDate, ai.itemDate, ai.itemNote) === fKey
                   );
+                  if (!activeItem) {
+                    const itemId = parts[2] === 'item' && parts[3] ? `${parts[2]}_${parts[3]}` : parts[2];
+                    activeItem = activeItems.find(
+                      (ai) => ai.catId === catId && (ai.itemId === itemId || ai.id === itemId)
+                    );
+                  }
+
+                  const theItId = activeItem?.itemId || activeItem?.id || (parts[2] === 'item' && parts[3] ? `${parts[2]}_${parts[3]}` : parts[2]);
+                  const it = cat?.items?.find((i) => i.id === theItId);
+                  itemName = it?.name || activeItem?.itemName || '';
                 }
 
                 const target = `${catName} ${itemName} ${fKey}`.toLowerCase();
@@ -853,7 +945,7 @@ export const getPemakaianTempatData = (
                       if (baAmt <= 0) return;
                       if (ba.bankRowId) processedBankRowIds.add(ba.bankRowId);
 
-                      const apiMatch = findApiMatch(ba.apiRefId, baAmt, ba.bankDate || dateStr, ba.tenant);
+                      const apiMatch = findApiMatch(ba.apiRefId, baAmt, ba.bankDate || dateStr, ba.tenant || ba.desc || activeItem?.itemNote);
                       if (apiMatch) processedApiIds.add(String(apiMatch.id || apiMatch.docId || apiMatch.id_sewa));
 
                       const penyewa = (apiMatch?.nama_penyewa || ba.tenant || activeItem.itemNote || 'Penyewa Fasilitas').trim();
@@ -893,7 +985,7 @@ export const getPemakaianTempatData = (
                   } else {
                     // Single item input
                     const itemNote = activeItem?.itemNote || parts[5] || '';
-                    const apiMatch = findApiMatch(activeItem?.apiRefId, val, dateStr, itemNote);
+                    const apiMatch = findApiMatch(activeItem?.apiRefId, val, dateStr, activeItem?.tenant || itemNote);
                     if (apiMatch) processedApiIds.add(String(apiMatch.id || apiMatch.docId || apiMatch.id_sewa));
                     if (activeItem?.bankMatchRowId) processedBankRowIds.add(activeItem.bankMatchRowId);
 
@@ -957,7 +1049,7 @@ export const getPemakaianTempatData = (
         const amt = Number(row.amount || 0);
         if (amt <= 0) return;
 
-        const apiMatch = findApiMatch(row.apiRefId, amt, rowYmd, row.tenant);
+        const apiMatch = findApiMatch(row.apiRefId, amt, rowYmd, row.tenant || row.description);
         if (apiMatch) processedApiIds.add(String(apiMatch.id || apiMatch.docId || apiMatch.id_sewa));
 
         const penyewa = (apiMatch?.nama_penyewa || row.tenant || row.description || 'Penyewa Fasilitas').trim();
@@ -1061,14 +1153,8 @@ export const getPromoMediaData = (
 ) => {
   const { year, month, monthName } = getMonthDaysMetadata(monthStr);
 
-  // Ambil data API Promo dari parameter atau localStorage
-  let apiList = optionalApiData;
-  if (!apiList && typeof window !== 'undefined' && window.localStorage) {
-    try {
-      const saved = localStorage.getItem('tmr_apiData');
-      if (saved) apiList = JSON.parse(saved);
-    } catch (e) {}
-  }
+  // Ambil data API Promo dari parameter, in-memory cache, atau localStorage
+  let apiList = optionalApiData || getGlobalApiDataCache();
   if (!Array.isArray(apiList)) apiList = [];
 
   // Filter hanya data promo & banner
@@ -1098,40 +1184,78 @@ export const getPromoMediaData = (
     }
 
     const ymd = dateStr ? parseToYmd(dateStr) : '';
+    const month = ymd && ymd.length >= 7 ? ymd.substring(0, 7) : '';
     const cleanTenant = (tenantName || '').toLowerCase().replace(/^(pt|cv|bapak|ibu|bpk|rombonan|rombongan)\.?\s+/i, '').trim();
+    const words = cleanTenant.split(/\s+/).filter(w => w.length >= 3 && !/^(dan|yang|atau|untuk|ex|ke)$/i.test(w));
 
-    // 1. Match by tenant name & amount
-    if (cleanTenant.length > 2 && amount) {
+    const isNameMatch = (aName) => {
+      if (!aName) return false;
+      const aLow = aName.toLowerCase().replace(/^(pt|cv|bapak|ibu|bpk|rombonan|rombongan)\.?\s+/i, '').trim();
+      if (aLow === cleanTenant) return true;
+      if (cleanTenant.length >= 4 && aLow.includes(cleanTenant)) return true;
+      if (aLow.length >= 4 && cleanTenant.includes(aLow)) return true;
+      
+      const aWords = aLow.split(/\s+/).filter(w => w.length >= 3);
+      let matchCount = 0;
+      for (const w of words) {
+        if (aWords.includes(w) || (aLow.includes(w) && w.length >= 4)) {
+          matchCount++;
+        }
+      }
+      return matchCount >= 2 || (matchCount >= 1 && words.length <= 2);
+    };
+
+    // 1. Name Match + Exact Amount + Exact Date
+    if (cleanTenant.length >= 3 && amount && ymd) {
       const found = apiPromo.find((a) => {
         const aNom = Number(a.jumlahTransferNumeric || a.jumlahTransfer || a.totalBiaya || 0);
-        const aName = (a.namaPerusahaan || a.nama_penyewa || a.namaPenandaTangan || '').toLowerCase();
-        const matchesName = aName.includes(cleanTenant) || cleanTenant.includes(aName);
-        return matchesName && Math.abs(aNom - amount) < 1;
+        const aTgl = parseToYmd(a.tanggalTransfer || a.tanggal_transfer || a.createdAt);
+        return (isNameMatch(a.namaPerusahaan) || isNameMatch(a.nama_penyewa) || isNameMatch(a.namaPenandaTangan)) &&
+          Math.abs(aNom - amount) < 1 && aTgl === ymd;
       });
       if (found) return found;
     }
 
-    // 2. Match by tenant name & date
-    if (cleanTenant.length > 2 && ymd) {
+    // 2. Name Match + Exact Date
+    if (cleanTenant.length >= 3 && ymd) {
       const found = apiPromo.find((a) => {
         const aTgl = parseToYmd(a.tanggalTransfer || a.tanggal_transfer || a.createdAt);
-        const aName = (a.namaPerusahaan || a.nama_penyewa || a.namaPenandaTangan || '').toLowerCase();
-        const matchesName = aName.includes(cleanTenant) || cleanTenant.includes(aName);
-        return matchesName && aTgl === ymd;
+        return (isNameMatch(a.namaPerusahaan) || isNameMatch(a.nama_penyewa) || isNameMatch(a.namaPenandaTangan)) &&
+          aTgl === ymd;
       });
       if (found) return found;
     }
 
-    // 3. Match by tenant name alone (if length > 3)
-    if (cleanTenant.length > 3) {
+    // 3. Name Match + Same Month + Exact Amount
+    if (cleanTenant.length >= 3 && amount && month) {
       const found = apiPromo.find((a) => {
-        const aName = (a.namaPerusahaan || a.nama_penyewa || a.namaPenandaTangan || '').toLowerCase();
-        return aName.includes(cleanTenant) || cleanTenant.includes(aName);
+        const aNom = Number(a.jumlahTransferNumeric || a.jumlahTransfer || a.totalBiaya || 0);
+        const aTgl = parseToYmd(a.tanggalTransfer || a.tanggal_transfer || a.createdAt);
+        return (isNameMatch(a.namaPerusahaan) || isNameMatch(a.nama_penyewa) || isNameMatch(a.namaPenandaTangan)) &&
+          Math.abs(aNom - amount) < 1 && aTgl.startsWith(month);
       });
       if (found) return found;
     }
 
-    // 4. Match by amount & date
+    // 4. Name Match + Same Month
+    if (cleanTenant.length >= 3 && month) {
+      const found = apiPromo.find((a) => {
+        const aTgl = parseToYmd(a.tanggalTransfer || a.tanggal_transfer || a.createdAt);
+        return (isNameMatch(a.namaPerusahaan) || isNameMatch(a.nama_penyewa) || isNameMatch(a.namaPenandaTangan)) &&
+          aTgl.startsWith(month);
+      });
+      if (found) return found;
+    }
+
+    // 5. Name Match alone
+    if (cleanTenant.length >= 4) {
+      const found = apiPromo.find((a) =>
+        isNameMatch(a.namaPerusahaan) || isNameMatch(a.nama_penyewa) || isNameMatch(a.namaPenandaTangan)
+      );
+      if (found) return found;
+    }
+
+    // 6. Amount + Date alone
     if (amount && ymd) {
       const found = apiPromo.find((a) => {
         const aTgl = parseToYmd(a.tanggalTransfer || a.tanggal_transfer || a.createdAt);

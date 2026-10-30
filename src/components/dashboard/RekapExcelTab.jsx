@@ -29,7 +29,9 @@ import {
   getGateRevenueData,
   getStsuKasDaerahData,
   getPemakaianTempatData,
-  getPromoMediaData
+  getPromoMediaData,
+  getGlobalApiDataCache,
+  fetchApiDataBackground
 } from '../../utils/reportDataHelper';
 import {
   exportPengunjungTmrExcel,
@@ -160,6 +162,20 @@ export default function RekapExcelTab({
     if (['pemakaian_tempat', 'rekap_promo'].includes(selectedReportType)) return 'fasilitas_promo';
     return 'rekon_mitra';
   });
+
+  // State untuk API data Fasilitas & Promo di level RekapExcelTab
+  const [apiData, setApiData] = useState(() => getGlobalApiDataCache());
+
+  // Background fetch API jika membuka laporan fasilitas atau promo
+  useEffect(() => {
+    if (selectedReportType === 'pemakaian_tempat' || selectedReportType === 'rekap_promo') {
+      fetchApiDataBackground().then((res) => {
+        if (res && res.length > 0) {
+          setApiData(res);
+        }
+      });
+    }
+  }, [selectedReportType]);
 
   // 1. Data Generator: Rekapitulasi Master
   const generateExcelData = () => {
@@ -756,10 +772,10 @@ export default function RekapExcelTab({
         exportGateRevenueExcel(getGateRevenueData(allReports, categories, excelReportMonth), signatures);
         break;
       case 'pemakaian_tempat':
-        exportPemakaianTempatExcel(getPemakaianTempatData(allReports, categories, excelReportMonth, bankRows), signatures);
+        exportPemakaianTempatExcel(getPemakaianTempatData(allReports, categories, excelReportMonth, bankRows, apiData), signatures);
         break;
       case 'rekap_promo':
-        exportPromoMediaExcel(getPromoMediaData(allReports, categories, excelReportMonth, bankRows), signatures);
+        exportPromoMediaExcel(getPromoMediaData(allReports, categories, excelReportMonth, bankRows, apiData), signatures);
         break;
       case 'rekon_ecar':
         handleDownloadRekonExcel('E-Car');
@@ -1099,7 +1115,7 @@ export default function RekapExcelTab({
 
             // E. Laporan Sewa Tempat & Promosi
             if (selectedReportType === 'pemakaian_tempat') {
-              const data = getPemakaianTempatData(allReports, categories, excelReportMonth, bankRows);
+              const data = getPemakaianTempatData(allReports, categories, excelReportMonth, bankRows, apiData);
               return (
                 <FasilitasPromoTable
                   reportType="pemakaian_tempat"
@@ -1108,11 +1124,13 @@ export default function RekapExcelTab({
                   allReports={allReports}
                   categories={categories}
                   bankRows={bankRows}
+                  apiData={apiData}
+                  onApiDataUpdate={setApiData}
                 />
               );
             }
             if (selectedReportType === 'rekap_promo') {
-              const data = getPromoMediaData(allReports, categories, excelReportMonth, bankRows);
+              const data = getPromoMediaData(allReports, categories, excelReportMonth, bankRows, apiData);
               return (
                 <FasilitasPromoTable
                   reportType="rekap_promo"
@@ -1121,6 +1139,8 @@ export default function RekapExcelTab({
                   allReports={allReports}
                   categories={categories}
                   bankRows={bankRows}
+                  apiData={apiData}
+                  onApiDataUpdate={setApiData}
                 />
               );
             }
