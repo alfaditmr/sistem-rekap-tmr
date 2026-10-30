@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Calendar,
   Download,
@@ -152,7 +152,9 @@ export default function RekapExcelTab({
   signatures = {},
   handleUpdateRekonRow
 }) {
-  if (dashboardTab !== 'rekap') return null;
+  const safeReportMonth = (excelReportMonth && typeof excelReportMonth === 'string' && excelReportMonth.includes('-'))
+    ? excelReportMonth.trim()
+    : getLocalYMD().substring(0, 7);
 
   // Active Main Category
   const [activeMainCategory, setActiveMainCategory] = useState(() => {
@@ -162,6 +164,21 @@ export default function RekapExcelTab({
     if (['pemakaian_tempat', 'rekap_promo'].includes(selectedReportType)) return 'fasilitas_promo';
     return 'rekon_mitra';
   });
+
+  // Sinkronkan kategori aktif saat selectedReportType berganti
+  useEffect(() => {
+    if (selectedReportType === 'rekapitulasi' || selectedReportType === 'rekap_stsu') {
+      setActiveMainCategory('stsu_rekap');
+    } else if (['pengunjung_tmr', 'pengunjung_pps', 'pengunjung_tsa'].includes(selectedReportType)) {
+      setActiveMainCategory('pengunjung_wahana');
+    } else if (['eticketing', 'gate_report'].includes(selectedReportType)) {
+      setActiveMainCategory('ticketing_gate');
+    } else if (['pemakaian_tempat', 'rekap_promo'].includes(selectedReportType)) {
+      setActiveMainCategory('fasilitas_promo');
+    } else {
+      setActiveMainCategory('rekon_mitra');
+    }
+  }, [selectedReportType]);
 
   // State untuk API data Fasilitas & Promo di level RekapExcelTab
   const [apiData, setApiData] = useState(() => getGlobalApiDataCache());
@@ -179,7 +196,7 @@ export default function RekapExcelTab({
 
   // 1. Data Generator: Rekapitulasi Master
   const generateExcelData = () => {
-    const [yearStr, monthStr] = excelReportMonth.split('-');
+    const [yearStr, monthStr] = safeReportMonth.split('-');
     const year = parseInt(yearStr, 10);
     const month = parseInt(monthStr, 10);
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -283,7 +300,7 @@ export default function RekapExcelTab({
 
   // 2. Data Generator: Rekonsiliasi Harian (E-Car, Foto Satwa, & Kategori Lain)
   const generateRekonData = (catName) => {
-    const [yearStr, monthStr] = excelReportMonth.split('-');
+    const [yearStr, monthStr] = safeReportMonth.split('-');
     const year = parseInt(yearStr, 10);
     const month = parseInt(monthStr, 10);
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -645,7 +662,7 @@ export default function RekapExcelTab({
     const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    const [y, m] = excelReportMonth.split('-');
+    const [y, m] = safeReportMonth.split('-');
     const monthNames = ['', 'JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'];
 
     link.setAttribute('href', url);
@@ -754,28 +771,28 @@ export default function RekapExcelTab({
         handleDownloadExcel();
         break;
       case 'rekap_stsu':
-        exportStsuKasDaerahExcel(getStsuKasDaerahData(allReports, categories, excelReportMonth), signatures);
+        exportStsuKasDaerahExcel(getStsuKasDaerahData(allReports, categories, safeReportMonth), signatures);
         break;
       case 'pengunjung_tmr':
-        exportPengunjungTmrExcel(getPengunjungTmrData(allReports, categories, excelReportMonth), signatures);
+        exportPengunjungTmrExcel(getPengunjungTmrData(allReports, categories, safeReportMonth), signatures);
         break;
       case 'pengunjung_pps':
-        exportPusatPrimataExcel(getPusatPrimataData(allReports, categories, excelReportMonth), signatures);
+        exportPusatPrimataExcel(getPusatPrimataData(allReports, categories, safeReportMonth), signatures);
         break;
       case 'pengunjung_tsa':
-        exportTamanSatwaAnakExcel(getTamanSatwaAnakData(allReports, categories, excelReportMonth), signatures);
+        exportTamanSatwaAnakExcel(getTamanSatwaAnakData(allReports, categories, safeReportMonth), signatures);
         break;
       case 'eticketing':
-        exportEticketingExcel(getEticketingData(allReports, categories, excelReportMonth), signatures);
+        exportEticketingExcel(getEticketingData(allReports, categories, safeReportMonth), signatures);
         break;
       case 'gate_report':
-        exportGateRevenueExcel(getGateRevenueData(allReports, categories, excelReportMonth), signatures);
+        exportGateRevenueExcel(getGateRevenueData(allReports, categories, safeReportMonth), signatures);
         break;
       case 'pemakaian_tempat':
-        exportPemakaianTempatExcel(getPemakaianTempatData(allReports, categories, excelReportMonth, bankRows, apiData), signatures);
+        exportPemakaianTempatExcel(getPemakaianTempatData(allReports, categories, safeReportMonth, bankRows, apiData), signatures);
         break;
       case 'rekap_promo':
-        exportPromoMediaExcel(getPromoMediaData(allReports, categories, excelReportMonth, bankRows, apiData), signatures);
+        exportPromoMediaExcel(getPromoMediaData(allReports, categories, safeReportMonth, bankRows, apiData), signatures);
         break;
       case 'rekon_ecar':
         handleDownloadRekonExcel('E-Car');
@@ -802,6 +819,8 @@ export default function RekapExcelTab({
       category: REPORT_CATEGORIES[4]
     };
   }, [selectedReportType]);
+
+  if (dashboardTab && dashboardTab !== 'rekap') return null;
 
   return (
     <div className="mt-2">
@@ -1085,42 +1104,42 @@ export default function RekapExcelTab({
 
             // B. Laporan STSU Kas Daerah (Jagir)
             if (selectedReportType === 'rekap_stsu') {
-              const stsuData = getStsuKasDaerahData(allReports, categories, excelReportMonth);
+              const stsuData = getStsuKasDaerahData(allReports, categories, safeReportMonth);
               return <StsuKasDaerahTable data={stsuData} />;
             }
 
             // C. Laporan Pengunjung & Wahana (TMR, PPS, TSA)
             if (selectedReportType === 'pengunjung_tmr') {
-              const data = getPengunjungTmrData(allReports, categories, excelReportMonth);
+              const data = getPengunjungTmrData(allReports, categories, safeReportMonth);
               return <PengunjungReportTable reportType="pengunjung_tmr" data={data} />;
             }
             if (selectedReportType === 'pengunjung_pps') {
-              const data = getPusatPrimataData(allReports, categories, excelReportMonth);
+              const data = getPusatPrimataData(allReports, categories, safeReportMonth);
               return <PengunjungReportTable reportType="pengunjung_pps" data={data} />;
             }
             if (selectedReportType === 'pengunjung_tsa') {
-              const data = getTamanSatwaAnakData(allReports, categories, excelReportMonth);
+              const data = getTamanSatwaAnakData(allReports, categories, safeReportMonth);
               return <PengunjungReportTable reportType="pengunjung_tsa" data={data} />;
             }
 
             // D. Laporan Ticketing & Gate
             if (selectedReportType === 'eticketing') {
-              const data = getEticketingData(allReports, categories, excelReportMonth);
+              const data = getEticketingData(allReports, categories, safeReportMonth);
               return <TicketingReportTable reportType="eticketing" data={data} />;
             }
             if (selectedReportType === 'gate_report') {
-              const data = getGateRevenueData(allReports, categories, excelReportMonth);
+              const data = getGateRevenueData(allReports, categories, safeReportMonth);
               return <TicketingReportTable reportType="gate_report" data={data} />;
             }
 
             // E. Laporan Sewa Tempat & Promosi
             if (selectedReportType === 'pemakaian_tempat') {
-              const data = getPemakaianTempatData(allReports, categories, excelReportMonth, bankRows, apiData);
+              const data = getPemakaianTempatData(allReports, categories, safeReportMonth, bankRows, apiData);
               return (
                 <FasilitasPromoTable
                   reportType="pemakaian_tempat"
                   data={data}
-                  monthStr={excelReportMonth}
+                  monthStr={safeReportMonth}
                   allReports={allReports}
                   categories={categories}
                   bankRows={bankRows}
@@ -1130,12 +1149,12 @@ export default function RekapExcelTab({
               );
             }
             if (selectedReportType === 'rekap_promo') {
-              const data = getPromoMediaData(allReports, categories, excelReportMonth, bankRows, apiData);
+              const data = getPromoMediaData(allReports, categories, safeReportMonth, bankRows, apiData);
               return (
                 <FasilitasPromoTable
                   reportType="rekap_promo"
                   data={data}
-                  monthStr={excelReportMonth}
+                  monthStr={safeReportMonth}
                   allReports={allReports}
                   categories={categories}
                   bankRows={bankRows}
@@ -1274,7 +1293,7 @@ export default function RekapExcelTab({
             </span>
           </div>
           <div className="hidden md:flex items-center gap-1.5 text-gray-400 font-mono text-[11px]">
-            <span>Periode: {excelReportMonth}</span>
+            <span>Periode: {safeReportMonth}</span>
           </div>
         </div>
       </div>

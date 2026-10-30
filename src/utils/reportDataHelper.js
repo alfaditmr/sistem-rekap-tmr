@@ -83,7 +83,10 @@ export const TARIF_TMR = {
  * Mendapatkan jumlah hari dan metadata kalender untuk bulan tertentu
  */
 export const getMonthDaysMetadata = (monthStr) => {
-  const [yearStr, mStr] = monthStr.split('-');
+  const safeMonth = (monthStr && typeof monthStr === 'string' && monthStr.includes('-'))
+    ? monthStr.trim()
+    : '2026-09';
+  const [yearStr, mStr] = safeMonth.split('-');
   const year = parseInt(yearStr, 10);
   const month = parseInt(mStr, 10);
   const daysInMonth = new Date(year, month, 0).getDate();

@@ -5,6 +5,7 @@ import TargetManager from './TargetManager';
 import TransitModal from './components/transit/TransitModal';
 import PrintPreviewTab from './components/print/PrintPreviewTab';
 import RekapExcelTab from './components/dashboard/RekapExcelTab';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import ActionModals from './components/modals/ActionModals';
 import MasterSettingsTab from './components/settings/MasterSettingsTab';
 import KalenderTab from './components/calendar/KalenderTab';
@@ -3518,21 +3519,23 @@ export default function App() {
 
               {/* 🔴 TAB: LAPORAN (EXCEL) */}
               {/* ============================================================== */}
-              <RekapExcelTab
-                dashboardTab={dashboardTab}
-                excelReportMonth={excelReportMonth}
-                setExcelReportMonth={setExcelReportMonth}
-                selectedReportType={selectedReportType}
-                setSelectedReportType={setSelectedReportType}
-                reportCategories={reportCategories}
-                allReports={allReports}
-                categories={categories}
-                bankRows={bankRows}
-                rekonOfficerName={rekonOfficerName}
-                currentReport={currentReport}
-                signatures={signatures}
-                handleUpdateRekonRow={handleUpdateRekonRow}
-              />
+              <ErrorBoundary onGoHome={() => setTopLevelRoute('home')}>
+                <RekapExcelTab
+                  dashboardTab={dashboardTab}
+                  excelReportMonth={excelReportMonth}
+                  setExcelReportMonth={setExcelReportMonth}
+                  selectedReportType={selectedReportType}
+                  setSelectedReportType={setSelectedReportType}
+                  reportCategories={reportCategories}
+                  allReports={allReports}
+                  categories={categories}
+                  bankRows={bankRows}
+                  rekonOfficerName={rekonOfficerName}
+                  currentReport={currentReport}
+                  signatures={signatures}
+                  handleUpdateRekonRow={handleUpdateRekonRow}
+                />
+              </ErrorBoundary>
 
             </div>
           )}
