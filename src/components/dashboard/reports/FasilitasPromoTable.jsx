@@ -14,7 +14,7 @@ import {
   Maximize2
 } from 'lucide-react';
 import { formatRp, safeString } from '../../../utils/formatters';
-import { FASILITAS_COLUMNS, getPemakaianTempatData } from '../../../utils/reportDataHelper';
+import { FASILITAS_COLUMNS, getPemakaianTempatData, getPromoMediaData } from '../../../utils/reportDataHelper';
 
 export default function FasilitasPromoTable({
   reportType,
@@ -33,7 +33,7 @@ export default function FasilitasPromoTable({
     setActiveData(data);
   }, [data]);
 
-  const handleSyncApi = async () => {
+  const handleSyncApiFasilitas = async () => {
     setApiLoading(true);
     setApiStatusMsg('Menghubungi API Fasilitas Ragunan...');
     try {
@@ -50,8 +50,8 @@ export default function FasilitasPromoTable({
         const merged = [...existing.filter(d => d.source !== 'Fasilitas'), ...newFas];
         localStorage.setItem('tmr_apiData', JSON.stringify(merged));
 
-        // Hitung ulang data laporan dengan API data terbaru
-        const updated = getPemakaianTempatData(allReports, categories, monthStr || data?.monthStr || '', bankRows, merged);
+        // Hitung ulang data laporan fasilitas dengan API data terbaru
+        const updated = getPemakaianTempatData(allReports, categories, monthStr || activeData?.monthStr || '', bankRows, merged);
         setActiveData(updated);
         setApiStatusMsg(`Berhasil memuat ${newFas.length} transaksi Fasilitas dari API!`);
         setTimeout(() => setApiStatusMsg(''), 4000);
@@ -60,27 +60,65 @@ export default function FasilitasPromoTable({
         setTimeout(() => setApiStatusMsg(''), 3000);
       }
     } catch (e) {
-      console.error('Error sync api:', e);
+      console.error('Error sync api fasilitas:', e);
       setApiStatusMsg('Gagal terhubung ke API fasilitas.');
       setTimeout(() => setApiStatusMsg(''), 4000);
     }
     setApiLoading(false);
   };
 
+  const handleSyncApiPromo = async () => {
+    setApiLoading(true);
+    setApiStatusMsg('Menghubungi API Promo Ragunan...');
+    try {
+      const url = `https://sistem-informasi-ragunan.vercel.app/api/promo?date=semua`;
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json && json.data && json.data.length > 0) {
+        const newPromo = json.data.map(d => ({ ...d, source: 'Promo' }));
+        let existing = [];
+        try {
+          const saved = localStorage.getItem('tmr_apiData');
+          if (saved) existing = JSON.parse(saved);
+        } catch (e) {}
+        const merged = [...existing.filter(d => d.source !== 'Promo'), ...newPromo];
+        localStorage.setItem('tmr_apiData', JSON.stringify(merged));
+
+        // Hitung ulang data laporan promo dengan API data terbaru
+        const updated = getPromoMediaData(allReports, categories, monthStr || activeData?.monthStr || '', bankRows, merged);
+        setActiveData(updated);
+        setApiStatusMsg(`Berhasil memuat ${newPromo.length} transaksi Promo dari API!`);
+        setTimeout(() => setApiStatusMsg(''), 4000);
+      } else {
+        setApiStatusMsg('Tidak ada data dari API promo.');
+        setTimeout(() => setApiStatusMsg(''), 3000);
+      }
+    } catch (e) {
+      console.error('Error sync api promo:', e);
+      setApiStatusMsg('Gagal terhubung ke API promo.');
+      setTimeout(() => setApiStatusMsg(''), 4000);
+    }
+    setApiLoading(false);
+  };
+
   if (!activeData) return null;
-  const { rows = [], totalNominal = 0, facilityTotals = {}, columns = FASILITAS_COLUMNS, monthName = '', year = '' } = activeData;
 
-  const filteredRows = rows.filter(r => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    const instansi = (r.penyewa || r.perusahaan || '').toLowerCase();
-    const ket = (r.keterangan || '').toLowerCase();
-    const tglB = (r.tglBayarFormatted || r.tglBayar || '').toLowerCase();
-    const tglP = (r.tglPakaiFormatted || r.tglPakai || '').toLowerCase();
-    return instansi.includes(term) || ket.includes(term) || tglB.includes(term) || tglP.includes(term);
-  });
-
+  // =========================================================================
+  // A. Laporan Pemakaian Tempat & Fasilitas Fisik (Format Persis Gambar 1)
+  // =========================================================================
   if (reportType === 'pemakaian_tempat') {
+    const { rows = [], totalNominal = 0, facilityTotals = {}, columns = FASILITAS_COLUMNS, monthName = '', year = '' } = activeData;
+
+    const filteredFasRows = rows.filter(r => {
+      if (!searchTerm) return true;
+      const term = searchTerm.toLowerCase();
+      const instansi = (r.penyewa || r.perusahaan || '').toLowerCase();
+      const ket = (r.keterangan || '').toLowerCase();
+      const tglB = (r.tglBayarFormatted || r.tglBayar || '').toLowerCase();
+      const tglP = (r.tglPakaiFormatted || r.tglPakai || '').toLowerCase();
+      return instansi.includes(term) || ket.includes(term) || tglB.includes(term) || tglP.includes(term);
+    });
+
     return (
       <div className="w-full bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden animate-in fade-in">
         {/* Header Resmi Gambar 1 */}
@@ -147,9 +185,9 @@ export default function FasilitasPromoTable({
               </span>
             )}
             <button
-              onClick={handleSyncApi}
+              onClick={handleSyncApiFasilitas}
               disabled={apiLoading}
-              className="w-full sm:w-auto px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all"
+              className="w-full sm:w-auto px-3 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-300 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all"
               title="Tarik data transaksi sewa fasilitas terbaru dari API"
             >
               <RefreshCw size={14} className={apiLoading ? 'animate-spin' : ''} />
@@ -169,7 +207,7 @@ export default function FasilitasPromoTable({
           </div>
         </div>
 
-        {/* Tabel Matriks Persis Gambar 1 dengan Ekspansi Kolom Fasilitas Gambar 2 */}
+        {/* Tabel Matriks Persis Gambar 1 */}
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[11px] whitespace-nowrap">
             <thead>
@@ -195,7 +233,7 @@ export default function FasilitasPromoTable({
                   Keterangan (Lokasi)
                 </th>
               </tr>
-              {/* Header Baris 2: Sub-Kategori Fasilitas dari Gambar 2 */}
+              {/* Header Baris 2: Sub-Kategori Fasilitas Murni */}
               <tr className="bg-emerald-800 text-emerald-50 border-b border-emerald-950 text-[10px]">
                 {columns.map((col) => {
                   const isHighlighted = ['lahan', 'panggung', 'wireles', 'auditorium'].includes(col.key);
@@ -214,7 +252,7 @@ export default function FasilitasPromoTable({
               </tr>
             </thead>
             <tbody>
-              {filteredRows.length === 0 ? (
+              {filteredFasRows.length === 0 ? (
                 <tr>
                   <td colSpan={4 + columns.length + 2} className="px-4 py-12 text-center text-gray-500 italic">
                     {rows.length === 0
@@ -223,7 +261,7 @@ export default function FasilitasPromoTable({
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((r, i) => {
+                filteredFasRows.map((r, i) => {
                   const hasBorderTop = r.isFirstOfDate && i > 0;
                   return (
                     <tr
@@ -321,87 +359,262 @@ export default function FasilitasPromoTable({
     );
   }
 
-  // Rekap Promosi & Media Luar Ruang
-  return (
-    <div className="w-full">
-      {/* KPI Cards & Search */}
-      <div className="p-4 bg-gray-50 border-b border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
-        <div className="grid grid-cols-2 gap-3 w-full md:w-auto">
-          <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-50 text-green-600 flex items-center justify-center font-bold">
-              <DollarSign size={20} />
-            </div>
-            <div>
-              <div className="text-[11px] font-semibold text-gray-500 uppercase">Total Retribusi Promosi</div>
-              <div className="text-sm font-black text-gray-800">{formatRp(totalNominal)}</div>
-            </div>
-          </div>
-          <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-              <Megaphone size={20} />
-            </div>
-            <div>
-              <div className="text-[11px] font-semibold text-gray-500 uppercase">Total Titik Promosi</div>
-              <div className="text-sm font-black text-amber-700">{rows.length} Event / Brand</div>
-            </div>
-          </div>
-        </div>
+  // =========================================================================
+  // B. Rekap Promosi Produk & Media Banner (Format Persis Gambar 2:
+  // REKAPITULASI DATA EVENT PROMO SAMPLING / SELLING)
+  // 11 Kolom: No | Tanggal Transfer | Nama Perusahaan | Nama Produk | Tanggal Event |
+  // Jumlah hari | Jumlah titik | Banner/ Umbul2 | Spanduk | Harga (Rp) | Ket
+  // =========================================================================
+  const {
+    rows = [],
+    totalNominal = 0,
+    totalHari = 0,
+    totalTitik = 0,
+    totalBanner = 0,
+    totalSpanduk = 0,
+    monthName = '',
+    year = ''
+  } = activeData;
 
-        <div className="relative w-full md:w-72">
-          <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
-          <input
-            type="text"
-            placeholder="Cari perusahaan, brand, media..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-          />
+  const filteredPromoRows = rows.filter(r => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    const p = (r.perusahaan || '').toLowerCase();
+    const pr = (r.produk || '').toLowerCase();
+    const te = (r.tglEvent || '').toLowerCase();
+    const tf = (r.tglTransferFormatted || r.tglTransferDisplay || '').toLowerCase();
+    const ket = (r.keterangan || '').toLowerCase();
+    return p.includes(term) || pr.includes(term) || te.includes(term) || tf.includes(term) || ket.includes(term);
+  });
+
+  const displayTotalHari = filteredPromoRows.reduce((acc, r) => acc + (Number(r.jumlahHari) || 0), 0);
+  const displayTotalTitik = filteredPromoRows.reduce((acc, r) => acc + (Number(r.jumlahTitik) || 0), 0);
+  const displayTotalBanner = filteredPromoRows.reduce((acc, r) => acc + (Number(r.banner) || 0), 0);
+  const displayTotalSpanduk = filteredPromoRows.reduce((acc, r) => acc + (Number(r.spanduk) || 0), 0);
+  const displayTotalNominal = filteredPromoRows.reduce((acc, r) => acc + (Number(r.nominal) || 0), 0);
+
+  return (
+    <div className="w-full bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden animate-in fade-in">
+      {/* Header Resmi Gambar 2 */}
+      <div className="bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900 text-white p-5 text-center relative border-b-2 border-amber-400">
+        <div className="text-sm font-black tracking-wider uppercase text-amber-300">
+          REKAPITULASI DATA EVENT PROMO SAMPLING / SELLING
+        </div>
+        <div className="text-xs font-bold tracking-wide mt-1 text-slate-100">
+          UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN
+        </div>
+        <div className="text-[11px] font-medium tracking-wide text-slate-300/80">
+          DINAS PERTAMANAN DAN HUTAN KOTA PROVINSI DKI JAKARTA
+        </div>
+        <div className="text-xs font-black tracking-wider uppercase text-amber-200 mt-1">
+          BULAN {monthName ? monthName.toUpperCase() : ''} {year}
         </div>
       </div>
 
+      {/* KPI Cards & Toolbar */}
+      <div className="p-4 bg-slate-50/80 border-b border-gray-200 flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 w-full lg:w-auto">
+          <div className="bg-white p-2.5 rounded-xl border border-gray-200 shadow-xs flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+              <DollarSign size={18} />
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Total Retribusi Promo</div>
+              <div className="text-xs font-black text-gray-800 font-mono">{formatRp(displayTotalNominal)}</div>
+            </div>
+          </div>
+
+          <div className="bg-white p-2.5 rounded-xl border border-gray-200 shadow-xs flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+              <Megaphone size={18} />
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Total Event / Mitra</div>
+              <div className="text-xs font-black text-indigo-700">{filteredPromoRows.length} Agenda</div>
+            </div>
+          </div>
+
+          <div className="bg-white p-2.5 rounded-xl border border-gray-200 shadow-xs flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+              <Calendar size={18} />
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Total Hari Promo</div>
+              <div className="text-xs font-black text-blue-700">{displayTotalHari} Hari</div>
+            </div>
+          </div>
+
+          <div className="bg-white p-2.5 rounded-xl border border-gray-200 shadow-xs flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+              <Layers size={18} />
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Titik & Media</div>
+              <div className="text-xs font-black text-amber-700 font-mono">
+                {displayTotalTitik} Ttk | {displayTotalBanner + displayTotalSpanduk} Mda
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full lg:w-auto">
+          {apiStatusMsg && (
+            <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200 animate-pulse">
+              {apiStatusMsg}
+            </span>
+          )}
+          <button
+            onClick={handleSyncApiPromo}
+            disabled={apiLoading}
+            className="w-full sm:w-auto px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all"
+            title="Tarik data transaksi promo penjualan produk & banner dari API"
+          >
+            <RefreshCw size={14} className={apiLoading ? 'animate-spin' : ''} />
+            {apiLoading ? 'Menarik API...' : 'Tarik Data API Promo'}
+          </button>
+
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-2.5 text-gray-400" size={14} />
+            <input
+              type="text"
+              placeholder="Cari perusahaan, produk, event..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Tabel Matriks Persis Gambar 2 (11 Kolom) */}
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-[12px] whitespace-nowrap">
+        <table className="w-full border-collapse text-[11px] whitespace-nowrap">
           <thead>
-            <tr className="bg-gray-100 text-gray-700">
-              <th className="px-3 py-2 border border-gray-300 text-center font-bold">No</th>
-              <th className="px-3 py-2 border border-gray-300 text-center font-bold">Tgl Transfer / STSU</th>
-              <th className="px-4 py-2 border border-gray-300 text-left font-bold">Nama Perusahaan / Mitra</th>
-              <th className="px-4 py-2 border border-gray-300 text-left font-bold">Nama Produk / Brand</th>
-              <th className="px-3 py-2 border border-gray-300 text-center font-bold">Tgl Event</th>
-              <th className="px-3 py-2 border border-gray-300 text-center font-bold">Bentuk Media</th>
-              <th className="px-4 py-2 border border-gray-300 text-right font-black bg-amber-100 text-amber-900">Harga / Retribusi (Rp)</th>
-              <th className="px-4 py-2 border border-gray-300 text-left font-medium text-gray-600">Keterangan</th>
+            <tr className="bg-slate-900 text-white border-b border-slate-950">
+              <th className="px-2.5 py-3 border border-slate-800 text-center font-bold w-10">No</th>
+              <th className="px-3.5 py-3 border border-slate-800 text-center font-bold min-w-[100px]">
+                Tanggal Transfer
+              </th>
+              <th className="px-4 py-3 border border-slate-800 text-left font-bold min-w-[180px]">
+                Nama Perusahaan
+              </th>
+              <th className="px-4 py-3 border border-slate-800 text-left font-bold min-w-[140px]">
+                Nama Produk
+              </th>
+              <th className="px-4 py-3 border border-slate-800 text-left font-bold min-w-[200px]">
+                Tanggal Event
+              </th>
+              <th className="px-2.5 py-3 border border-slate-800 text-center font-bold min-w-[65px]">
+                Jumlah<br/>hari
+              </th>
+              <th className="px-2.5 py-3 border border-slate-800 text-center font-bold min-w-[65px]">
+                Jumlah<br/>titik
+              </th>
+              <th className="px-2.5 py-3 border border-slate-800 text-center font-bold min-w-[75px]">
+                Banner/<br/>Umbul2
+              </th>
+              <th className="px-2.5 py-3 border border-slate-800 text-center font-bold min-w-[65px]">
+                Spanduk
+              </th>
+              <th className="px-3.5 py-3 border border-slate-800 text-right font-black bg-amber-500 text-slate-950 min-w-[115px]">
+                Harga (Rp)
+              </th>
+              <th className="px-3.5 py-3 border border-slate-800 text-left font-bold min-w-[110px]">
+                Ket
+              </th>
             </tr>
           </thead>
           <tbody>
-            {filteredRows.length === 0 ? (
+            {filteredPromoRows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-500 italic">
-                  {rows.length === 0 ? 'Belum ada data promosi & banner pada bulan ini.' : 'Tidak ada data yang cocok dengan pencarian.'}
+                <td colSpan={11} className="px-4 py-12 text-center text-gray-500 italic">
+                  {rows.length === 0
+                    ? 'Belum ada transaksi promo & banner pada bulan ini. Klik tombol "Tarik Data API Promo" untuk menyinkronkan data.'
+                    : 'Tidak ada data promo yang cocok dengan pencarian.'}
                 </td>
               </tr>
             ) : (
-              filteredRows.map((r, i) => (
-                <tr key={i} className="hover:bg-amber-50/40 transition-colors">
-                  <td className="px-3 py-2 border border-gray-300 text-center font-semibold">{r.no}</td>
-                  <td className="px-3 py-2 border border-gray-300 text-center font-mono">{r.tglTransfer}</td>
-                  <td className="px-4 py-2 border border-gray-300 font-semibold text-gray-800">{safeString(r.perusahaan)}</td>
-                  <td className="px-4 py-2 border border-gray-300 text-gray-700">{safeString(r.produk)}</td>
-                  <td className="px-3 py-2 border border-gray-300 text-center font-mono">{r.tglEvent}</td>
-                  <td className="px-3 py-2 border border-gray-300 text-center font-medium text-amber-800 bg-amber-50/40">{safeString(r.media)}</td>
-                  <td className="px-4 py-2 border border-gray-300 text-right font-bold text-gray-900 font-mono">
-                    {formatRp(r.nominal)}
-                  </td>
-                  <td className="px-4 py-2 border border-gray-300 text-gray-600 italic text-xs">{safeString(r.keterangan)}</td>
-                </tr>
-              ))
+              filteredPromoRows.map((r, i) => {
+                const hasBorderTop = r.isFirstOfDate && i > 0;
+                return (
+                  <tr
+                    key={r.id || i}
+                    className={`hover:bg-amber-50/50 transition-colors ${
+                      hasBorderTop ? 'border-t-2 border-slate-400 bg-slate-50/40' : 'border-t border-gray-200'
+                    }`}
+                  >
+                    <td className="px-2.5 py-2.5 border border-gray-300 text-center font-semibold text-gray-600 bg-gray-50/50">
+                      {r.no}
+                    </td>
+                    {/* Tanggal Transfer: ditampilkan hanya di baris pertama per tanggal (persis Gambar 2) */}
+                    <td className="px-3.5 py-2.5 border border-gray-300 text-center font-mono font-bold text-gray-800">
+                      {r.tglTransferDisplay ? (
+                        <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-bold border border-slate-300 text-[10px]">
+                          {r.tglTransferDisplay}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 border border-gray-300 font-bold text-gray-900">
+                      {safeString(r.perusahaan)}
+                    </td>
+                    <td className="px-4 py-2.5 border border-gray-300 font-medium text-gray-800">
+                      {safeString(r.produk)}
+                    </td>
+                    <td className="px-4 py-2.5 border border-gray-300 font-medium text-gray-700 whitespace-normal">
+                      {safeString(r.tglEvent)}
+                    </td>
+                    <td className="px-2.5 py-2.5 border border-gray-300 text-center font-mono font-bold text-blue-900 bg-blue-50/30">
+                      {r.jumlahHari ? r.jumlahHari : ''}
+                    </td>
+                    <td className="px-2.5 py-2.5 border border-gray-300 text-center font-mono font-bold text-teal-900 bg-teal-50/30">
+                      {r.jumlahTitik ? r.jumlahTitik : ''}
+                    </td>
+                    <td className="px-2.5 py-2.5 border border-gray-300 text-center font-mono font-bold text-amber-900 bg-amber-50/30">
+                      {r.banner ? r.banner : ''}
+                    </td>
+                    <td className="px-2.5 py-2.5 border border-gray-300 text-center font-mono font-bold text-purple-900 bg-purple-50/30">
+                      {r.spanduk ? r.spanduk : ''}
+                    </td>
+                    <td className="px-3.5 py-2.5 border border-gray-300 text-right font-black font-mono text-slate-950 bg-amber-50/70">
+                      {formatRp(r.nominal)}
+                    </td>
+                    <td className="px-3.5 py-2.5 border border-gray-300 text-left font-medium text-gray-700">
+                      {r.keterangan ? (
+                        <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded text-[10px] font-semibold border border-slate-200">
+                          {safeString(r.keterangan)}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 italic text-[10px]">-</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
             )}
-            <tr className="bg-emerald-100 font-black text-gray-900 border-t-2 border-emerald-400">
-              <td colSpan={6} className="px-4 py-3 border border-gray-300 text-right font-bold">TOTAL PENDAPATAN PROMOSI & BANNER</td>
-              <td className="px-4 py-3 border border-gray-300 text-right text-emerald-950 font-mono font-black text-xs bg-emerald-300/60">
-                {formatRp(totalNominal)}
+
+            {/* Baris Total Laporan Persis Gambar 2 */}
+            <tr className="bg-slate-900 text-white font-black border-t-2 border-slate-950">
+              <td colSpan={5} className="px-4 py-3 border border-slate-950 text-right font-black tracking-wide text-xs text-amber-300">
+                TOTAL KESELURUHAN PENERIMAAN PROMO BULAN {monthName ? monthName.toUpperCase() : ''}
               </td>
-              <td className="px-4 py-3 border border-gray-300"></td>
+              <td className="px-2.5 py-3 border border-slate-950 text-center font-mono font-black text-xs text-amber-300 bg-slate-950/70">
+                {displayTotalHari || ''}
+              </td>
+              <td className="px-2.5 py-3 border border-slate-950 text-center font-mono font-black text-xs text-amber-300 bg-slate-950/70">
+                {displayTotalTitik || ''}
+              </td>
+              <td className="px-2.5 py-3 border border-slate-950 text-center font-mono font-black text-xs text-amber-300 bg-slate-950/70">
+                {displayTotalBanner || ''}
+              </td>
+              <td className="px-2.5 py-3 border border-slate-950 text-center font-mono font-black text-xs text-amber-300 bg-slate-950/70">
+                {displayTotalSpanduk || ''}
+              </td>
+              <td className="px-3.5 py-3 border border-slate-950 text-right font-mono font-black text-xs text-slate-950 bg-amber-400">
+                {formatRp(displayTotalNominal)}
+              </td>
+              <td className="px-3.5 py-3 border border-slate-950 bg-slate-950"></td>
             </tr>
           </tbody>
         </table>
@@ -409,3 +622,4 @@ export default function FasilitasPromoTable({
     </div>
   );
 }
+

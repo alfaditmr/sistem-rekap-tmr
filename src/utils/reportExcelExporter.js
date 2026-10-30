@@ -478,55 +478,79 @@ export const exportPemakaianTempatExcel = (data, signatures) => {
 };
 
 // =========================================================================
-// 8. Ekspor Rekap Promosi & Media (REKAP PROMO 2026.xlsx)
+// 8. Ekspor Rekap Promosi & Media (Format Persis Gambar 2:
+// REKAPITULASI DATA EVENT PROMO SAMPLING / SELLING)
+// 11 Kolom: No | Tanggal Transfer | Nama Perusahaan | Nama Produk | Tanggal Event |
+// Jumlah hari | Jumlah titik | Banner/ Umbul2 | Spanduk | Harga (Rp) | Ket
 // =========================================================================
 export const exportPromoMediaExcel = (data, signatures) => {
-  const { year, monthName, rows, totalNominal } = data;
+  const {
+    year,
+    monthName,
+    rows = [],
+    totalHari = 0,
+    totalTitik = 0,
+    totalBanner = 0,
+    totalSpanduk = 0,
+    totalNominal = 0
+  } = data;
+
   let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
   <head>${getHeaderStyles()}</head>
   <body>
     <table>
-      <tr><th colspan="8" class="title-main">UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN</th></tr>
-      <tr><th colspan="8" class="title-sub">DINAS PERTAMANAN DAN HUTAN KOTA PROVINSI DKI JAKARTA</th></tr>
-      <tr><th colspan="8" class="title-sub">REKAPITULASI PROMOSI PENJUALAN PRODUK & MEDIA LUAR RUANG</th></tr>
-      <tr><th colspan="8" class="title-sub">BULAN ${monthName.toUpperCase()} ${year}</th></tr>
-      <tr><th colspan="8" style="border:none; height:10px;"></th></tr>
+      <tr><th colspan="11" class="title-main" style="font-size:13px; font-weight:bold; text-align:center;">REKAPITULASI DATA EVENT PROMO SAMPLING / SELLING</th></tr>
+      <tr><th colspan="11" class="title-sub" style="font-size:12px; font-weight:bold; text-align:center;">UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN</th></tr>
+      <tr><th colspan="11" class="title-sub" style="font-size:11px; font-weight:bold; text-align:center;">DINAS PERTAMANAN DAN HUTAN KOTA PROVINSI DKI JAKARTA</th></tr>
+      <tr><th colspan="11" class="title-sub" style="font-size:11px; font-weight:bold; text-align:center;">BULAN ${monthName.toUpperCase()} ${year}</th></tr>
+      <tr><th colspan="11" style="border:none; height:12px;"></th></tr>
       <tr>
-        <th class="th-green">No</th>
-        <th class="th-green">Tanggal Transfer / STSU</th>
-        <th class="th-green">Nama Perusahaan / Mitra</th>
-        <th class="th-green">Produk / Brand</th>
-        <th class="th-green">Tanggal Event / Periode</th>
-        <th class="th-green">Bentuk Promosi / Media</th>
-        <th class="th-amber">Harga / Pendapatan (Rp)</th>
-        <th class="th-green">Keterangan</th>
+        <th class="th-green" style="background:#1b4d3e; color:#fff; width:35px;">No</th>
+        <th class="th-green" style="background:#1b4d3e; color:#fff; width:95px;">Tanggal<br>Transfer</th>
+        <th class="th-green" style="background:#1b4d3e; color:#fff; width:180px;">Nama Perusahaan</th>
+        <th class="th-green" style="background:#1b4d3e; color:#fff; width:140px;">Nama Produk</th>
+        <th class="th-green" style="background:#1b4d3e; color:#fff; width:200px;">Tanggal Event</th>
+        <th class="th-green" style="background:#1b4d3e; color:#fff; width:65px;">Jumlah<br>hari</th>
+        <th class="th-green" style="background:#1b4d3e; color:#fff; width:65px;">Jumlah<br>titik</th>
+        <th class="th-green" style="background:#1b4d3e; color:#fff; width:75px;">Banner/<br>Umbul2</th>
+        <th class="th-green" style="background:#1b4d3e; color:#fff; width:65px;">Spanduk</th>
+        <th class="th-amber" style="background:#f59e0b; color:#111; width:120px;">Harga (Rp)</th>
+        <th class="th-green" style="background:#1b4d3e; color:#fff; width:110px;">Ket</th>
       </tr>`;
 
   if (rows.length === 0) {
-    html += `<tr><td colspan="8" class="center" style="padding:15px; color:#666;">Belum ada data promosi / banner pada bulan ini.</td></tr>`;
+    html += `<tr><td colspan="11" class="center" style="padding:15px; color:#666;">Belum ada data event promo sampling / selling pada bulan ini.</td></tr>`;
   } else {
     rows.forEach(r => {
       html += `<tr>
-        <td class="center">${r.no}</td>
-        <td class="center">${r.tglTransfer}</td>
-        <td>${safeString(r.perusahaan)}</td>
+        <td class="center font-bold">${r.no}</td>
+        <td class="center font-mono">${r.tglTransferDisplay || ''}</td>
+        <td style="font-weight:bold;">${safeString(r.perusahaan)}</td>
         <td>${safeString(r.produk)}</td>
-        <td class="center">${r.tglEvent}</td>
-        <td>${safeString(r.media)}</td>
+        <td>${safeString(r.tglEvent)}</td>
+        <td class="center font-bold">${r.jumlahHari ? r.jumlahHari : ''}</td>
+        <td class="center font-bold">${r.jumlahTitik ? r.jumlahTitik : ''}</td>
+        <td class="center font-bold">${r.banner ? r.banner : ''}</td>
+        <td class="center font-bold">${r.spanduk ? r.spanduk : ''}</td>
         <td class="num font-bold">${formatRp(r.nominal)}</td>
         <td>${safeString(r.keterangan)}</td>
       </tr>`;
     });
   }
 
-  html += `<tr class="total-row">
-    <td colspan="6" class="center font-bold">TOTAL PENDAPATAN PROMOSI & BANNER</td>
-    <td class="num font-bold">${formatRp(totalNominal)}</td>
+  html += `<tr class="total-row" style="background-color:#d1fae5; font-weight:bold;">
+    <td colspan="5" class="center font-bold" style="text-align:right; font-weight:bold; padding-right:12px;">TOTAL KESELURUHAN PENERIMAAN PROMO BULAN ${monthName.toUpperCase()}</td>
+    <td class="center font-bold">${totalHari || ''}</td>
+    <td class="center font-bold">${totalTitik || ''}</td>
+    <td class="center font-bold">${totalBanner || ''}</td>
+    <td class="center font-bold">${totalSpanduk || ''}</td>
+    <td class="num font-bold" style="background-color:#fcd34d;">${formatRp(totalNominal)}</td>
     <td></td>
   </tr></table>`;
 
   html += renderSignatures(signatures);
   html += `</body></html>`;
 
-  triggerDownload(html, `REKAP PROMO ${year} - ${monthName.toUpperCase()}.xls`);
+  triggerDownload(html, `REKAP PROMO SAMPLING SELLING DAN BANNER ${year} - ${monthName.toUpperCase()}.xls`);
 };
+

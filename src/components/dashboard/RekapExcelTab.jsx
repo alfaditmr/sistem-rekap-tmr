@@ -759,7 +759,7 @@ export default function RekapExcelTab({
         exportPemakaianTempatExcel(getPemakaianTempatData(allReports, categories, excelReportMonth, bankRows), signatures);
         break;
       case 'rekap_promo':
-        exportPromoMediaExcel(getPromoMediaData(allReports, categories, excelReportMonth), signatures);
+        exportPromoMediaExcel(getPromoMediaData(allReports, categories, excelReportMonth, bankRows), signatures);
         break;
       case 'rekon_ecar':
         handleDownloadRekonExcel('E-Car');
@@ -1112,8 +1112,17 @@ export default function RekapExcelTab({
               );
             }
             if (selectedReportType === 'rekap_promo') {
-              const data = getPromoMediaData(allReports, categories, excelReportMonth);
-              return <FasilitasPromoTable reportType="rekap_promo" data={data} />;
+              const data = getPromoMediaData(allReports, categories, excelReportMonth, bankRows);
+              return (
+                <FasilitasPromoTable
+                  reportType="rekap_promo"
+                  data={data}
+                  monthStr={excelReportMonth}
+                  allReports={allReports}
+                  categories={categories}
+                  bankRows={bankRows}
+                />
+              );
             }
 
             // F. Laporan Rekonsiliasi (E-Car, Foto Satwa, & Kategori Lain)

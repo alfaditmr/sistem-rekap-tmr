@@ -576,10 +576,10 @@ export const getStsuKasDaerahData = (allReports, categories, monthStr) => {
 
 // =========================================================================
 // 7. Data Pemakaian Tempat & Fasilitas (Format REKAP PEMAKAIAN TEMPAT 2026.xlsx)
-// Header Fasilitas disesuaikan dengan 13 sub-kategori resmi bertanda merah + Lain-lain:
-// Film Cerita, Film Iklan, Program Televisi, Pre-Wedding, Lahan M2, Spanduk Promosi,
-// Banner Promosi, Panggung, Gedung Informasi, Gedung Auditorium, Sound System,
-// Wireles, Pemutaran Film Satwa, Lain-Lain.
+// Header Fasilitas khusus fasilitas fisik & tempat (Sesuai Gambar 1):
+// Film Cerita, Film Iklan, Program Televisi, Pre-Wedding, Lahan M2, Panggung,
+// Gedung Informasi, Gedung Auditorium, Sound System, Wireles, Pemutaran Film Satwa, Lain-Lain.
+// (Promosi Produk, Spanduk & Banner dipisahkan khusus ke Tab Promosi Produk & Media Banner)
 // =========================================================================
 
 export const FASILITAS_COLUMNS = [
@@ -588,8 +588,6 @@ export const FASILITAS_COLUMNS = [
   { key: 'program_tv', label: 'Program Televisi', shortLabel: 'Program TV' },
   { key: 'prewedding', label: 'Pre-Wedding', shortLabel: 'Pre-Wed' },
   { key: 'lahan', label: 'Lahan M2', shortLabel: 'Lahan M2', isLahan: true },
-  { key: 'spanduk', label: 'Spanduk Promosi', shortLabel: 'Spanduk' },
-  { key: 'banner', label: 'Banner Promosi', shortLabel: 'Banner' },
   { key: 'panggung', label: 'Panggung', shortLabel: 'Panggung' },
   { key: 'gedung_info', label: 'Gedung Informasi', shortLabel: 'Gedung Info' },
   { key: 'auditorium', label: 'Gedung Auditorium', shortLabel: 'Auditorium' },
@@ -1052,58 +1050,330 @@ export const getPemakaianTempatData = (
   };
 };
 
-/**
- * 8. Data Rekap Promosi & Media (format REKAP PROMO 2026.xlsx)
- */
-export const getPromoMediaData = (allReports, categories, monthStr) => {
+// =========================================================================
+// 8. Data Rekap Promosi & Media Banner (Format REKAPITULASI EVENT PROMO SAMPLING / SELLING)
+// Format persis Image 2:
+// No | Tanggal Transfer | Nama Perusahaan | Nama Produk | Tanggal Event | Jumlah hari | Jumlah titik | Banner/ Umbul2 | Spanduk | Harga (Rp) | Ket
+// =========================================================================
+export const getPromoMediaData = (
+  allReports = {},
+  categories = [],
+  monthStr = '',
+  bankRows = [],
+  optionalApiData = null
+) => {
   const { year, month, monthName } = getMonthDaysMetadata(monthStr);
-  const rows = [];
-  let totalNominal = 0;
-  let no = 1;
 
-  Object.keys(allReports).sort().forEach(dateStr => {
-    if (dateStr.startsWith(monthStr)) {
-      const dayAll = allReports[dateStr];
-      Object.keys(dayAll).forEach(tKey => {
-        const typeData = dayAll[tKey];
-        if (typeData?.formData) {
-          Object.keys(typeData.formData).forEach(fKey => {
-            const val = Number(typeData.formData[fKey]) || 0;
-            if (val > 0) {
-              let itemName = '';
-              let catName = '';
-              const parts = fKey.split('_');
-              if (parts.length >= 3 && parts[0] === 'cat') {
-                const catId = `${parts[0]}_${parts[1]}`;
-                const itemId = parts[2] === 'item' && parts[3] ? `${parts[2]}_${parts[3]}` : parts[2];
-                const cat = categories.find(c => c.id === catId);
-                const it = cat?.items?.find(i => i.id === itemId);
-                catName = cat?.name || '';
-                itemName = it?.name || '';
-              }
+  // Ambil data API Promo dari parameter atau localStorage
+  let apiList = optionalApiData;
+  if (!apiList && typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const saved = localStorage.getItem('tmr_apiData');
+      if (saved) apiList = JSON.parse(saved);
+    } catch (e) {}
+  }
+  if (!Array.isArray(apiList)) apiList = [];
 
-              const target = `${catName} ${itemName} ${fKey}`.toLowerCase();
-              if (/promo|promosi|banner|spanduk|umbul|booth|sponsor/i.test(target)) {
-                const itemNote = parts[5] || '';
-                rows.push({
-                  no: no++,
-                  tglTransfer: dateStr,
-                  perusahaan: itemNote || 'Mitra Promosi',
-                  produk: itemName || 'Promosi Produk & Media',
-                  tglEvent: dateStr,
-                  durasi: '1 Hari',
-                  media: /banner/i.test(target) ? 'Banner Promosi' : /spanduk/i.test(target) ? 'Spanduk' : 'Booth Promosi Produk',
-                  nominal: val,
-                  keterangan: catName || 'Promosi Penjualan'
-                });
-                totalNominal += val;
-              }
-            }
-          });
-        }
-      });
+  // Filter hanya data promo & banner
+  const apiPromo = apiList.filter(
+    (a) =>
+      a.source === 'Promo' ||
+      a.tipe_transaksi === 'Promo & Event' ||
+      a.kategori === 'Promo Penjualan Produk' ||
+      /promo|promosi|banner|spanduk|sampling|selling|sponsor|booth/i.test(a.kategori || '') ||
+      /promo|promosi|banner|spanduk|sampling|selling|sponsor|booth/i.test(a.tipe_transaksi || '') ||
+      (a.namaPerusahaan && a.namaProduk)
+  );
+
+  const rawRows = [];
+  const processedApiIds = new Set();
+  const processedBankRowIds = new Set();
+
+  const findApiMatch = (apiRefId, amount, dateStr, tenantName) => {
+    if (apiRefId) {
+      const found = apiPromo.find(
+        (a) =>
+          String(a.id) === String(apiRefId) ||
+          String(a.docId) === String(apiRefId) ||
+          String(a.id_sewa) === String(apiRefId)
+      );
+      if (found) return found;
     }
+    if (amount && dateStr) {
+      const ymd = parseToYmd(dateStr);
+      const found = apiPromo.find((a) => {
+        const aTgl = parseToYmd(a.tanggalTransfer || a.tanggal_transfer || a.createdAt);
+        const aNom = Number(a.jumlahTransferNumeric || a.jumlahTransfer || a.totalBiaya || 0);
+        return aTgl === ymd && Math.abs(aNom - amount) < 1;
+      });
+      if (found) return found;
+    }
+    if (tenantName && tenantName.length > 3) {
+      const tLow = tenantName.toLowerCase();
+      const found = apiPromo.find(
+        (a) =>
+          (a.namaPerusahaan || a.nama_penyewa || '').toLowerCase().includes(tLow) ||
+          tLow.includes((a.namaPerusahaan || a.nama_penyewa || '').toLowerCase())
+      );
+      if (found) return found;
+    }
+    return null;
+  };
+
+  // Helper untuk parsing jumlah hari, titik, banner, spanduk dari teks/item jika tidak ada di API
+  const parsePromoDetails = (targetStr, val) => {
+    let jHari = 1;
+    let jTitik = 1;
+    let jBanner = 0;
+    let jSpanduk = 0;
+
+    const isBannerOnly = /banner|umbul/i.test(targetStr) && !/sampling|selling|booth/i.test(targetStr);
+    const isSpandukOnly = /spanduk/i.test(targetStr) && !/sampling|selling|booth/i.test(targetStr);
+
+    if (isBannerOnly) {
+      jTitik = 0;
+      jBanner = val >= 100000 ? Math.round(val / 100000) : 1;
+    } else if (isSpandukOnly) {
+      jTitik = 0;
+      jSpanduk = val >= 100000 ? Math.round(val / 100000) : 1;
+    } else {
+      // Standar tarif booth promo sampling/selling adalah Rp 1.000.000 / hari per titik
+      if (val >= 1000000) {
+        jHari = Math.max(1, Math.round(val / 1000000));
+      }
+      if (/banner/i.test(targetStr)) {
+        const matchB = targetStr.match(/(\d+)\s*banner/i);
+        if (matchB) jBanner = parseInt(matchB[1], 10);
+      }
+      if (/spanduk/i.test(targetStr)) {
+        const matchS = targetStr.match(/(\d+)\s*spanduk/i);
+        if (matchS) jSpanduk = parseInt(matchS[1], 10);
+      }
+      const matchT = targetStr.match(/(\d+)\s*titik/i);
+      if (matchT) jTitik = parseInt(matchT[1], 10);
+      const matchH = targetStr.match(/(\d+)\s*hari/i);
+      if (matchH) jHari = parseInt(matchH[1], 10);
+    }
+
+    return { jHari, jTitik, jBanner, jSpanduk };
+  };
+
+  // 1. Ekstrak dari allReports (Input STSU Harian)
+  Object.keys(allReports || {})
+    .sort()
+    .forEach((dateStr) => {
+      if (dateStr.startsWith(monthStr)) {
+        const dayAll = allReports[dateStr] || {};
+        Object.keys(dayAll).forEach((tKey) => {
+          const typeData = dayAll[tKey];
+          if (typeData?.formData) {
+            const activeItems = Array.isArray(typeData.activeItems) ? typeData.activeItems : [];
+
+            Object.keys(typeData.formData).forEach((fKey) => {
+              const val = Number(typeData.formData[fKey]) || 0;
+              if (val > 0) {
+                let itemName = '';
+                let catName = '';
+                const parts = fKey.split('_');
+                let activeItem = null;
+                if (parts.length >= 3 && parts[0] === 'cat') {
+                  const catId = `${parts[0]}_${parts[1]}`;
+                  const itemId = parts[2] === 'item' && parts[3] ? `${parts[2]}_${parts[3]}` : parts[2];
+                  const cat = categories.find((c) => c.id === catId);
+                  const it = cat?.items?.find((i) => i.id === itemId);
+                  catName = cat?.name || '';
+                  itemName = it?.name || '';
+                  activeItem = activeItems.find(
+                    (ai) => ai.catId === catId && (ai.itemId === itemId || ai.id === itemId)
+                  );
+                }
+
+                const target = `${catName} ${itemName} ${fKey}`.toLowerCase();
+                if (/promo|promosi|banner|spanduk|umbul|booth|sponsor|sampling|selling/i.test(target)) {
+                  if (activeItem && Array.isArray(activeItem.bankAllocations) && activeItem.bankAllocations.length > 0) {
+                    activeItem.bankAllocations.forEach((ba, bIdx) => {
+                      const baAmt = Number(ba.amount || 0);
+                      if (baAmt <= 0) return;
+                      if (ba.bankRowId) processedBankRowIds.add(ba.bankRowId);
+
+                      const apiMatch = findApiMatch(ba.apiRefId, baAmt, ba.bankDate || dateStr, ba.tenant);
+                      if (apiMatch) processedApiIds.add(String(apiMatch.id || apiMatch.docId || apiMatch.id_sewa));
+
+                      const perusahaan = (apiMatch?.namaPerusahaan || apiMatch?.nama_penyewa || ba.tenant || activeItem.itemNote || 'Mitra Promosi').trim();
+                      const produk = (apiMatch?.namaProduk || ba.desc || itemName || 'Promosi Produk').trim();
+                      const rawTglTf = parseToYmd(apiMatch?.tanggalTransfer || apiMatch?.tanggal_transfer || ba.bankDate || dateStr);
+                      const tglEvent = apiMatch?.tanggalEvent || apiMatch?.tanggalPromo || ba.tglEvent || formatDmy(rawTglTf);
+
+                      const parsed = parsePromoDetails(`${target} ${ba.desc || ''} ${ba.location || ''}`, baAmt);
+
+                      rawRows.push({
+                        id: `${dateStr}_${fKey}_ba_${bIdx}`,
+                        apiRefId: ba.apiRefId || apiMatch?.id || '',
+                        rawTglTransfer: rawTglTf,
+                        perusahaan,
+                        produk,
+                        tglEvent,
+                        jumlahHari: apiMatch?.jumlahHari ? Number(apiMatch.jumlahHari) : parsed.jHari,
+                        jumlahTitik: apiMatch?.jumlahTitik !== undefined ? Number(apiMatch.jumlahTitik) : parsed.jTitik,
+                        banner: apiMatch?.jumlahBanner !== undefined ? Number(apiMatch.jumlahBanner) : parsed.jBanner,
+                        spanduk: apiMatch?.jumlahSpanduk !== undefined ? Number(apiMatch.jumlahSpanduk) : parsed.jSpanduk,
+                        nominal: baAmt,
+                        keterangan: apiMatch?.keterangan || ba.location || ''
+                      });
+                    });
+                  } else {
+                    const itemNote = activeItem?.itemNote || parts[5] || '';
+                    const apiMatch = findApiMatch(activeItem?.apiRefId, val, dateStr, itemNote);
+                    if (apiMatch) processedApiIds.add(String(apiMatch.id || apiMatch.docId || apiMatch.id_sewa));
+                    if (activeItem?.bankMatchRowId) processedBankRowIds.add(activeItem.bankMatchRowId);
+
+                    const perusahaan = (apiMatch?.namaPerusahaan || apiMatch?.nama_penyewa || activeItem?.tenant || itemNote || 'Mitra Promosi').trim();
+                    const produk = (apiMatch?.namaProduk || itemName || 'Promosi Produk').trim();
+                    const rawTglTf = parseToYmd(apiMatch?.tanggalTransfer || apiMatch?.tanggal_transfer || dateStr);
+                    const tglEvent = apiMatch?.tanggalEvent || apiMatch?.tanggalPromo || formatDmy(rawTglTf);
+
+                    const parsed = parsePromoDetails(`${target} ${itemNote}`, val);
+
+                    rawRows.push({
+                      id: `${dateStr}_${fKey}`,
+                      apiRefId: activeItem?.apiRefId || apiMatch?.id || '',
+                      rawTglTransfer: rawTglTf,
+                      perusahaan,
+                      produk,
+                      tglEvent,
+                      jumlahHari: apiMatch?.jumlahHari ? Number(apiMatch.jumlahHari) : parsed.jHari,
+                      jumlahTitik: apiMatch?.jumlahTitik !== undefined ? Number(apiMatch.jumlahTitik) : parsed.jTitik,
+                      banner: apiMatch?.jumlahBanner !== undefined ? Number(apiMatch.jumlahBanner) : parsed.jBanner,
+                      spanduk: apiMatch?.jumlahSpanduk !== undefined ? Number(apiMatch.jumlahSpanduk) : parsed.jSpanduk,
+                      nominal: val,
+                      keterangan: apiMatch?.keterangan || itemNote || ''
+                    });
+                  }
+                }
+              }
+            });
+          }
+        });
+      }
+    });
+
+  // 2. Gabungkan dengan Bank Rows
+  if (Array.isArray(bankRows)) {
+    bankRows.forEach((row) => {
+      if (processedBankRowIds.has(row.id)) return;
+      const rowYmd = parseToYmd(row.date);
+      if (!rowYmd.startsWith(monthStr)) return;
+
+      const matchedTo = (row.matchedTo || '').toLowerCase();
+      if (/promo|promosi|banner|spanduk|sampling|selling/i.test(matchedTo)) {
+        const amt = Number(row.amount || 0);
+        if (amt <= 0) return;
+
+        const apiMatch = findApiMatch(row.apiRefId, amt, rowYmd, row.tenant);
+        if (apiMatch) processedApiIds.add(String(apiMatch.id || apiMatch.docId || apiMatch.id_sewa));
+
+        const perusahaan = (apiMatch?.namaPerusahaan || apiMatch?.nama_penyewa || row.tenant || 'Mitra Promosi').trim();
+        const produk = (apiMatch?.namaProduk || row.description || row.matchedTo || 'Promosi Produk').trim();
+        const rawTglTf = parseToYmd(apiMatch?.tanggalTransfer || apiMatch?.tanggal_transfer || rowYmd);
+        const tglEvent = apiMatch?.tanggalEvent || apiMatch?.tanggalPromo || row.tglEvent || formatDmy(rawTglTf);
+
+        const parsed = parsePromoDetails(`${matchedTo} ${row.description || ''}`, amt);
+
+        rawRows.push({
+          id: `bank_${row.id}`,
+          apiRefId: row.apiRefId || apiMatch?.id || '',
+          rawTglTransfer: rawTglTf,
+          perusahaan,
+          produk,
+          tglEvent,
+          jumlahHari: apiMatch?.jumlahHari ? Number(apiMatch.jumlahHari) : parsed.jHari,
+          jumlahTitik: apiMatch?.jumlahTitik !== undefined ? Number(apiMatch.jumlahTitik) : parsed.jTitik,
+          banner: apiMatch?.jumlahBanner !== undefined ? Number(apiMatch.jumlahBanner) : parsed.jBanner,
+          spanduk: apiMatch?.jumlahSpanduk !== undefined ? Number(apiMatch.jumlahSpanduk) : parsed.jSpanduk,
+          nominal: amt,
+          keterangan: apiMatch?.keterangan || row.location || ''
+        });
+      }
+    });
+  }
+
+  // 3. Masukkan transaksi dari API Tarik Promo untuk bulan ini yang belum masuk
+  apiPromo.forEach((api) => {
+    const apiIdStr = String(api.id || api.docId || api.id_sewa || '');
+    if (processedApiIds.has(apiIdStr)) return;
+
+    const tglTf = parseToYmd(api.tanggalTransfer || api.tanggal_transfer || api.createdAt);
+    if (!tglTf || !tglTf.startsWith(monthStr)) return;
+
+    const amt = Number(api.jumlahTransferNumeric || api.jumlahTransfer || api.totalBiaya || 0);
+    if (amt <= 0) return;
+
+    const perusahaan = (api.namaPerusahaan || api.nama_penyewa || '-').trim();
+    const produk = (api.namaProduk || 'Promosi Produk').trim();
+    const rawTglTf = tglTf;
+    const tglEvent = api.tanggalEvent || api.tanggalPromo || formatDmy(rawTglTf);
+
+    rawRows.push({
+      id: `api_promo_${apiIdStr}`,
+      apiRefId: apiIdStr,
+      rawTglTransfer: rawTglTf,
+      perusahaan,
+      produk,
+      tglEvent,
+      jumlahHari: Number(api.jumlahHari) || 1,
+      jumlahTitik: api.jumlahTitik !== undefined ? Number(api.jumlahTitik) : 1,
+      banner: api.jumlahBanner !== undefined ? Number(api.jumlahBanner) : (api.banner ? Number(api.banner) : 0),
+      spanduk: api.jumlahSpanduk !== undefined ? Number(api.jumlahSpanduk) : (api.spanduk ? Number(api.spanduk) : 0),
+      nominal: amt,
+      keterangan: api.keterangan || ''
+    });
   });
 
-  return { year, month, monthName, rows, totalNominal };
+  // 4. Urutkan berdasarkan tanggal transfer (rawTglTransfer ASC), lalu nama perusahaan
+  rawRows.sort((a, b) => {
+    if (a.rawTglTransfer !== b.rawTglTransfer) {
+      return a.rawTglTransfer.localeCompare(b.rawTglTransfer);
+    }
+    return (a.perusahaan || '').localeCompare(b.perusahaan || '');
+  });
+
+  // 5. Hitung total dan format baris tampilan
+  let totalHari = 0;
+  let totalTitik = 0;
+  let totalBanner = 0;
+  let totalSpanduk = 0;
+  let totalNominal = 0;
+
+  const rows = rawRows.map((r, idx) => {
+    const tglTransferFormatted = formatDmy(r.rawTglTransfer);
+    const isFirstOfDate = idx === 0 || formatDmy(rawRows[idx - 1].rawTglTransfer) !== tglTransferFormatted;
+    const tglTransferDisplay = isFirstOfDate ? tglTransferFormatted : '';
+
+    totalHari += Number(r.jumlahHari || 0);
+    totalTitik += Number(r.jumlahTitik || 0);
+    totalBanner += Number(r.banner || 0);
+    totalSpanduk += Number(r.spanduk || 0);
+    totalNominal += Number(r.nominal || 0);
+
+    return {
+      ...r,
+      no: idx + 1,
+      tglTransferFormatted,
+      tglTransferDisplay,
+      isFirstOfDate
+    };
+  });
+
+  return {
+    year,
+    month,
+    monthName,
+    rows,
+    totalHari,
+    totalTitik,
+    totalBanner,
+    totalSpanduk,
+    totalNominal,
+    totalEvents: rows.length
+  };
 };
