@@ -69,6 +69,7 @@ export default function InputHarianTab({
   handleAddActiveItem,
   activeGroups = [],
   handleRemoveActiveItem,
+  handleUnlinkAllocation,
   openEditNote,
   handleInputChange,
   triggerSaveToFirebase,
@@ -596,20 +597,37 @@ export default function InputHarianTab({
                           </div>
 
                           {/* DETAIL TRANSAKSI GABUNGAN (NON-PRINTED) */}
-                          {Array.isArray(item.bankAllocations) && item.bankAllocations.length > 1 && (
+                          {Array.isArray(item.bankAllocations) && (item.bankAllocations.length > 1 || (item.bankAllocations.length === 1 && item.hadMultipleAllocations)) && (
                             <div className="mt-2.5 p-2.5 bg-indigo-50/70 border border-indigo-100 rounded-xl print:hidden text-xs space-y-1.5 shadow-2xs w-full">
                               <div className="text-[10px] font-black uppercase tracking-wider text-indigo-700 flex items-center gap-1">
-                                <Layers size={11} className="text-indigo-600" /> Rincian Transaksi ({item.bankAllocations.length} Mutasi):
+                                <Layers size={11} className="text-indigo-600" /> Rincian Transaksi ({item.bankAllocations.length} Mutasi{item.bankAllocations.length === 1 ? ' Tersisa' : ''}):
                               </div>
                               <div className="space-y-1">
                                 {item.bankAllocations.map((alloc, aIdx) => (
-                                  <div key={aIdx} className="flex items-center justify-between text-slate-700 font-medium py-0.5 border-b border-indigo-100/60 last:border-0">
+                                  <div key={aIdx} className="flex items-center justify-between text-slate-700 font-medium py-0.5 border-b border-indigo-100/60 last:border-0 group/alloc">
                                     <span className="truncate pr-2 text-[11px] font-semibold text-slate-800" title={alloc.desc || alloc.tenant || (alloc.bankDate ? `Mutasi ${alloc.bankDate}` : '')}>
                                       • {alloc.desc || alloc.tenant || (alloc.bankDate ? `Mutasi (${alloc.bankDate})` : `Transaksi ${aIdx + 1}`)}
                                     </span>
-                                    <span className="font-black shrink-0 text-indigo-900 text-xs">
-                                      Rp {formatRp(alloc.amount)}
-                                    </span>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <span className="font-black text-indigo-900 text-xs">
+                                        Rp {formatRp(alloc.amount)}
+                                      </span>
+                                      {!isMonthClosed && handleUnlinkAllocation && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const label = alloc.desc || alloc.tenant || `Transaksi ${aIdx + 1}`;
+                                            if (window.confirm(`Lepaskan transaksi "${label}" sebesar Rp ${formatRp(alloc.amount)} dari item ini?\n\nNominal item akan dikurangi Rp ${formatRp(alloc.amount)} dan mutasi bank terkait akan dikembalikan ke status 'pending'.`)) {
+                                              handleUnlinkAllocation(group, item, alloc, aIdx);
+                                            }
+                                          }}
+                                          className="text-[10px] font-bold text-red-600 hover:text-white hover:bg-red-600 px-1.5 py-0.5 rounded border border-red-200 hover:border-red-600 transition-all cursor-pointer bg-red-50/80"
+                                          title="Lepaskan transaksi ini saja"
+                                        >
+                                          Lepas
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
                                 ))}
                               </div>

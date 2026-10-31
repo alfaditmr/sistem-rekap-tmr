@@ -2190,6 +2190,13 @@ export default function App() {
         rowIdsToPending.push(itemToRemove.bankMatchRowId);
       }
     }
+    if (Array.isArray(itemToRemove.bankAllocations)) {
+      itemToRemove.bankAllocations.forEach(ba => {
+        if (ba.bankRowId && !rowIdsToPending.includes(ba.bankRowId)) {
+          rowIdsToPending.push(ba.bankRowId);
+        }
+      });
+    }
 
     if (rowIdsToPending.length > 0) {
       newBankRows = baseBankRows.map(r => {
@@ -2197,6 +2204,15 @@ export default function App() {
           const updated = { ...r, status: 'pending' };
           delete updated.linkedTo;
           delete updated.matchedTo;
+          delete updated.isFromInputBaru;
+          delete updated.inputBaruAllocations;
+          delete updated.apiRefId;
+          delete updated.apiRefIds;
+          delete updated.proofUrl;
+          delete updated.transferProof;
+          delete updated.tenant;
+          delete updated.location;
+          delete updated.source;
           return updated;
         }
         return r;
@@ -2220,6 +2236,149 @@ export default function App() {
     setAllReports(newReports);
     saveToFirebaseDirectly(newReports, newBankRows);
     showToast('Item berhasil dihapus!');
+  };
+
+  const handleUnlinkAllocation = (group, item, allocToRemove, allocIndex) => {
+    if (isMonthClosed(reportDate)) {
+      showToast('Periode bulan ini telah TUTUP BUKU. Penghapusan data dikunci.');
+      return;
+    }
+
+    try {
+      const baseReports = stateRef.current.allReports;
+      const newReports = JSON.parse(JSON.stringify(baseReports));
+      const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
+
+      const targetRowId = allocToRemove.bankRowId;
+      const targetApiRefId = String(allocToRemove.apiRefId || '');
+      const targetAmount = Number(allocToRemove.amount || 0);
+      const targetProofUrl = allocToRemove.proofUrl || '';
+
+      // 1. Update bankRows: kembalikan mutasi bank terkait ke status 'pending'
+      const newBankRows = baseBankRows.map(r => {
+        const isTarget = (targetRowId && r.id === targetRowId) || (
+          (targetApiRefId && String(r.apiRefId) === targetApiRefId) ||
+          (targetProofUrl && (r.proofUrl === targetProofUrl || r.linkedTo?.proofUrl === targetProofUrl)) ||
+          (r.date === (allocToRemove.bankDate || reportDate) && Number(r.amount) === targetAmount && (r.description || '').trim() === (allocToRemove.desc || '').trim())
+        );
+        if (isTarget) {
+          const updated = { ...r, status: 'pending' };
+          delete updated.linkedTo;
+          delete updated.matchedTo;
+          delete updated.isFromInputBaru;
+          delete updated.inputBaruAllocations;
+          delete updated.apiRefId;
+          delete updated.apiRefIds;
+          delete updated.proofUrl;
+          delete updated.transferProof;
+          delete updated.tenant;
+          delete updated.location;
+          delete updated.source;
+          return updated;
+        }
+        return r;
+      });
+
+      // 2. Update newReports pada semua tanggal
+      Object.keys(newReports).forEach(date => {
+        const dayData = newReports[date];
+        if (!dayData || typeof dayData !== 'object') return;
+
+        Object.keys(dayData).forEach(docKey => {
+          const typeData = dayData[docKey];
+          if (!typeData || !Array.isArray(typeData.activeItems)) return;
+
+          typeData.activeItems = typeData.activeItems.filter(activeItem => {
+            const matchesCat = activeItem.catId === group.catId;
+            const matchesId = (activeItem.itemId || activeItem.id) === (item.itemId || item.id);
+            if (!matchesCat || !matchesId) return true;
+
+            const itemKey = getActiveItemKey(activeItem.catId, activeItem.itemId || activeItem.id, activeItem.isSusulan, activeItem.validDate, activeItem.itemDate, activeItem.itemNote);
+            const baseKey = `${activeItem.catId}_${activeItem.itemId || activeItem.id}`;
+            const targetKey = (typeData.formData && typeData.formData[itemKey] !== undefined) ? itemKey : baseKey;
+
+            const remainingAllocations = Array.isArray(activeItem.bankAllocations)
+              ? activeItem.bankAllocations.filter((ba, idx) => {
+                  if (allocIndex !== undefined && allocIndex !== null && idx === allocIndex) return false;
+                  if (targetRowId && ba.bankRowId === targetRowId) return false;
+                  if (targetApiRefId && String(ba.apiRefId) === targetApiRefId) return false;
+                  return true;
+                })
+              : [];
+
+            const hasOtherAllocations = remainingAllocations.length > 0;
+            const newTotal = remainingAllocations.reduce((sum, ba) => sum + Number(ba.amount || 0), 0);
+
+            if (hasOtherAllocations && newTotal > 0) {
+              // 🔴 HANYA HAPUS ALOKASI INI & KURANGI NOMINAL SESUAI NILAI ALOKASI
+              activeItem.bankAllocations = remainingAllocations;
+              activeItem.hadMultipleAllocations = true;
+              if (typeData.formData) {
+                typeData.formData[targetKey] = newTotal;
+              }
+              if (Array.isArray(activeItem.bankMatchRowIds)) {
+                activeItem.bankMatchRowIds = activeItem.bankMatchRowIds.filter(id => id !== targetRowId);
+                activeItem.bankMatchRowId = activeItem.bankMatchRowIds[0] || remainingAllocations[0]?.bankRowId || '';
+              }
+              if (String(activeItem.apiRefId || '') === targetApiRefId) {
+                activeItem.apiRefId = remainingAllocations[0]?.apiRefId || '';
+                if (!activeItem.apiRefId) delete activeItem.apiRefId;
+              }
+              if (activeItem.proofUrl === targetProofUrl || !remainingAllocations.some(ba => ba.proofUrl === activeItem.proofUrl)) {
+                activeItem.proofUrl = remainingAllocations.find(ba => ba.proofUrl)?.proofUrl || '';
+                if (typeData.formData) {
+                  if (activeItem.proofUrl) {
+                    typeData.formData[targetKey + '_buktiUrl'] = activeItem.proofUrl;
+                  } else {
+                    delete typeData.formData[targetKey + '_buktiUrl'];
+                  }
+                }
+              }
+              return true; // PERTAHANKAN ITEM DENGAN SISA ALOKASI!
+            } else {
+              // Tidak ada mutasi pendukung yang tersisa
+              if (activeItem.createdFromBank) {
+                if (typeData.formData) {
+                  delete typeData.formData[targetKey];
+                  delete typeData.formData[itemKey];
+                  delete typeData.formData[baseKey];
+                  delete typeData.formData[targetKey + '_buktiUrl'];
+                  delete typeData.formData[itemKey + '_buktiUrl'];
+                  delete typeData.formData[baseKey + '_buktiUrl'];
+                }
+                return false; // Hapus baris karena tidak ada mutasi tersisa
+              } else {
+                delete activeItem.bankMatched;
+                delete activeItem.bankMatchDate;
+                delete activeItem.bankMatchRowId;
+                delete activeItem.bankMatchRowIds;
+                delete activeItem.apiRefId;
+                delete activeItem.proofUrl;
+                if (typeData.formData) {
+                  delete typeData.formData[targetKey + '_buktiUrl'];
+                  delete typeData.formData[itemKey + '_buktiUrl'];
+                  delete typeData.formData[baseKey + '_buktiUrl'];
+                }
+                activeItem.bankAllocations = [];
+                return true;
+              }
+            }
+          });
+
+          if (docKey.startsWith('lain_') && Array.isArray(typeData.activeItems) && typeData.activeItems.length === 0) {
+            delete dayData[docKey];
+          }
+        });
+      });
+
+      setAllReports(newReports);
+      setBankRows(newBankRows);
+      saveToFirebaseDirectly(newReports, newBankRows);
+      showToast(`Transaksi sebesar Rp ${formatRp(targetAmount)} berhasil dilepaskan!`);
+    } catch (err) {
+      console.error("Error in handleUnlinkAllocation:", err);
+      alert("Gagal melepaskan transaksi: " + err.message);
+    }
   };
 
   const handleInputChange = (inputKey, value) => {
@@ -3017,6 +3176,10 @@ export default function App() {
                               existingItem.bankAllocations.push(newAllocationDetail);
                             }
 
+                            if (existingItem.bankAllocations.length > 1) {
+                              existingItem.hadMultipleAllocations = true;
+                            }
+
                             // Total akumulasi seluruh alokasi mutasi yang terpasang
                             const sumAlloc = existingItem.bankAllocations.reduce((sum, ba) => sum + Number(ba.amount || 0), 0);
                             typeData.formData[itemKey] = sumAlloc > 0 ? sumAlloc : (priorNominal + allocAmount);
@@ -3256,12 +3419,9 @@ export default function App() {
                             typeData.activeItems = typeData.activeItems.filter(item => {
                               if (!item) return false;
 
-                              let itemKey = `${item.catId}_${item.itemId || item.id}`;
-                              if (item.itemDate) itemKey += `_date_${item.itemDate}`;
-                              if (item.itemNote) {
-                                let h = 0; for (let j = 0; j < item.itemNote.length; j++) { h = ((h << 5) - h) + item.itemNote.charCodeAt(j); h = h & h; }
-                                itemKey += `_note_${Math.abs(h)}`;
-                              }
+                              const itemKey = getActiveItemKey(item.catId, item.itemId || item.id, item.isSusulan, item.validDate, item.itemDate, item.itemNote);
+                              const baseKey = `${item.catId}_${item.itemId || item.id}`;
+                              const targetKey = (typeData.formData && typeData.formData[itemKey] !== undefined) ? itemKey : baseKey;
 
                               const matchesRowId = targetRowId && (
                                 item.bankMatchRowId === targetRowId ||
@@ -3282,74 +3442,90 @@ export default function App() {
 
                               let isAllocMatch = false;
                               if (Array.isArray(bankRow.inputBaruAllocations)) {
-                                isAllocMatch = bankRow.inputBaruAllocations.some(alloc => alloc.date === date && alloc.itemKey === itemKey);
+                                isAllocMatch = bankRow.inputBaruAllocations.some(alloc => alloc.date === date && (alloc.itemKey === itemKey || alloc.itemKey === baseKey));
                               }
 
                               const isDirectlyAssociated = matchesRowId || matchesApi || matchesProof || isAllocMatch;
                               if (!isDirectlyAssociated) return true;
 
-                              if (isFromInputBaru) {
-                                const hasOtherAllocations = Array.isArray(item.bankAllocations) && item.bankAllocations.some(ba => ba.bankRowId && ba.bankRowId !== targetRowId);
-                                const curr = Number(typeData.formData?.[itemKey] || 0);
-                                const rem = curr - targetAmount;
+                              // Cek alokasi gabungan yang terpasang pada item ini
+                              const hasAllocArray = Array.isArray(item.bankAllocations) && item.bankAllocations.length > 0;
+                              let remainingAllocations = [];
+                              let removedAlloc = null;
 
-                                if (!hasOtherAllocations || rem <= 0 || item.createdFromBank) {
-                                  if (typeData.formData) {
-                                    delete typeData.formData[itemKey];
-                                    delete typeData.formData[itemKey + '_buktiUrl'];
-                                  }
-                                  return false;
-                                } else {
-                                  if (typeData.formData) {
-                                    typeData.formData[itemKey] = rem;
-                                  }
-                                  if (Array.isArray(item.bankAllocations)) {
-                                    item.bankAllocations = item.bankAllocations.filter(ba => ba.bankRowId !== targetRowId && String(ba.apiRefId || '') !== targetApiRefId);
-                                  }
-                                  if (Array.isArray(item.bankMatchRowIds)) {
-                                    item.bankMatchRowIds = item.bankMatchRowIds.filter(id => id !== targetRowId);
-                                    item.bankMatchRowId = item.bankMatchRowIds[0] || '';
-                                  }
-                                  if (String(item.apiRefId || '') === targetApiRefId) {
-                                    delete item.apiRefId;
-                                  }
-                                  if (item.proofUrl === targetProofUrl) {
-                                    delete item.proofUrl;
-                                    delete typeData.formData?.[itemKey + '_buktiUrl'];
+                              if (hasAllocArray) {
+                                remainingAllocations = item.bankAllocations.filter(ba => {
+                                  const matchesThisAlloc = (
+                                    (targetRowId && ba.bankRowId === targetRowId) ||
+                                    (targetApiRefId && String(ba.apiRefId || '') === targetApiRefId) ||
+                                    (targetProofUrl && ba.proofUrl && ba.proofUrl === targetProofUrl)
+                                  );
+                                  if (matchesThisAlloc && !removedAlloc) {
+                                    removedAlloc = ba;
+                                    return false; // Lepaskan alokasi spesifik ini
                                   }
                                   return true;
+                                });
+                              }
+
+                              const remainingCount = remainingAllocations.length;
+                              const newTotal = remainingAllocations.reduce((sum, ba) => sum + Number(ba.amount || 0), 0);
+
+                              if (remainingCount > 0 && newTotal > 0) {
+                                // 🔴 ADA SISA ALOKASI LAIN: JANGAN HAPUS SELURUH ITEM!
+                                // HANYA HAPUS MUTASI YANG DILEPAS DAN KURANGI NOMINAL SESUAI DENGAN ALOKASI YANG DILEPAS
+                                item.bankAllocations = remainingAllocations;
+                                item.hadMultipleAllocations = true;
+                                if (typeData.formData) {
+                                  typeData.formData[targetKey] = newTotal;
                                 }
-                              } else {
                                 if (Array.isArray(item.bankMatchRowIds)) {
                                   item.bankMatchRowIds = item.bankMatchRowIds.filter(id => id !== targetRowId);
-                                  if (item.bankMatchRowIds.length === 0) {
-                                    delete item.bankMatched;
-                                    delete item.bankMatchDate;
-                                    delete item.bankMatchRowId;
-                                    delete item.bankMatchRowIds;
-                                    delete item.apiRefId;
+                                  item.bankMatchRowId = item.bankMatchRowIds[0] || remainingAllocations[0]?.bankRowId || '';
+                                } else {
+                                  item.bankMatchRowId = remainingAllocations[0]?.bankRowId || '';
+                                }
+                                if (String(item.apiRefId || '') === targetApiRefId) {
+                                  item.apiRefId = remainingAllocations[0]?.apiRefId || '';
+                                  if (!item.apiRefId) delete item.apiRefId;
+                                }
+                                if (item.proofUrl === targetProofUrl || !remainingAllocations.some(ba => ba.proofUrl === item.proofUrl)) {
+                                  item.proofUrl = remainingAllocations.find(ba => ba.proofUrl)?.proofUrl || '';
+                                  if (!item.proofUrl) {
                                     delete item.proofUrl;
-                                  } else {
-                                    item.bankMatchRowId = item.bankMatchRowIds[item.bankMatchRowIds.length - 1];
+                                    if (typeData.formData) delete typeData.formData[targetKey + '_buktiUrl'];
+                                  } else if (typeData.formData) {
+                                    typeData.formData[targetKey + '_buktiUrl'] = item.proofUrl;
                                   }
+                                }
+                                return true; // ITEM TETAP ADA DENGAN SISA ALOKASI!
+                              } else {
+                                // Tidak ada alokasi lain yang tersisa
+                                if (item.createdFromBank) {
+                                  if (typeData.formData) {
+                                    delete typeData.formData[targetKey];
+                                    delete typeData.formData[itemKey];
+                                    delete typeData.formData[baseKey];
+                                    delete typeData.formData[targetKey + '_buktiUrl'];
+                                    delete typeData.formData[itemKey + '_buktiUrl'];
+                                    delete typeData.formData[baseKey + '_buktiUrl'];
+                                  }
+                                  return false; // Hapus item karena murni berasal dari bank dan seluruh pasangannya dilepas
                                 } else {
                                   delete item.bankMatched;
                                   delete item.bankMatchDate;
                                   delete item.bankMatchRowId;
+                                  delete item.bankMatchRowIds;
                                   delete item.apiRefId;
                                   delete item.proofUrl;
+                                  item.bankAllocations = [];
+                                  if (typeData.formData) {
+                                    delete typeData.formData[targetKey + '_buktiUrl'];
+                                    delete typeData.formData[itemKey + '_buktiUrl'];
+                                    delete typeData.formData[baseKey + '_buktiUrl'];
+                                  }
+                                  return true; // Item manual dipertahankan
                                 }
-                                if (Array.isArray(item.bankAllocations)) {
-                                  item.bankAllocations = item.bankAllocations.filter(ba => ba.bankRowId !== targetRowId && String(ba.apiRefId || '') !== targetApiRefId);
-                                }
-                                if (String(item.apiRefId || '') === targetApiRefId) {
-                                  delete item.apiRefId;
-                                }
-                                if (item.proofUrl === targetProofUrl) {
-                                  delete item.proofUrl;
-                                  delete typeData.formData?.[itemKey + '_buktiUrl'];
-                                }
-                                return true;
                               }
                             });
 
@@ -3452,33 +3628,84 @@ export default function App() {
                               );
                               if (!matchesApi) return true;
 
-                              let itemKey = `${item.catId}_${item.itemId || item.id}`;
-                              if (item.itemDate) itemKey += `_date_${item.itemDate}`;
-                              if (item.itemNote) {
-                                let h = 0; for (let j = 0; j < item.itemNote.length; j++) { h = ((h << 5) - h) + item.itemNote.charCodeAt(j); h = h & h; }
-                                itemKey += `_note_${Math.abs(h)}`;
+                              const itemKey = getActiveItemKey(item.catId, item.itemId || item.id, item.isSusulan, item.validDate, item.itemDate, item.itemNote);
+                              const baseKey = `${item.catId}_${item.itemId || item.id}`;
+                              const targetKey = (typeData.formData && typeData.formData[itemKey] !== undefined) ? itemKey : baseKey;
+
+                              const hasAllocArray = Array.isArray(item.bankAllocations) && item.bankAllocations.length > 0;
+                              let remainingAllocations = [];
+                              let removedAlloc = null;
+
+                              if (hasAllocArray) {
+                                remainingAllocations = item.bankAllocations.filter(ba => {
+                                  const matchesThisAlloc = (
+                                    (apiIdStr && String(ba.apiRefId || '') === apiIdStr) ||
+                                    (urls.some(u => u && (ba.proofUrl === u || ba.buktiTransferUrl === u)))
+                                  );
+                                  if (matchesThisAlloc && !removedAlloc) {
+                                    removedAlloc = ba;
+                                    return false; // Lepaskan alokasi bukti transfer spesifik ini
+                                  }
+                                  return true;
+                                });
                               }
 
-                              if (item.createdFromBank) {
+                              const remainingCount = remainingAllocations.length;
+                              const newTotal = remainingAllocations.reduce((sum, ba) => sum + Number(ba.amount || 0), 0);
+
+                              if (remainingCount > 0 && newTotal > 0) {
+                                // 🔴 ADA SISA ALOKASI LAIN: JANGAN HAPUS SELURUH ITEM!
+                                // HANYA HAPUS BUKTI TRANSFER YANG DILEPAS DAN KURANGI NOMINAL SESUAI DENGAN ALOKASI YANG DILEPAS
+                                item.bankAllocations = remainingAllocations;
+                                item.hadMultipleAllocations = true;
                                 if (typeData.formData) {
-                                  delete typeData.formData[itemKey];
-                                  delete typeData.formData[itemKey + '_buktiUrl'];
+                                  typeData.formData[targetKey] = newTotal;
                                 }
-                                return false;
+                                if (Array.isArray(item.bankMatchRowIds)) {
+                                  item.bankMatchRowIds = remainingAllocations.map(ba => ba.bankRowId).filter(Boolean);
+                                  item.bankMatchRowId = item.bankMatchRowIds[0] || '';
+                                }
+                                if (String(item.apiRefId || '') === apiIdStr) {
+                                  item.apiRefId = remainingAllocations[0]?.apiRefId || '';
+                                  if (!item.apiRefId) delete item.apiRefId;
+                                }
+                                if (urls.some(u => u && item.proofUrl === u)) {
+                                  item.proofUrl = remainingAllocations.find(ba => ba.proofUrl)?.proofUrl || '';
+                                  if (!item.proofUrl) {
+                                    delete item.proofUrl;
+                                    if (typeData.formData) delete typeData.formData[targetKey + '_buktiUrl'];
+                                  } else if (typeData.formData) {
+                                    typeData.formData[targetKey + '_buktiUrl'] = item.proofUrl;
+                                  }
+                                }
+                                return true; // PERTAHANKAN ITEM DENGAN SISA ALOKASI!
                               } else {
-                                delete item.bankMatched;
-                                delete item.bankMatchDate;
-                                delete item.bankMatchRowId;
-                                delete item.bankMatchRowIds;
-                                delete item.apiRefId;
-                                delete item.proofUrl;
-                                if (typeData.formData) {
-                                  delete typeData.formData[itemKey + '_buktiUrl'];
+                                // Tidak ada alokasi lain yang tersisa
+                                if (item.createdFromBank) {
+                                  if (typeData.formData) {
+                                    delete typeData.formData[targetKey];
+                                    delete typeData.formData[itemKey];
+                                    delete typeData.formData[baseKey];
+                                    delete typeData.formData[targetKey + '_buktiUrl'];
+                                    delete typeData.formData[itemKey + '_buktiUrl'];
+                                    delete typeData.formData[baseKey + '_buktiUrl'];
+                                  }
+                                  return false;
+                                } else {
+                                  delete item.bankMatched;
+                                  delete item.bankMatchDate;
+                                  delete item.bankMatchRowId;
+                                  delete item.bankMatchRowIds;
+                                  delete item.apiRefId;
+                                  delete item.proofUrl;
+                                  item.bankAllocations = [];
+                                  if (typeData.formData) {
+                                    delete typeData.formData[targetKey + '_buktiUrl'];
+                                    delete typeData.formData[itemKey + '_buktiUrl'];
+                                    delete typeData.formData[baseKey + '_buktiUrl'];
+                                  }
+                                  return true;
                                 }
-                                if (Array.isArray(item.bankAllocations)) {
-                                  item.bankAllocations = item.bankAllocations.filter(ba => String(ba.apiRefId || '') !== apiIdStr);
-                                }
-                                return true;
                               }
                             });
 
@@ -3546,6 +3773,7 @@ export default function App() {
                 handleAddActiveItem={handleAddActiveItem}
                 activeGroups={activeGroups}
                 handleRemoveActiveItem={handleRemoveActiveItem}
+                handleUnlinkAllocation={handleUnlinkAllocation}
                 openEditNote={openEditNote}
                 handleInputChange={handleInputChange}
                 triggerSaveToFirebase={() => {
