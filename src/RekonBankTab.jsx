@@ -23,6 +23,17 @@ export default function RekonBankTab({
   isMonthClosed,
   onUnlinkApiItem
 }) {
+  // Helper untuk memvalidasi apakah data transaksi API merupakan transaksi pembayaran sah (bukan Belum Bayar / Belum Transfer)
+  const isPaidApiItem = (d) => {
+    if (!d) return false;
+    const status = (d.status_pembayaran || d.status || '').toLowerCase().trim();
+    const isUnpaid = status === 'belum transfer' || status === 'belum bayar' || status === 'batal' || status === 'ditutup';
+    const hasProof = Boolean(d.buktiTransferUrl || d.buktiTransferDocUrl || d.bukti_transfer || d.bukti_transfer_listrik || d.pksDriveUrl || d.fileUrl || d.url);
+    if (isUnpaid && !hasProof) return false;
+    if (!hasProof && !['sudah transfer', 'lunas', 'sudah lunas', 'menunggu verifikasi'].includes(status)) return false;
+    return true;
+  };
+
   const [viewMode, setViewMode] = useState('calendar'); // 'calendar' | 'list'
   const [selectedBankDates, setSelectedBankDates] = useState([]);
   const [editModal, setEditModal] = useState({ isOpen: false, row: null, proof: '', proofUrl: '' });
@@ -30,7 +41,9 @@ export default function RekonBankTab({
   const [apiData, setApiData] = useState(() => {
     try {
       const saved = localStorage.getItem('tmr_apiData');
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed.filter(isPaidApiItem) : [];
     } catch(e) {
       return [];
     }
@@ -38,7 +51,7 @@ export default function RekonBankTab({
 
   useEffect(() => {
     try {
-      localStorage.setItem('tmr_apiData', JSON.stringify(apiData));
+      localStorage.setItem('tmr_apiData', JSON.stringify(apiData.filter(isPaidApiItem)));
     } catch(e) {}
   }, [apiData]);
 
@@ -353,15 +366,19 @@ export default function RekonBankTab({
     return { isMatched: false };
   };
 
+  const validApiData = useMemo(() => {
+    return apiData.filter(isPaidApiItem);
+  }, [apiData]);
+
   const matchedApiCount = useMemo(() => {
-    return apiData.filter(item => getMatchedInfoForApi(item).isMatched).length;
-  }, [apiData, bankRows, allReports]);
+    return validApiData.filter(item => getMatchedInfoForApi(item).isMatched).length;
+  }, [validApiData, bankRows, allReports]);
 
   const displayedApiData = useMemo(() => {
-    if (apiFilterStatus === 'matched') return apiData.filter(item => getMatchedInfoForApi(item).isMatched);
-    if (apiFilterStatus === 'unmatched') return apiData.filter(item => !getMatchedInfoForApi(item).isMatched);
-    return apiData;
-  }, [apiData, apiFilterStatus, bankRows, allReports]);
+    if (apiFilterStatus === 'matched') return validApiData.filter(item => getMatchedInfoForApi(item).isMatched);
+    if (apiFilterStatus === 'unmatched') return validApiData.filter(item => !getMatchedInfoForApi(item).isMatched);
+    return validApiData;
+  }, [validApiData, apiFilterStatus, bankRows, allReports]);
 
   const handleViewProof = (e, url) => {
     e.preventDefault();
@@ -431,9 +448,9 @@ export default function RekonBankTab({
       const fasRes = await res.json();
       
       if (fasRes && fasRes.data && fasRes.data.length > 0) {
-        const newFasilitas = fasRes.data.map(d => ({...d, source: 'Fasilitas'}));
-        setApiData(prev => [...prev.filter(d => d.source !== 'Fasilitas'), ...newFasilitas]);
-        alert(`Berhasil memuat ${newFasilitas.length} transaksi Fasilitas (tanggal ${apiDate}).`);
+        const newFasilitas = fasRes.data.map(d => ({...d, source: 'Fasilitas'})).filter(isPaidApiItem);
+        setApiData(prev => [...prev.filter(d => d.source !== 'Fasilitas' && isPaidApiItem(d)), ...newFasilitas]);
+        alert(`Berhasil memuat ${newFasilitas.length} transaksi Fasilitas terverifikasi (tanggal ${apiDate}).`);
       } else {
         alert(`Tidak ada data bukti transfer Fasilitas untuk tanggal ${apiDate}.`);
       }
@@ -456,9 +473,9 @@ export default function RekonBankTab({
       const proRes = await res.json();
       
       if (proRes && proRes.data && proRes.data.length > 0) {
-        const newPromo = proRes.data.map(d => ({...d, source: 'Promo'}));
-        setApiData(prev => [...prev.filter(d => d.source !== 'Promo'), ...newPromo]);
-        alert(`Berhasil memuat ${newPromo.length} transaksi Promo (tanggal ${apiDate}).`);
+        const newPromo = proRes.data.map(d => ({...d, source: 'Promo'})).filter(isPaidApiItem);
+        setApiData(prev => [...prev.filter(d => d.source !== 'Promo' && isPaidApiItem(d)), ...newPromo]);
+        alert(`Berhasil memuat ${newPromo.length} transaksi Promo terverifikasi (tanggal ${apiDate}).`);
       } else {
         alert(`Tidak ada data bukti transfer Promo untuk tanggal ${apiDate}.`);
       }
@@ -1271,7 +1288,7 @@ export default function RekonBankTab({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-black text-indigo-900 text-sm flex items-center gap-2">
-                <Database size={18} className="text-indigo-600"/> {apiData.length} Bukti Transfer Tersedia dari API
+                <Database size={18} className="text-indigo-600"/> {validApiData.length} Bukti Transfer Tersedia dari API
               </h3>
               <div className="flex items-center gap-1.5 ml-1">
                 <button 
@@ -1279,14 +1296,14 @@ export default function RekonBankTab({
                   onClick={() => setApiFilterStatus('all')}
                   className={'text-[11px] px-2.5 py-0.5 rounded-full font-bold transition-all ' + (apiFilterStatus === 'all' ? 'bg-indigo-600 text-white shadow-2xs' : 'bg-white text-gray-600 hover:bg-indigo-50 border border-gray-200')}
                 >
-                  Semua ({apiData.length})
+                  Semua ({validApiData.length})
                 </button>
                 <button 
                   type="button"
                   onClick={() => setApiFilterStatus('unmatched')}
                   className={'text-[11px] px-2.5 py-0.5 rounded-full font-bold transition-all flex items-center gap-1 ' + (apiFilterStatus === 'unmatched' ? 'bg-amber-600 text-white shadow-2xs' : 'bg-white text-amber-700 hover:bg-amber-50 border border-amber-200')}
                 >
-                  <AlertCircle size={10}/> Belum Dipasangkan ({apiData.length - matchedApiCount})
+                  <AlertCircle size={10}/> Belum Dipasangkan ({validApiData.length - matchedApiCount})
                 </button>
                 <button 
                   type="button"
@@ -1805,7 +1822,7 @@ export default function RekonBankTab({
                         <option value="">-- Tanpa Bukti API --</option>
                         {(() => {
                           // Filter bukti API: jangan tampilkan yang sudah dipasangkan agar tidak terjadi double / salah pilih
-                          const availableApis = apiData.filter(d => {
+                          const availableApis = validApiData.filter(d => {
                             if (String(d.id) === String(alloc.apiRefId)) return true;
                             // Jangan tampilkan jika sudah dipilih di pecahan alokasi lain pada modal yang sama
                             const isChosenInOtherAlloc = Array.isArray(splitModal.allocations) && splitModal.allocations.some(other => other.id !== alloc.id && String(other.apiRefId) === String(d.id));

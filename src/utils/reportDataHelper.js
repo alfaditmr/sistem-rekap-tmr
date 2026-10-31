@@ -14,9 +14,19 @@ export const setGlobalApiDataCache = (data) => {
   }
 };
 
+export const isPaidApiItem = (d) => {
+  if (!d) return false;
+  const status = (d.status_pembayaran || d.status || '').toLowerCase().trim();
+  const isUnpaid = status === 'belum transfer' || status === 'belum bayar' || status === 'batal' || status === 'ditutup';
+  const hasProof = Boolean(d.buktiTransferUrl || d.buktiTransferDocUrl || d.bukti_transfer || d.bukti_transfer_listrik || d.pksDriveUrl || d.fileUrl || d.url);
+  if (isUnpaid && !hasProof) return false;
+  if (!hasProof && !['sudah transfer', 'lunas', 'sudah lunas', 'menunggu verifikasi'].includes(status)) return false;
+  return true;
+};
+
 export const getGlobalApiDataCache = () => {
   if (Array.isArray(_inMemoryApiData) && _inMemoryApiData.length > 0) {
-    return _inMemoryApiData;
+    return _inMemoryApiData.filter(isPaidApiItem);
   }
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
@@ -24,8 +34,9 @@ export const getGlobalApiDataCache = () => {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          _inMemoryApiData = parsed;
-          return parsed;
+          const valid = parsed.filter(isPaidApiItem);
+          _inMemoryApiData = valid;
+          return valid;
         }
       }
     } catch (e) {}
@@ -39,15 +50,15 @@ export const fetchApiDataBackground = async () => {
       fetch('https://sistem-informasi-ragunan.vercel.app/api/fasilitas?date=semua').then(r => r.json()).catch(() => null),
       fetch('https://sistem-informasi-ragunan.vercel.app/api/promo?date=semua').then(r => r.json()).catch(() => null)
     ]);
-    const newFas = (fasRes?.data || []).map(d => ({ ...d, source: 'Fasilitas' }));
-    const newPro = (proRes?.data || []).map(d => ({ ...d, source: 'Promo' }));
+    const newFas = (fasRes?.data || []).map(d => ({ ...d, source: 'Fasilitas' })).filter(isPaidApiItem);
+    const newPro = (proRes?.data || []).map(d => ({ ...d, source: 'Promo' })).filter(isPaidApiItem);
     if (newFas.length > 0 || newPro.length > 0) {
       const existing = getGlobalApiDataCache();
       const merged = [
         ...existing.filter(d => d.source !== 'Fasilitas' && d.source !== 'Promo'),
         ...newFas,
         ...newPro
-      ];
+      ].filter(isPaidApiItem);
       _inMemoryApiData = merged;
       try {
         localStorage.setItem('tmr_apiData', JSON.stringify(merged));
