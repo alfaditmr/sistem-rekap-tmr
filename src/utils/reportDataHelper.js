@@ -724,31 +724,25 @@ export const classifyFacilityItem = (info) => {
   // 4. Prewedding
   if (/pre-wedding|prewedding|pre wed|foto nikah/i.test(target)) return { key: 'prewedding', value: 1 };
 
-  // 5. Spanduk Promosi
-  if (/spanduk/i.test(target) && !/banner/i.test(target)) return { key: 'spanduk', value: 1 };
-
-  // 6. Banner Promosi
-  if (/banner|umbul/i.test(target)) return { key: 'banner', value: 1 };
-
-  // 7. Gedung Auditorium
+  // 5. Gedung Auditorium
   if (/auditorium|gedung auditorium|aula serbaguna/i.test(target)) return { key: 'auditorium', value: 1 };
 
-  // 8. Gedung Informasi
+  // 6. Gedung Informasi
   if (/gedung informasi|ruang informasi/i.test(target)) return { key: 'gedung_info', value: 1 };
 
-  // 9. Sound System
+  // 7. Sound System
   if (/sound system|sound/i.test(target) && !/wireles|wireless/i.test(target)) return { key: 'sound', value: 1 };
 
-  // 10. Wireles
+  // 8. Wireles
   if (/wireles|wireless/i.test(target)) {
     const qty = nominal >= 100000 ? Math.round(nominal / 100000) : 1;
     return { key: 'wireles', value: qty };
   }
 
-  // 11. Film Satwa
+  // 9. Film Satwa
   if (/film satwa|pemutaran film/i.test(target)) return { key: 'film_satwa', value: 1 };
 
-  // 12. Lahan Terbuka / Lahan M2
+  // 10. Lahan Terbuka / Lahan M2
   if (
     /lahan|lapangan|lap\s|lap\.|lap\b|lap atm|lap tsik|lap beringin|lap sebrang|lap timur/i.test(target) ||
     luasParam > 0
@@ -765,7 +759,7 @@ export const classifyFacilityItem = (info) => {
     return { key: 'lahan', value: luasan || 50, luasan: luasan || 50 };
   }
 
-  // 13. Panggung / Pendopo (TSA 1, TSA 2, TSA 3, TSA 4, Teras Informasi, Gazebo)
+  // 11. Panggung / Pendopo (TSA 1, TSA 2, TSA 3, TSA 4, Teras Informasi, Gazebo)
   if (
     /panggung|pendopo|tsa 1|tsa 2|tsa 3|tsa 4|teras informasi|gazebo/i.test(target)
   ) {
@@ -783,6 +777,64 @@ export const classifyFacilityItem = (info) => {
   return { key: 'lain_lain', value: 1 };
 };
 
+/**
+ * Memeriksa secara komprehensif apakah suatu item/alokasi/transaksi bank/API
+ * adalah transaksi Promosi Produk & Media Banner (sehingga TIDAK boleh masuk ke Rekap Pemakaian Fasilitas)
+ */
+export const isPromoRecord = (item = {}) => {
+  if (!item) return false;
+
+  // 1. Direct API source
+  if (item.source === 'Promo') return true;
+  if (item.source === 'Fasilitas') return false;
+
+  // 2. Jika item terhubung ke API Promo (via apiRefId)
+  if (item.apiRefId) {
+    const apiList = getGlobalApiDataCache();
+    const foundApi = apiList.find(
+      (a) =>
+        String(a.id) === String(item.apiRefId) ||
+        String(a.docId) === String(item.apiRefId) ||
+        String(a.id_sewa) === String(item.apiRefId)
+    );
+    if (foundApi) {
+      if (foundApi.source === 'Promo') return true;
+      if (foundApi.source === 'Fasilitas') return false;
+      if (/promo|banner|spanduk|sampling|selling/i.test(foundApi.kategori || foundApi.tipe_transaksi || '')) return true;
+    }
+  }
+
+  // 3. Atribut khas Promo dari API
+  if (item.namaProduk && item.namaPerusahaan) return true;
+  if (item.jumlahTitik !== undefined && Number(item.jumlahTitik) > 0) return true;
+  if (item.jumlahBanner !== undefined && Number(item.jumlahBanner) > 0) return true;
+  if (item.jumlahSpanduk !== undefined && Number(item.jumlahSpanduk) > 0) return true;
+
+  // 4. Periksa string teks secara menyeluruh
+  const cat = (item.catName || item.category || item.kategori || '').toLowerCase();
+  const sub = (item.itemName || item.subKategori || item.tipe_transaksi || item.matchedTo || '').toLowerCase();
+  const note = (item.itemNote || item.note || item.keterangan || item.catatan || item.desc || item.description || '').toLowerCase();
+  const tenant = (item.tenant || item.penyewa || item.perusahaan || '').toLowerCase();
+  const loc = (item.location || item.lokasi || item.lokasi_sewa || '').toLowerCase();
+  const fKey = (item.fKey || item.itemId || item.id || '').toLowerCase();
+
+  // Item standard promo: item_1a (Promo Penjualan Produk) & item_1b (Penempatan banner promosi)
+  if (/item_1a|item_1b/i.test(fKey)) return true;
+
+  // Keyword promo dalam subkategori / nama item / matchedTo
+  if (/promo|promosi|banner|spanduk|umbul|sampling|selling|booth/i.test(sub)) return true;
+
+  // Keyword promo dalam catatan / deskripsi / lokasi
+  if (/promo|promosi|banner|spanduk|umbul|sampling|selling|booth/i.test(note)) return true;
+  if (/promo|promosi|banner|spanduk/i.test(loc)) return true;
+  if (/mitra promosi/i.test(tenant)) return true;
+
+  // Indikasi titik booth promosi (e.g. "1 titik", "2 titik", "titik untuk tanggal")
+  if (/\b\d+\s*titik\b/i.test(`${note} ${loc} ${sub}`)) return true;
+
+  return false;
+};
+
 export const getPemakaianTempatData = (
   allReports = {},
   categories = [],
@@ -796,14 +848,16 @@ export const getPemakaianTempatData = (
   let apiList = optionalApiData || getGlobalApiDataCache();
   if (!Array.isArray(apiList)) apiList = [];
 
-  // Filter hanya data fasilitas
-  const apiFasilitas = apiList.filter(
-    (a) =>
+  // Filter hanya data fasilitas murni (bukan promo)
+  const apiFasilitas = apiList.filter((a) => {
+    if (a.source === 'Promo') return false;
+    if (isPromoRecord(a)) return false;
+    return (
       a.source === 'Fasilitas' ||
       a.tipe_transaksi === 'Sewa Fasilitas' ||
-      a.kategori === 'Pemakaian Fasilitas' ||
-      !a.source
-  );
+      (a.kategori === 'Pemakaian Fasilitas' && !isPromoRecord(a))
+    );
+  });
 
   const rawRows = [];
   const processedApiIds = new Set();
@@ -941,12 +995,27 @@ export const getPemakaianTempatData = (
                   itemName = it?.name || activeItem?.itemName || '';
                 }
 
+                // STRICT: Lewati jika item adalah transaksi Promo (ditempatkan khusus di Promosi Produk & Media Banner)
+                if (
+                  isPromoRecord({
+                    catName,
+                    itemName,
+                    fKey,
+                    activeItem,
+                    tenant: activeItem?.tenant,
+                    note: activeItem?.itemNote,
+                    location: activeItem?.location,
+                    apiRefId: activeItem?.apiRefId
+                  })
+                ) {
+                  return;
+                }
+
                 const target = `${catName} ${itemName} ${fKey}`.toLowerCase();
                 if (
                   /fasilitas|panggung|lahan|tempat|sound|wireless|auditorium|gazebo|lapangan|gedung|sewa/i.test(
                     target
-                  ) &&
-                  !/promo produk|banner|spanduk|sampling|selling/i.test(target)
+                  )
                 ) {
                   // Periksa apakah item memiliki rincian alokasi mutasi bank
                   if (
@@ -957,9 +1026,27 @@ export const getPemakaianTempatData = (
                     activeItem.bankAllocations.forEach((ba, bIdx) => {
                       const baAmt = Number(ba.amount || 0);
                       if (baAmt <= 0) return;
+
+                      // Lewati jika alokasi bank ini adalah promo
+                      if (
+                        isPromoRecord({
+                          catName,
+                          itemName,
+                          fKey,
+                          tenant: ba.tenant,
+                          desc: ba.desc,
+                          note: ba.desc,
+                          location: ba.location,
+                          apiRefId: ba.apiRefId
+                        })
+                      ) {
+                        return;
+                      }
+
                       if (ba.bankRowId) processedBankRowIds.add(ba.bankRowId);
 
                       const apiMatch = findApiMatch(ba.apiRefId, baAmt, ba.bankDate || dateStr, ba.tenant || ba.desc || activeItem?.itemNote);
+                      if (apiMatch && isPromoRecord(apiMatch)) return;
                       if (apiMatch) processedApiIds.add(String(apiMatch.id || apiMatch.docId || apiMatch.id_sewa));
 
                       const penyewa = (apiMatch?.nama_penyewa || ba.tenant || activeItem.itemNote || 'Penyewa Fasilitas').trim();
@@ -999,7 +1086,23 @@ export const getPemakaianTempatData = (
                   } else {
                     // Single item input
                     const itemNote = activeItem?.itemNote || parts[5] || '';
+                    if (
+                      isPromoRecord({
+                        catName,
+                        itemName,
+                        fKey,
+                        tenant: activeItem?.tenant,
+                        itemNote,
+                        note: itemNote,
+                        location: activeItem?.location,
+                        apiRefId: activeItem?.apiRefId
+                      })
+                    ) {
+                      return;
+                    }
+
                     const apiMatch = findApiMatch(activeItem?.apiRefId, val, dateStr, activeItem?.tenant || itemNote);
+                    if (apiMatch && isPromoRecord(apiMatch)) return;
                     if (apiMatch) processedApiIds.add(String(apiMatch.id || apiMatch.docId || apiMatch.id_sewa));
                     if (activeItem?.bankMatchRowId) processedBankRowIds.add(activeItem.bankMatchRowId);
 
@@ -1058,12 +1161,27 @@ export const getPemakaianTempatData = (
       const isPaired = row.status === 'matched' || row.status === 'linked' || Boolean(row.matchedTo);
       if (!isPaired) return;
 
+      // STRICT: Lewati jika mutasi bank ini adalah transaksi Promo
+      if (
+        isPromoRecord({
+          category: row.category,
+          matchedTo: row.matchedTo,
+          tenant: row.tenant,
+          description: row.description,
+          location: row.location,
+          apiRefId: row.apiRefId
+        })
+      ) {
+        return;
+      }
+
       const matchedTo = (row.matchedTo || row.category || '').toLowerCase();
-      if (/fasilitas|lahan|tempat|panggung|auditorium|wireles|gazebo/i.test(matchedTo) && !/promo produk|banner|spanduk|sampling|selling/i.test(matchedTo)) {
+      if (/fasilitas|lahan|tempat|panggung|auditorium|wireles|gazebo/i.test(matchedTo)) {
         const amt = Number(row.amount || 0);
         if (amt <= 0) return;
 
         const apiMatch = findApiMatch(row.apiRefId, amt, rowYmd, row.tenant || row.description);
+        if (apiMatch && isPromoRecord(apiMatch)) return;
         if (apiMatch) processedApiIds.add(String(apiMatch.id || apiMatch.docId || apiMatch.id_sewa));
 
         const penyewa = (apiMatch?.nama_penyewa || row.tenant || row.description || 'Penyewa Fasilitas').trim();
@@ -1172,15 +1290,18 @@ export const getPromoMediaData = (
   if (!Array.isArray(apiList)) apiList = [];
 
   // Filter hanya data promo & banner
-  const apiPromo = apiList.filter(
-    (a) =>
+  const apiPromo = apiList.filter((a) => {
+    if (a.source === 'Fasilitas') return false;
+    return (
       a.source === 'Promo' ||
       a.tipe_transaksi === 'Promo & Event' ||
       a.kategori === 'Promo Penjualan Produk' ||
+      isPromoRecord(a) ||
       /promo|promosi|banner|spanduk|sampling|selling|sponsor|booth/i.test(a.kategori || '') ||
       /promo|promosi|banner|spanduk|sampling|selling|sponsor|booth/i.test(a.tipe_transaksi || '') ||
       (a.namaPerusahaan && a.namaProduk)
-  );
+    );
+  });
 
   const rawRows = [];
   const processedApiIds = new Set();
@@ -1351,7 +1472,20 @@ export const getPromoMediaData = (
                 }
 
                 const target = `${catName} ${itemName} ${fKey}`.toLowerCase();
-                if (/promo|promosi|banner|spanduk|umbul|booth|sponsor|sampling|selling/i.test(target)) {
+                const isPromo =
+                  isPromoRecord({
+                    catName,
+                    itemName,
+                    fKey,
+                    activeItem,
+                    tenant: activeItem?.tenant,
+                    note: activeItem?.itemNote,
+                    location: activeItem?.location,
+                    apiRefId: activeItem?.apiRefId
+                  }) ||
+                  /promo|promosi|banner|spanduk|umbul|booth|sponsor|sampling|selling/i.test(target);
+
+                if (isPromo) {
                   if (activeItem && Array.isArray(activeItem.bankAllocations) && activeItem.bankAllocations.length > 0) {
                     activeItem.bankAllocations.forEach((ba, bIdx) => {
                       const baAmt = Number(ba.amount || 0);
@@ -1459,7 +1593,19 @@ export const getPromoMediaData = (
       if (!isPaired) return;
 
       const matchedTo = (row.matchedTo || '').toLowerCase();
-      if (/promo|promosi|banner|spanduk|sampling|selling/i.test(matchedTo)) {
+      const isPromo =
+        isPromoRecord({
+          category: row.category,
+          matchedTo: row.matchedTo,
+          tenant: row.tenant,
+          description: row.description,
+          location: row.location,
+          apiRefId: row.apiRefId
+        }) ||
+        /promo|promosi|banner|spanduk|sampling|selling/i.test(matchedTo) ||
+        /promo|promosi|banner|spanduk|sampling|selling/i.test(row.category || '');
+
+      if (isPromo) {
         const amt = Number(row.amount || 0);
         if (amt <= 0) return;
 
