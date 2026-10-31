@@ -469,14 +469,20 @@ export const reconcileOrphanBankItems = (reports, rows) => {
   });
 
   // 2b. Auto-Heal: Jika ada baris mutasi bank yang sudah terpasang/tercatat di dashboard
-  // tapi statusnya masih 'pending' di bankRows, sembuhkan menjadi 'matched' secara komprehensif
+  // tapi statusnya masih 'pending' di bankRows, sembuhkan menjadi 'matched' secara teliti
   safeRows.forEach(r => {
     if (!r) return;
-    const alloc = activeReportAllocations.find(a =>
-      (r.id && a.rowId && r.id === a.rowId) ||
-      (a.amount > 0 && a.date && r.date === a.date && Number(r.amount) === a.amount) ||
-      (a.amount > 0 && a.date && r.date && (r.date.includes(a.date) || a.date.includes(r.date)) && Number(r.amount) === a.amount)
-    );
+    const alloc = activeReportAllocations.find(a => {
+      if (r.id && a.rowId) return r.id === a.rowId;
+      if (!a.rowId && a.amount > 0 && a.date && Number(r.amount) === a.amount) {
+        const isSameDate = (r.date === a.date || (r.date && (r.date.includes(a.date) || a.date.includes(r.date))));
+        if (!isSameDate) return false;
+        // Hanya cocokkan jika mutasi pada tanggal dan nominal tersebut unik (tidak ada duplikat nominal yang membingungkan)
+        const sameAmountCount = safeRows.filter(sr => sr && Number(sr.amount) === a.amount && (sr.date === a.date || (sr.date && sr.date.includes(a.date)))).length;
+        return sameAmountCount === 1;
+      }
+      return false;
+    });
     if (alloc) {
       if (r.status !== 'matched' && r.status !== 'linked') {
         r.status = 'matched';
@@ -511,12 +517,12 @@ export const reconcileOrphanBankItems = (reports, rows) => {
     if (!ba.bankRowId && !ba.bankDate) return true;
     if (ba.bankRowId && (ba.bankRowId.startsWith('prior_') || activeBankRowIds.has(ba.bankRowId))) return true;
     if (ba.bankDate && activeBankDates.has(ba.bankDate)) return true;
-    if (ba.bankRowId && safeRows.some(r => r.id === ba.bankRowId)) return true;
-    if (ba.bankDate && safeRows.some(r => r.date === ba.bankDate)) return true;
+    if (ba.bankRowId && activeBankRows.some(r => r.id === ba.bankRowId)) return true;
+    if (ba.bankDate && activeBankRows.some(r => r.date === ba.bankDate)) return true;
     if (ba.bankDate && ba.amount) {
-      return safeRows.some(r => (r.date === ba.bankDate || r.date.includes(ba.bankDate) || ba.bankDate.includes(r.date)) && Number(r.amount) >= Number(ba.amount));
+      return activeBankRows.some(r => (r.date === ba.bankDate || r.date.includes(ba.bankDate) || ba.bankDate.includes(r.date)) && Number(r.amount) >= Number(ba.amount));
     }
-    return true; // PERTAHANKAN ALOKASI: Laporan pendapatan adalah catatan resmi yang tidak boleh dihapus sepihak oleh sync
+    return false;
   };
 
   Object.keys(cleanReports).forEach(date => {
@@ -3227,151 +3233,153 @@ export default function App() {
                         const baseReports = stateRef.current.allReports;
                         const newReports = JSON.parse(JSON.stringify(baseReports));
 
+                        const targetRowId = bankRow.id;
+                        const targetApiRefId = String(bankRow.apiRefId || (Array.isArray(bankRow.apiRefIds) ? bankRow.apiRefIds[0] : '') || '');
+                        const targetProofUrl = bankRow.proofUrl || bankRow.linkedTo?.proofUrl || '';
+                        const targetAmount = Number(bankRow.amount || 0);
+
                         const isFromInputBaru =
                           bankRow.status === 'matched' ||
                           !!bankRow.isFromInputBaru ||
                           (Array.isArray(bankRow.inputBaruAllocations) && bankRow.inputBaruAllocations.length > 0) ||
                           (!!bankRow.matchedTo && bankRow.status !== 'linked');
 
-                        if (isFromInputBaru) {
-                          // ==============================================================
-                          // 🔴 JIKA MUTASI DIBUAT DARI "INPUT BARU":
-                          // Data pendapatan di dashboard harus DIHAPUS (nominal dikurangi/dihapus,
-                          // dan item dibuang dari activeItems).
-                          // ==============================================================
-                          if (Array.isArray(bankRow.inputBaruAllocations) && bankRow.inputBaruAllocations.length > 0) {
-                            bankRow.inputBaruAllocations.forEach(alloc => {
-                              const dayData = newReports[alloc.date];
-                              if (!dayData || !dayData[alloc.docKey]) return;
-                              const typeData = dayData[alloc.docKey];
+                        // 1. Bersihkan item terkait di seluruh newReports
+                        Object.keys(newReports).forEach(date => {
+                          const dayData = newReports[date];
+                          if (!dayData || typeof dayData !== 'object') return;
 
-                              if (typeData.formData && typeData.formData[alloc.itemKey] !== undefined) {
-                                const curr = Number(typeData.formData[alloc.itemKey] || 0);
-                                const rem = curr - Number(alloc.amount || 0);
-                                if (rem <= 0) {
-                                  delete typeData.formData[alloc.itemKey];
-                                  delete typeData.formData[alloc.itemKey + '_buktiUrl'];
+                          Object.keys(dayData).forEach(docKey => {
+                            const typeData = dayData[docKey];
+                            if (!typeData || !Array.isArray(typeData.activeItems)) return;
+
+                            typeData.activeItems = typeData.activeItems.filter(item => {
+                              if (!item) return false;
+
+                              let itemKey = `${item.catId}_${item.itemId || item.id}`;
+                              if (item.itemDate) itemKey += `_date_${item.itemDate}`;
+                              if (item.itemNote) {
+                                let h = 0; for (let j = 0; j < item.itemNote.length; j++) { h = ((h << 5) - h) + item.itemNote.charCodeAt(j); h = h & h; }
+                                itemKey += `_note_${Math.abs(h)}`;
+                              }
+
+                              const matchesRowId = targetRowId && (
+                                item.bankMatchRowId === targetRowId ||
+                                (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(targetRowId)) ||
+                                item.originBankRowId === targetRowId ||
+                                (Array.isArray(item.bankAllocations) && item.bankAllocations.some(ba => ba.bankRowId === targetRowId))
+                              );
+
+                              const matchesApi = targetApiRefId && (
+                                String(item.apiRefId || '') === targetApiRefId ||
+                                (Array.isArray(item.bankAllocations) && item.bankAllocations.some(ba => String(ba.apiRefId || '') === targetApiRefId))
+                              );
+
+                              const matchesProof = targetProofUrl && (
+                                item.proofUrl === targetProofUrl ||
+                                (Array.isArray(item.bankAllocations) && item.bankAllocations.some(ba => ba.proofUrl === targetProofUrl))
+                              );
+
+                              let isAllocMatch = false;
+                              if (Array.isArray(bankRow.inputBaruAllocations)) {
+                                isAllocMatch = bankRow.inputBaruAllocations.some(alloc => alloc.date === date && alloc.itemKey === itemKey);
+                              }
+
+                              const isDirectlyAssociated = matchesRowId || matchesApi || matchesProof || isAllocMatch;
+                              if (!isDirectlyAssociated) return true;
+
+                              if (isFromInputBaru) {
+                                const hasOtherAllocations = Array.isArray(item.bankAllocations) && item.bankAllocations.some(ba => ba.bankRowId && ba.bankRowId !== targetRowId);
+                                const curr = Number(typeData.formData?.[itemKey] || 0);
+                                const rem = curr - targetAmount;
+
+                                if (!hasOtherAllocations || rem <= 0 || item.createdFromBank) {
+                                  if (typeData.formData) {
+                                    delete typeData.formData[itemKey];
+                                    delete typeData.formData[itemKey + '_buktiUrl'];
+                                  }
+                                  return false;
                                 } else {
-                                  typeData.formData[alloc.itemKey] = rem;
-                                }
-                              }
-
-                              if (Array.isArray(typeData.activeItems)) {
-                                typeData.activeItems = typeData.activeItems.filter(item => {
-                                  if (!item) return false;
-                                  let k = `${item.catId}_${item.itemId || item.id}`;
-                                  if (item.itemDate) k += `_date_${item.itemDate}`;
-                                  if (item.itemNote) {
-                                    let h = 0; for (let j = 0; j < item.itemNote.length; j++) { h = ((h << 5) - h) + item.itemNote.charCodeAt(j); h = h & h; }
-                                    k += `_note_${Math.abs(h)}`;
+                                  if (typeData.formData) {
+                                    typeData.formData[itemKey] = rem;
                                   }
-                                  if (k === alloc.itemKey) {
-                                    const rem = Number(typeData.formData?.[alloc.itemKey] || 0);
-                                    if (rem > 0) {
-                                      if (Array.isArray(item.bankAllocations)) {
-                                        item.bankAllocations = item.bankAllocations.filter(ba => ba.bankRowId !== bankRow.id);
-                                      }
-                                      if (Array.isArray(item.bankMatchRowIds)) {
-                                        item.bankMatchRowIds = item.bankMatchRowIds.filter(id => id !== bankRow.id);
-                                        if (item.bankMatchRowIds.length > 0) {
-                                          item.bankMatchRowId = item.bankMatchRowIds[0];
-                                        }
-                                      }
-                                      return true;
-                                    }
-                                    return false;
+                                  if (Array.isArray(item.bankAllocations)) {
+                                    item.bankAllocations = item.bankAllocations.filter(ba => ba.bankRowId !== targetRowId && String(ba.apiRefId || '') !== targetApiRefId);
+                                  }
+                                  if (Array.isArray(item.bankMatchRowIds)) {
+                                    item.bankMatchRowIds = item.bankMatchRowIds.filter(id => id !== targetRowId);
+                                    item.bankMatchRowId = item.bankMatchRowIds[0] || '';
+                                  }
+                                  if (String(item.apiRefId || '') === targetApiRefId) {
+                                    delete item.apiRefId;
+                                  }
+                                  if (item.proofUrl === targetProofUrl) {
+                                    delete item.proofUrl;
+                                    delete typeData.formData?.[itemKey + '_buktiUrl'];
                                   }
                                   return true;
-                                });
-                              }
-                              if (alloc.docKey.startsWith('lain_') && Array.isArray(typeData.activeItems) && typeData.activeItems.length === 0) {
-                                delete dayData[alloc.docKey];
-                              }
-                            });
-                          } else {
-                            // Fallback untuk mutasi Input Baru sebelumnya (seperti kasus Pedagang Tikar)
-                            Object.keys(newReports).forEach(date => {
-                              Object.keys(newReports[date] || {}).forEach(type => {
-                                const typeData = newReports[date]?.[type];
-                                if (!typeData || !Array.isArray(typeData.activeItems)) return;
-
-                                typeData.activeItems = typeData.activeItems.filter(item => {
-                                  if (!item) return false;
-                                  const matchesId = (bankRow.id && (item.bankMatchRowId === bankRow.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(bankRow.id)) || item.originBankRowId === bankRow.id));
-                                  const matchesDate = !bankRow.id && !item.bankMatchRowId && (item.bankMatchDate === bankRow.date || item.originBankDate === bankRow.date);
-
-                                  if (matchesId || matchesDate) {
-                                    let itemKey = `${item.catId}_${item.itemId || item.id}`;
-                                    if (item.itemDate) itemKey += `_date_${item.itemDate}`;
-                                    if (item.itemNote) {
-                                      let h = 0; for (let j = 0; j < item.itemNote.length; j++) { h = ((h << 5) - h) + item.itemNote.charCodeAt(j); h = h & h; }
-                                      itemKey += `_note_${Math.abs(h)}`;
-                                    }
-                                    if (typeData.formData) {
-                                      delete typeData.formData[itemKey];
-                                      delete typeData.formData[itemKey + '_buktiUrl'];
-                                    }
-                                    return false; // Hapus item dari activeItems
-                                  }
-                                  return true;
-                                });
-
-                                if (type.startsWith('lain_') && Array.isArray(typeData.activeItems) && typeData.activeItems.length === 0) {
-                                  delete newReports[date][type];
                                 }
-                              });
-                            });
-                          }
-                        } else {
-                          // ==============================================================
-                          // 🔴 JIKA MUTASI DARI "PASANGKAN":
-                          // Data memang sudah ada di dashboard sebelum dipasangkan.
-                          // HANYA lepaskan status pasangan (bankMatched), TIDAK MENGHAPUS
-                          // item maupun nominal di formData!
-                          // ==============================================================
-                          Object.keys(newReports).forEach(date => {
-                            Object.keys(newReports[date]).forEach(type => {
-                              if (newReports[date][type] && Array.isArray(newReports[date][type].activeItems)) {
-                                newReports[date][type].activeItems = newReports[date][type].activeItems.map(item => {
-                                  if (item) {
-                                    const matchesId = (bankRow.id && (item.bankMatchRowId === bankRow.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(bankRow.id))));
-                                    const matchesDate = !bankRow.id && !item.bankMatchRowId && item.bankMatchDate === bankRow.date;
-
-                                    if (matchesId || matchesDate) {
-                                      const newItem = { ...item };
-                                      if (Array.isArray(newItem.bankMatchRowIds)) {
-                                        newItem.bankMatchRowIds = newItem.bankMatchRowIds.filter(id => id !== bankRow.id);
-                                        if (newItem.bankMatchRowIds.length === 0) {
-                                          delete newItem.bankMatched;
-                                          delete newItem.bankMatchDate;
-                                          delete newItem.bankMatchRowId;
-                                          delete newItem.bankMatchRowIds;
-                                        } else {
-                                          newItem.bankMatchRowId = newItem.bankMatchRowIds[newItem.bankMatchRowIds.length - 1];
-                                        }
-                                      } else {
-                                        delete newItem.bankMatched;
-                                        delete newItem.bankMatchDate;
-                                        delete newItem.bankMatchRowId;
-                                      }
-                                      return newItem;
-                                    }
+                              } else {
+                                if (Array.isArray(item.bankMatchRowIds)) {
+                                  item.bankMatchRowIds = item.bankMatchRowIds.filter(id => id !== targetRowId);
+                                  if (item.bankMatchRowIds.length === 0) {
+                                    delete item.bankMatched;
+                                    delete item.bankMatchDate;
+                                    delete item.bankMatchRowId;
+                                    delete item.bankMatchRowIds;
+                                    delete item.apiRefId;
+                                    delete item.proofUrl;
+                                  } else {
+                                    item.bankMatchRowId = item.bankMatchRowIds[item.bankMatchRowIds.length - 1];
                                   }
-                                  return item;
-                                });
+                                } else {
+                                  delete item.bankMatched;
+                                  delete item.bankMatchDate;
+                                  delete item.bankMatchRowId;
+                                  delete item.apiRefId;
+                                  delete item.proofUrl;
+                                }
+                                if (Array.isArray(item.bankAllocations)) {
+                                  item.bankAllocations = item.bankAllocations.filter(ba => ba.bankRowId !== targetRowId && String(ba.apiRefId || '') !== targetApiRefId);
+                                }
+                                if (String(item.apiRefId || '') === targetApiRefId) {
+                                  delete item.apiRefId;
+                                }
+                                if (item.proofUrl === targetProofUrl) {
+                                  delete item.proofUrl;
+                                  delete typeData.formData?.[itemKey + '_buktiUrl'];
+                                }
+                                return true;
                               }
                             });
+
+                            if (docKey.startsWith('lain_') && Array.isArray(typeData.activeItems) && typeData.activeItems.length === 0) {
+                              delete dayData[docKey];
+                            }
                           });
-                        }
+                        });
 
+                        // 2. Bersihkan seluruh field pasangan di newBankRows
                         const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
                         const newBankRows = baseBankRows.map(r => {
-                          if (r.id === bankRow.id || (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && r.description === bankRow.description)) {
+                          const isTarget = (targetRowId && r.id === targetRowId) || (
+                            r.date === bankRow.date &&
+                            Number(r.amount) === Number(bankRow.amount) &&
+                            (r.description || '').trim() === (bankRow.description || '').trim()
+                          );
+                          if (isTarget) {
                             const updated = { ...r, status: 'pending' };
                             delete updated.linkedTo;
                             delete updated.matchedTo;
                             delete updated.isFromInputBaru;
                             delete updated.inputBaruAllocations;
+                            delete updated.apiRefId;
+                            delete updated.apiRefIds;
+                            delete updated.proofUrl;
+                            delete updated.transferProof;
+                            delete updated.tenant;
+                            delete updated.location;
+                            delete updated.source;
                             return updated;
                           }
                           return r;
@@ -3380,11 +3388,114 @@ export default function App() {
                         setAllReports(newReports);
                         setBankRows(newBankRows);
 
-                        showToast('Status pasangan mutasi bank berhasil dibatalkan!');
+                        showToast('Status pasangan mutasi bank dan bukti transfer berhasil dibatalkan!');
                         saveToFirebaseDirectly(newReports, newBankRows);
                       } catch (err) {
                         console.error("Error unlinking:", err);
                         alert("Gagal membatalkan pasangan: " + err.message);
+                      }
+                    }}
+                    onUnlinkApiItem={async (apiItem) => {
+                      if (!apiItem) return;
+                      const apiIdStr = String(apiItem.id || '');
+                      const urls = [
+                        apiItem.buktiTransferUrl,
+                        apiItem.buktiTransferDocUrl,
+                        apiItem.pksDriveUrl,
+                        apiItem.fileUrl,
+                        apiItem.url
+                      ].filter(Boolean);
+
+                      try {
+                        const baseReports = stateRef.current.allReports;
+                        const newReports = JSON.parse(JSON.stringify(baseReports));
+                        const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
+
+                        const newBankRows = baseBankRows.map(r => {
+                          const matchesApi = (
+                            (r.apiRefId && String(r.apiRefId) === apiIdStr) ||
+                            (Array.isArray(r.apiRefIds) && r.apiRefIds.some(id => String(id) === apiIdStr)) ||
+                            urls.some(u => u && (r.proofUrl === u || r.linkedTo?.proofUrl === u || r.transferProof === u))
+                          );
+                          if (matchesApi) {
+                            const updated = { ...r, status: 'pending' };
+                            delete updated.linkedTo;
+                            delete updated.matchedTo;
+                            delete updated.isFromInputBaru;
+                            delete updated.inputBaruAllocations;
+                            delete updated.apiRefId;
+                            delete updated.apiRefIds;
+                            delete updated.proofUrl;
+                            delete updated.transferProof;
+                            delete updated.tenant;
+                            delete updated.location;
+                            delete updated.source;
+                            return updated;
+                          }
+                          return r;
+                        });
+
+                        Object.keys(newReports).forEach(date => {
+                          const dayData = newReports[date];
+                          if (!dayData || typeof dayData !== 'object') return;
+
+                          Object.keys(dayData).forEach(docKey => {
+                            const typeData = dayData[docKey];
+                            if (!typeData || !Array.isArray(typeData.activeItems)) return;
+
+                            typeData.activeItems = typeData.activeItems.filter(item => {
+                              if (!item) return false;
+                              const matchesApi = (
+                                (item.apiRefId && String(item.apiRefId) === apiIdStr) ||
+                                (Array.isArray(item.bankAllocations) && item.bankAllocations.some(ba => String(ba.apiRefId || '') === apiIdStr)) ||
+                                urls.some(u => u && item.proofUrl === u)
+                              );
+                              if (!matchesApi) return true;
+
+                              let itemKey = `${item.catId}_${item.itemId || item.id}`;
+                              if (item.itemDate) itemKey += `_date_${item.itemDate}`;
+                              if (item.itemNote) {
+                                let h = 0; for (let j = 0; j < item.itemNote.length; j++) { h = ((h << 5) - h) + item.itemNote.charCodeAt(j); h = h & h; }
+                                itemKey += `_note_${Math.abs(h)}`;
+                              }
+
+                              if (item.createdFromBank) {
+                                if (typeData.formData) {
+                                  delete typeData.formData[itemKey];
+                                  delete typeData.formData[itemKey + '_buktiUrl'];
+                                }
+                                return false;
+                              } else {
+                                delete item.bankMatched;
+                                delete item.bankMatchDate;
+                                delete item.bankMatchRowId;
+                                delete item.bankMatchRowIds;
+                                delete item.apiRefId;
+                                delete item.proofUrl;
+                                if (typeData.formData) {
+                                  delete typeData.formData[itemKey + '_buktiUrl'];
+                                }
+                                if (Array.isArray(item.bankAllocations)) {
+                                  item.bankAllocations = item.bankAllocations.filter(ba => String(ba.apiRefId || '') !== apiIdStr);
+                                }
+                                return true;
+                              }
+                            });
+
+                            if (docKey.startsWith('lain_') && Array.isArray(typeData.activeItems) && typeData.activeItems.length === 0) {
+                              delete dayData[docKey];
+                            }
+                          });
+                        });
+
+                        setAllReports(newReports);
+                        setBankRows(newBankRows);
+
+                        showToast('Status pasangan bukti transfer berhasil dilepaskan!');
+                        saveToFirebaseDirectly(newReports, newBankRows);
+                      } catch (err) {
+                        console.error("Error unlinking API item:", err);
+                        alert("Gagal melepaskan pasangan bukti transfer: " + err.message);
                       }
                     }}
                   />

@@ -20,7 +20,8 @@ export default function RekonBankTab({
   onSaveBankRows, 
   syncStatus, 
   onRefreshCloud,
-  isMonthClosed
+  isMonthClosed,
+  onUnlinkApiItem
 }) {
   const [viewMode, setViewMode] = useState('calendar'); // 'calendar' | 'list'
   const [selectedBankDates, setSelectedBankDates] = useState([]);
@@ -311,16 +312,11 @@ export default function RekonBankTab({
           if (typeData && Array.isArray(typeData.activeItems)) {
             for (const activeItem of typeData.activeItems) {
               if (activeItem.bankMatched) {
-                if (activeItem.apiRefId && String(activeItem.apiRefId) === itemId) {
-                  return { isMatched: true, reportItem: activeItem, reportDate: ymd };
-                }
-                if (Array.isArray(activeItem.bankAllocations) && activeItem.bankAllocations.some(ba => String(ba.apiRefId) === itemId)) {
-                  return { isMatched: true, reportItem: activeItem, reportDate: ymd };
-                }
-                if (isUrlMatch(activeItem.proofUrl)) {
-                  return { isMatched: true, reportItem: activeItem, reportDate: ymd };
-                }
-                if (typeData.formData) {
+                let matchesApi = false;
+                if (activeItem.apiRefId && String(activeItem.apiRefId) === itemId) matchesApi = true;
+                else if (Array.isArray(activeItem.bankAllocations) && activeItem.bankAllocations.some(ba => String(ba.apiRefId) === itemId)) matchesApi = true;
+                else if (isUrlMatch(activeItem.proofUrl)) matchesApi = true;
+                else if (typeData.formData) {
                   let itemKey = activeItem.catId + '_' + (activeItem.itemId || activeItem.id);
                   if (activeItem.itemDate) itemKey += '_date_' + activeItem.itemDate;
                   if (activeItem.itemNote) {
@@ -328,8 +324,24 @@ export default function RekonBankTab({
                     itemKey += '_note_' + Math.abs(h);
                   }
                   const formUrl = typeData.formData[itemKey + '_buktiUrl'];
-                  if (formUrl && isUrlMatch(formUrl)) {
-                    return { isMatched: true, reportItem: activeItem, reportDate: ymd };
+                  if (formUrl && isUrlMatch(formUrl)) matchesApi = true;
+                }
+
+                if (matchesApi) {
+                  // Pastikan mutasi bank pendukungnya benar-benar ada dan berstatus matched atau linked
+                  const activeRow = bankRows.find(r => {
+                    if (r.status !== 'matched' && r.status !== 'linked') return false;
+                    if (activeItem.bankMatchRowId && r.id === activeItem.bankMatchRowId) return true;
+                    if (Array.isArray(activeItem.bankMatchRowIds) && activeItem.bankMatchRowIds.includes(r.id)) return true;
+                    if (Array.isArray(activeItem.bankAllocations) && activeItem.bankAllocations.some(ba => ba.bankRowId && ba.bankRowId === r.id)) return true;
+                    if (r.apiRefId && String(r.apiRefId) === itemId) return true;
+                    if (Array.isArray(r.apiRefIds) && r.apiRefIds.some(id => String(id) === itemId)) return true;
+                    if (isUrlMatch(r.proofUrl)) return true;
+                    return false;
+                  });
+
+                  if (activeRow) {
+                    return { isMatched: true, reportItem: activeItem, reportDate: ymd, matchedRow: activeRow };
                   }
                 }
               }
@@ -1354,20 +1366,36 @@ export default function RekonBankTab({
                     )}
                   </div>
                   
-                  <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between">
-                    <div className={'font-black text-base ' + (isMatched ? 'text-emerald-800' : 'text-indigo-700')}>
+                  <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between gap-1.5">
+                    <div className={'font-black text-base truncate ' + (isMatched ? 'text-emerald-800' : 'text-indigo-700')}>
                       Rp {formatRp(nominal)}
                     </div>
-                    <button 
-                      type="button" 
-                      onClick={(e) => handleViewProof(e, proofUrl)} 
-                      className={'text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors ' + (
-                        isMatched ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs' : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700'
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {isMatched && onUnlinkApiItem && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Lepaskan pasangan untuk bukti transfer "${item.nama_penyewa || item.namaPerusahaan || 'ini'}"?\n\nStatus akan dikembalikan menjadi 'Belum Dipasangkan'.`)) {
+                              onUnlinkApiItem(item);
+                            }
+                          }}
+                          className="text-[11px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-colors shadow-2xs cursor-pointer"
+                          title="Lepaskan Pasangan Bukti Transfer Ini"
+                        >
+                          <RotateCcw size={11}/> Lepas
+                        </button>
                       )}
-                      title="Lihat Bukti Transfer"
-                    >
-                      <LinkIcon size={12}/> Bukti
-                    </button>
+                      <button 
+                        type="button" 
+                        onClick={(e) => handleViewProof(e, proofUrl)} 
+                        className={'text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors cursor-pointer ' + (
+                          isMatched ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs' : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700'
+                        )}
+                        title="Lihat Bukti Transfer"
+                      >
+                        <LinkIcon size={12}/> Bukti
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
