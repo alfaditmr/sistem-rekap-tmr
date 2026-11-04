@@ -3096,6 +3096,10 @@ export default function App() {
                             : (alloc.description || bankRow.description || 'Mutasi Bank');
 
                           const allocAmount = Number(alloc.amount || 0);
+                          const subItemObj = (cat && Array.isArray(cat.items) && theItemId !== 'direct')
+                            ? cat.items.find(i => String(i.id) === String(theItemId))
+                            : null;
+                          const subItemName = subItemObj ? subItemObj.name : '';
 
                           const newAllocationDetail = {
                             bankRowId: effectiveRowId,
@@ -3104,6 +3108,8 @@ export default function App() {
                             desc: displayDesc,
                             tenant: tenantLabel,
                             location: locationLabel,
+                            itemId: theItemId,
+                            itemName: subItemName,
                             apiRefId: alloc.apiRefId || '',
                             proofUrl: cleanProofUrl
                           };
@@ -3223,6 +3229,8 @@ export default function App() {
                             date: allocYmd,
                             docKey: docKey,
                             itemKey: itemKey,
+                            itemId: theItemId,
+                            itemName: subItemName,
                             amount: allocAmount,
                             wasNewItem: wasNew
                           });

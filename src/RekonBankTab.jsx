@@ -978,11 +978,42 @@ export default function RekonBankTab({
     }
   };
 
-  // 🔴 RENDER BADGE PASANGAN (TIDAK MENJABARKAN RINCIAN ITEM / NOMINAL KECIL)
-  // Menampilkan ringkas: [YYYY-MM-DD] Nama Kategori (Tiket Online, TVM, dll.)
+  // 🔴 RENDER BADGE PASANGAN (MENAMPILKAN KATEGORI & ITEM POS KHUSUS PEMAKAIAN FASILITAS TMR)
   const renderMatchedBadge = (row) => {
     let dynamicName = row.linkedTo?.groupName;
     const matchedDetails = [];
+
+    const isFasilitasCat = (cat, catName) => {
+      return Boolean((cat && cat.id === 'cat_1') || /fasilitas/i.test(cat?.name || catName || ''));
+    };
+
+    const getItemPosFromCatAndItem = (cat, itemId, fallbackItemName = '') => {
+      if (cat && Array.isArray(cat.items) && itemId && itemId !== 'direct') {
+        const found = cat.items.find(i => String(i.id) === String(itemId));
+        if (found && found.name) return found.name;
+      }
+      return fallbackItemName || '';
+    };
+
+    const resolveItemPosFromKey = (itemKey) => {
+      if (!itemKey || typeof itemKey !== 'string') return null;
+      for (const cat of categories) {
+        if (itemKey === cat.id || itemKey.startsWith(cat.id + '_')) {
+          const rest = itemKey.slice(cat.id.length + 1);
+          let subItem = null;
+          if (Array.isArray(cat.items)) {
+            const sortedItems = [...cat.items].sort((a, b) => String(b.id).length - String(a.id).length);
+            subItem = sortedItems.find(i => rest === i.id || rest.startsWith(i.id + '_'));
+          }
+          return {
+            cat,
+            catName: cat.name,
+            itemPos: (subItem && subItem.id !== 'direct') ? subItem.name : ''
+          };
+        }
+      }
+      return null;
+    };
 
     // 1. Jika baris mutasi berstatus 'linked' dengan target grup yang telah dipilih,
     // gunakan informasi linkedTo secara langsung (akurat 100% dan tidak tertukar dengan baris mutasi lain)
@@ -994,7 +1025,8 @@ export default function RekonBankTab({
         if (foundCat) cleanName = foundCat.name;
         if (cleanName) {
           let proofUrl = row.proofUrl || row.linkedTo.proofUrl || '';
-          if (!proofUrl && allReports && allReports[row.linkedTo.date]) {
+          const linkedItemPosList = [];
+          if (allReports && allReports[row.linkedTo.date]) {
             Object.keys(allReports[row.linkedTo.date]).forEach(type => {
               const td = allReports[row.linkedTo.date][type];
               if (td && Array.isArray(td.activeItems)) {
@@ -1009,14 +1041,28 @@ export default function RekonBankTab({
                       itemKey += `_note_${Math.abs(h)}`;
                     }
                     const myAlloc = Array.isArray(item.bankAllocations) ? item.bankAllocations.find(ba => (row.id && ba.bankRowId === row.id)) : null;
-                    const pu = myAlloc?.proofUrl || item.proofUrl || td.formData?.[itemKey + '_buktiUrl'];
-                    if (pu) proofUrl = pu;
+                    if (!proofUrl) {
+                      const pu = myAlloc?.proofUrl || item.proofUrl || td.formData?.[itemKey + '_buktiUrl'];
+                      if (pu) proofUrl = pu;
+                    }
+                    const itemCat = categories.find(c => c.id === item.catId) || foundCat;
+                    if (isFasilitasCat(itemCat, cleanName)) {
+                      const posName = getItemPosFromCatAndItem(itemCat, myAlloc?.itemId || item.itemId || item.id, myAlloc?.itemName || item.itemName);
+                      if (posName && !linkedItemPosList.includes(posName)) {
+                        linkedItemPosList.push(posName);
+                      }
+                    }
                   }
                 });
               }
             });
           }
-          matchedDetails.push({ date: row.linkedTo.date, name: cleanName, proofUrl: proofUrl || row.proofUrl || row.linkedTo?.proofUrl || '' });
+          matchedDetails.push({
+            date: row.linkedTo.date,
+            name: cleanName,
+            itemPosList: linkedItemPosList,
+            proofUrl: proofUrl || row.proofUrl || row.linkedTo?.proofUrl || ''
+          });
         }
       });
     }
@@ -1030,13 +1076,25 @@ export default function RekonBankTab({
             const typeData = dayData[type];
             if (typeData && Array.isArray(typeData.activeItems)) {
               typeData.activeItems.forEach(item => {
-                const isRowMatch = item && item.bankMatched && (
-                  (row.id && (item.bankMatchRowId === row.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(row.id)))) || 
+                if (!item) return;
+                const itemFullKey = `${item.catId}_${item.itemId || item.id}`;
+                const isRowMatch = item.bankMatched && (
+                  (row.id && (item.bankMatchRowId === row.id || item.originBankRowId === row.id || (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(row.id)))) || 
                   (Array.isArray(item.bankAllocations) && item.bankAllocations.some(ba => 
                     (row.id && ba.bankRowId === row.id) ||
-                    (!row.id && !ba.bankRowId && ba.bankDate === row.date && Number(ba.amount) === Number(row.amount) && Number(row.amount) > 0)
+                    (ba.bankDate && row.date && ba.bankDate === row.date && Number(ba.amount) === Number(row.amount) && Number(row.amount) > 0)
                   )) ||
-                  ((!row.id || !item.bankMatchRowId) && item.bankMatchDate === row.date && Number(item.originBankAllocAmount || 0) > 0 && Number(item.originBankAllocAmount) === Number(row.amount))
+                  (row.date && (item.bankMatchDate === row.date || item.originBankDate === row.date) && Number(item.originBankAllocAmount || 0) > 0 && Number(item.originBankAllocAmount) === Number(row.amount)) ||
+                  (Array.isArray(row.inputBaruAllocations) && row.inputBaruAllocations.some(alloc => 
+                    alloc.date === ymd && (
+                      alloc.itemKey === itemFullKey || 
+                      (typeof alloc.itemKey === 'string' && (
+                        alloc.itemKey.startsWith(itemFullKey + '_susulan_') ||
+                        alloc.itemKey.startsWith(itemFullKey + '_date_') ||
+                        alloc.itemKey.startsWith(itemFullKey + '_note_')
+                      ))
+                    )
+                  ))
                 );
                 if (isRowMatch) {
                   const cat = categories.find(c => c.id === item.catId);
@@ -1048,14 +1106,42 @@ export default function RekonBankTab({
                   // agar tidak tertimpa oleh bukti transaksi lain yang masuk ke kategori yang sama!
                   const myAlloc = Array.isArray(item.bankAllocations) ? item.bankAllocations.find(ba => 
                     (row.id && ba.bankRowId === row.id) ||
-                    (!row.id && !ba.bankRowId && ba.bankDate === row.date && Number(ba.amount) === Number(row.amount))
+                    (ba.bankDate && row.date && ba.bankDate === row.date && Number(ba.amount) === Number(row.amount))
                   ) : null;
-                  const proofUrl = row.proofUrl || row.linkedTo?.proofUrl || myAlloc?.proofUrl || item.proofUrl || typeData.formData?.[`${item.catId}_${item.itemId || item.id}_buktiUrl`] || '';
+                  const hasMultiAllocs = Array.isArray(item.bankAllocations) && item.bankAllocations.length > 1;
+                  const proofUrl = row.proofUrl || row.linkedTo?.proofUrl || myAlloc?.proofUrl || (!hasMultiAllocs ? (item.proofUrl || typeData.formData?.[`${item.catId}_${item.itemId || item.id}_buktiUrl`]) : '') || '';
                   const targetDate = item.validDate || item.itemDate || ymd;
-                  matchedDetails.push({ date: targetDate, name, proofUrl });
+
+                  let itemPos = '';
+                  if (isFasilitasCat(cat, name)) {
+                    itemPos = getItemPosFromCatAndItem(cat, myAlloc?.itemId || item.itemId || item.id, myAlloc?.itemName || item.itemName);
+                  }
+
+                  matchedDetails.push({
+                    date: targetDate,
+                    name,
+                    itemPosList: itemPos ? [itemPos] : [],
+                    proofUrl
+                  });
                 }
               });
             }
+          });
+        }
+      });
+    }
+
+    // 2b. Jika masih belum ditemukan di allReports tetapi ada inputBaruAllocations pada row
+    if (matchedDetails.length === 0 && Array.isArray(row.inputBaruAllocations) && row.inputBaruAllocations.length > 0) {
+      row.inputBaruAllocations.forEach(alloc => {
+        const resolved = resolveItemPosFromKey(alloc.itemKey);
+        if (resolved) {
+          const posName = isFasilitasCat(resolved.cat, resolved.catName) ? (alloc.itemName || resolved.itemPos || '') : '';
+          matchedDetails.push({
+            date: alloc.date || row.linkedTo?.date || (row.date ? row.date.split(' ')[0] : ''),
+            name: resolved.catName,
+            itemPosList: posName ? [posName] : [],
+            proofUrl: row.proofUrl || row.linkedTo?.proofUrl || ''
           });
         }
       });
@@ -1069,7 +1155,20 @@ export default function RekonBankTab({
         const foundCat = categories.find(c => cleanName.toLowerCase().startsWith(c.name.toLowerCase()));
         if (foundCat) cleanName = foundCat.name;
         if (cleanName) {
-          matchedDetails.push({ date: row.linkedTo.date, name: cleanName, proofUrl: row.proofUrl || row.linkedTo.proofUrl || '' });
+          const fallbackPosList = [];
+          if (isFasilitasCat(foundCat, cleanName) && Array.isArray(row.inputBaruAllocations)) {
+            row.inputBaruAllocations.forEach(alloc => {
+              const res = resolveItemPosFromKey(alloc.itemKey);
+              const pos = alloc.itemName || res?.itemPos || '';
+              if (pos && !fallbackPosList.includes(pos)) fallbackPosList.push(pos);
+            });
+          }
+          matchedDetails.push({
+            date: row.linkedTo.date,
+            name: cleanName,
+            itemPosList: fallbackPosList,
+            proofUrl: row.proofUrl || row.linkedTo.proofUrl || ''
+          });
         }
       });
     }
@@ -1083,26 +1182,67 @@ export default function RekonBankTab({
         const foundCat = categories.find(c => cleanName.toLowerCase().startsWith(c.name.toLowerCase()));
         if (foundCat) cleanName = foundCat.name;
         if (cleanName) {
-          matchedDetails.push({ date: targetDate, name: cleanName, proofUrl: row.proofUrl || "" });
+          const fallbackPosList = [];
+          if (isFasilitasCat(foundCat, cleanName) && Array.isArray(row.inputBaruAllocations)) {
+            row.inputBaruAllocations.forEach(alloc => {
+              const res = resolveItemPosFromKey(alloc.itemKey);
+              const pos = alloc.itemName || res?.itemPos || '';
+              if (pos && !fallbackPosList.includes(pos)) fallbackPosList.push(pos);
+            });
+          }
+          matchedDetails.push({
+            date: targetDate,
+            name: cleanName,
+            itemPosList: fallbackPosList,
+            proofUrl: row.proofUrl || ""
+          });
         }
       });
     }
 
     // Dedup array: jika 10 sub-item tiket sama dalam satu kategori di hari yang sama, gabung jadi 1 nama kategori bersih!
+    // Untuk Pemakaian fasilitas TMR, kumpulkan daftar Item POS yang dialokasikan.
     const uniqueDetails = [];
     const seen = new Set();
     matchedDetails.forEach(d => {
       const key = `${d.date}_${d.name}`;
       if (!seen.has(key)) {
         seen.add(key);
-        uniqueDetails.push(d);
+        uniqueDetails.push({
+          ...d,
+          itemPosList: Array.isArray(d.itemPosList) ? [...new Set(d.itemPosList.filter(Boolean))] : []
+        });
       } else {
         const existing = uniqueDetails.find(u => `${u.date}_${u.name}` === key);
-        if (existing && !existing.proofUrl && d.proofUrl) {
-          existing.proofUrl = d.proofUrl;
+        if (existing) {
+          if (!existing.proofUrl && d.proofUrl) {
+            existing.proofUrl = d.proofUrl;
+          }
+          if (Array.isArray(d.itemPosList)) {
+            d.itemPosList.forEach(pos => {
+              if (pos && !existing.itemPosList.includes(pos)) {
+                existing.itemPosList.push(pos);
+              }
+            });
+          }
         }
       }
     });
+
+    // Perkaya itemPosList dari inputBaruAllocations jika ada kategori fasilitas yang itemPosList-nya masih kosong
+    if (Array.isArray(row.inputBaruAllocations) && row.inputBaruAllocations.length > 0) {
+      uniqueDetails.forEach(detail => {
+        if (isFasilitasCat(null, detail.name) && (!detail.itemPosList || detail.itemPosList.length === 0)) {
+          row.inputBaruAllocations.forEach(alloc => {
+            const res = resolveItemPosFromKey(alloc.itemKey);
+            const pos = alloc.itemName || res?.itemPos || '';
+            if (pos && !detail.itemPosList.includes(pos)) {
+              detail.itemPosList.push(pos);
+            }
+          });
+        }
+      });
+    }
 
     if (uniqueDetails.length === 0 && !row.proofUrl && !row.transferProof) return null;
 
@@ -1119,6 +1259,18 @@ export default function RekonBankTab({
               <span className="font-bold text-indigo-900 leading-snug">
                 [{detail.date}] {detail.name}
               </span>
+              {detail.itemPosList && detail.itemPosList.length > 0 && (
+                <div className="flex flex-col gap-0.5">
+                  {detail.itemPosList.map((posName, pIdx) => (
+                    <span
+                      key={pIdx}
+                      className="text-[11px] font-bold text-indigo-700 bg-white/90 border border-indigo-200 px-2 py-0.5 rounded-md w-fit leading-tight shadow-2xs"
+                    >
+                      Item POS: {posName}
+                    </span>
+                  ))}
+                </div>
+              )}
               {activeProof && (
                 <button 
                   type="button" 
