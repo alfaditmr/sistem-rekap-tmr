@@ -596,11 +596,11 @@ export default function InputHarianTab({
                             ) : null}
                           </div>
 
-                          {/* DETAIL TRANSAKSI GABUNGAN (NON-PRINTED) */}
-                          {Array.isArray(item.bankAllocations) && (item.bankAllocations.length > 1 || (item.bankAllocations.length === 1 && item.hadMultipleAllocations)) && (
+                          {/* DETAIL TRANSAKSI / ASAL DATA MUTASI (NON-PRINTED) */}
+                          {Array.isArray(item.bankAllocations) && item.bankAllocations.length >= 1 && (
                             <div className="mt-2.5 p-2.5 bg-indigo-50/70 border border-indigo-100 rounded-xl print:hidden text-xs space-y-1.5 shadow-2xs w-full">
                               <div className="text-[10px] font-black uppercase tracking-wider text-indigo-700 flex items-center gap-1">
-                                <Layers size={11} className="text-indigo-600" /> Rincian Transaksi ({item.bankAllocations.length} Mutasi{item.bankAllocations.length === 1 ? ' Tersisa' : ''}):
+                                <Layers size={11} className="text-indigo-600" /> Rincian Transaksi ({item.bankAllocations.length} Mutasi):
                               </div>
                               <div className="space-y-1">
                                 {item.bankAllocations.map((alloc, aIdx) => (
@@ -733,7 +733,7 @@ export default function InputHarianTab({
                               Masuk Bank: <strong className="text-emerald-950 font-bold">{displayDateStr}</strong>
                             </span>
                           </div>
-                          {bankCount > 1 && (
+                          {bankCount >= 1 && (
                             <span className="bg-emerald-200/70 text-emerald-900 text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ml-2 shadow-2xs">
                               {bankCount} Mutasi
                             </span>

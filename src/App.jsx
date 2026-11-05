@@ -2893,7 +2893,80 @@ export default function App() {
   const activeGroups = useMemo(() => {
     if (!Array.isArray(categories)) return [];
     const activeI = Array.isArray(currentReport.activeItems) ? currentReport.activeItems : [];
+    const cForm = currentReport.formData || {};
+    const safeBankRows = Array.isArray(bankRows) ? bankRows : [];
     const groups = [];
+
+    const enrichItemAllocationsForDisplay = (ai) => {
+      if (!ai) return ai;
+      const itemKey = getActiveItemKey(ai.catId, ai.itemId || ai.id, ai.isSusulan, ai.validDate, ai.itemDate, ai.itemNote);
+      const baseKey = `${ai.catId}_${ai.itemId || ai.id}`;
+      const nominal = Number(cForm[itemKey] ?? cForm[baseKey] ?? ai.originBankAllocAmount ?? 0);
+
+      if (Array.isArray(ai.bankAllocations) && ai.bankAllocations.length > 0) {
+        const enrichedAllocs = ai.bankAllocations.map(ba => {
+          if (!ba) return ba;
+          let desc = ba.desc || ba.tenant || '';
+          if (!desc || desc === 'Mutasi Bank' || desc === 'Transaksi Sebelumnya') {
+            const matchedRow = safeBankRows.find(r =>
+              r && (
+                (ba.bankRowId && ba.bankRowId !== 'prior_0' && r.id === ba.bankRowId) ||
+                (ba.bankDate && r.date === ba.bankDate && Number(r.amount) >= Number(ba.amount || 0))
+              )
+            );
+            if (matchedRow) {
+              desc = matchedRow.tenant
+                ? (matchedRow.location && matchedRow.location !== matchedRow.tenant ? `${matchedRow.tenant} - ${matchedRow.location}` : matchedRow.tenant)
+                : (matchedRow.description || (matchedRow.date ? `Mutasi (${matchedRow.date})` : 'Mutasi Bank'));
+            }
+          }
+          return { ...ba, desc: desc || 'Mutasi Bank' };
+        });
+        return { ...ai, bankAllocations: enrichedAllocs };
+      }
+
+      // Jika item hanya punya 1 data namun belum memiliki array bankAllocations (data lama),
+      // cari sumber mutasinya dari bankRows agar tetap tampil asal datanya
+      const isAllocatedItem = ai.createdFromBank || ai.catId === 'cat_1' || activeType === 'lain' || ai.originBankRowId || ai.originBankDate;
+      const hasBankLink = ai.bankMatched || ai.bankMatchRowId || ai.originBankRowId || ai.bankMatchDate || ai.originBankDate;
+      if (isAllocatedItem && (hasBankLink || nominal > 0)) {
+        const rowId = ai.originBankRowId || ai.bankMatchRowId || '';
+        const bDate = ai.originBankDate || ai.bankMatchDate || '';
+        const matchedRow = safeBankRows.find(r => {
+          if (!r) return false;
+          if (rowId && r.id === rowId) return true;
+          if (Array.isArray(r.inputBaruAllocations) && r.inputBaruAllocations.some(a => a && a.date === reportDate && (a.itemKey === itemKey || a.itemKey === baseKey || a.itemId === (ai.itemId || ai.id)))) {
+            return true;
+          }
+          if (bDate && r.date === bDate && (nominal <= 0 || Number(r.amount) >= nominal)) return true;
+          return false;
+        });
+
+        if (matchedRow || hasBankLink) {
+          const desc = matchedRow?.tenant
+            ? (matchedRow.location && matchedRow.location !== matchedRow.tenant ? `${matchedRow.tenant} - ${matchedRow.location}` : matchedRow.tenant)
+            : (ai.itemNote || matchedRow?.description || (bDate ? `Mutasi (${bDate})` : 'Mutasi Bank'));
+          const allocAmount = nominal > 0 ? nominal : Number(matchedRow?.amount || 0);
+          if (allocAmount > 0 || desc) {
+            return {
+              ...ai,
+              bankAllocations: [{
+                bankRowId: matchedRow?.id || rowId || 'prior_0',
+                bankDate: matchedRow?.date || bDate || '',
+                amount: allocAmount,
+                desc,
+                tenant: matchedRow?.tenant || '',
+                location: matchedRow?.location || '',
+                apiRefId: ai.apiRefId || matchedRow?.apiRefId || '',
+                proofUrl: ai.proofUrl || matchedRow?.proofUrl || ''
+              }]
+            };
+          }
+        }
+      }
+
+      return ai;
+    };
 
     const sortDisplayItems = (items, masterItems) => {
       items.sort((a, b) => {
@@ -2916,8 +2989,9 @@ export default function App() {
         itemsForCat.forEach(ai => { const key = ai.isSusulan ? `susulan_${ai.validDate}` : 'normal'; if (!configsForCat.find(c => c.key === key)) configsForCat.push({ key, isSusulan: !!ai.isSusulan, validDate: ai.validDate }); });
         configsForCat.forEach(config => {
           let displayItems = itemsForCat.filter(ai => !!ai.isSusulan === config.isSusulan && (ai.validDate || '') === (config.validDate || '')).map(ai => {
-            if (ai.itemId === 'direct') return { ...ai, id: 'direct', name: cat.name, itemNote: ai.itemNote };
-            const found = cat.items?.find(i => i.id === ai.itemId); return { ...ai, id: ai.itemId, name: found ? found.name : 'Item', itemNote: ai.itemNote };
+            const enriched = enrichItemAllocationsForDisplay(ai);
+            if (enriched.itemId === 'direct') return { ...enriched, id: 'direct', name: cat.name, itemNote: enriched.itemNote };
+            const found = cat.items?.find(i => i.id === enriched.itemId); return { ...enriched, id: enriched.itemId, name: found ? found.name : 'Item', itemNote: enriched.itemNote };
           });
           displayItems = sortDisplayItems(displayItems, cat.items);
           groups.push({ groupId: `${cat.id}_${config.key}`, catId: cat.id, name: cat.name, isSusulan: config.isSusulan, validDate: config.validDate, activeItems: displayItems, catIndex: index });
@@ -2927,8 +3001,9 @@ export default function App() {
         itemsForCat.forEach(ai => { const key = `${ai.itemDate ? `date_${ai.itemDate}` : 'nodate'}_note_${ai.itemNote ? ai.itemNote.trim() : ''}`; if (!configsForCat.find(c => c.key === key)) configsForCat.push({ key, itemDate: ai.itemDate, itemNote: ai.itemNote ? ai.itemNote.trim() : '' }); });
         configsForCat.forEach(config => {
           let displayItems = itemsForCat.filter(ai => (ai.itemDate || '') === (config.itemDate || '') && (ai.itemNote ? ai.itemNote.trim() : '') === config.itemNote).map(ai => {
-            if (ai.itemId === 'direct') return { ...ai, id: 'direct', name: cat.name, itemNote: ai.itemNote };
-            const found = cat.items?.find(i => i.id === ai.itemId); return { ...ai, id: ai.itemId, name: found ? found.name : 'Item', itemNote: ai.itemNote };
+            const enriched = enrichItemAllocationsForDisplay(ai);
+            if (enriched.itemId === 'direct') return { ...enriched, id: 'direct', name: cat.name, itemNote: enriched.itemNote };
+            const found = cat.items?.find(i => i.id === enriched.itemId); return { ...enriched, id: enriched.itemId, name: found ? found.name : 'Item', itemNote: enriched.itemNote };
           });
           displayItems = sortDisplayItems(displayItems, cat.items);
           groups.push({ groupId: `${cat.id}_${config.key}`, catId: cat.id, name: cat.name, isSusulan: false, itemDate: config.itemDate, itemNote: config.itemNote, activeItems: displayItems, catIndex: index });
@@ -2941,7 +3016,7 @@ export default function App() {
       return a.catIndex - b.catIndex;
     });
     return groups;
-  }, [categories, currentReport.activeItems, activeType]);
+  }, [categories, currentReport.activeItems, currentReport.formData, bankRows, reportDate, activeType]);
 
   const { subtotals, grandTotal } = useMemo(() => {
     let gt = 0; const subs = {}; const cForm = currentReport.formData || {};
