@@ -434,6 +434,177 @@ export const reconcileOrphanBankItems = (reports, rows) => {
     });
   });
 
+  // ==============================================================
+  // 2.0 AUTO-HEAL REVERSE (BANK ROWS -> REPORTS)
+  // Jika ada mutasi bank yang berstatus 'matched' dan memiliki inputBaruAllocations
+  // (sudah dimasukkan dari Rekon Bank), tetapi item atau alokasinya hilang/belum tercatat
+  // di laporan harian (cleanReports), pulihkan kembali secara otomatis dan akurat!
+  // ==============================================================
+  safeRows.forEach(r => {
+    if (!r || r.status !== 'matched' || !Array.isArray(r.inputBaruAllocations) || r.inputBaruAllocations.length === 0) return;
+
+    r.inputBaruAllocations.forEach(alloc => {
+      if (!alloc) return;
+      const allocDate = alloc.date || r.linkedTo?.date;
+      const rawDocKey = alloc.docKey || 'utama';
+      const allocAmount = Number(alloc.amount || 0);
+      const allocItemKey = alloc.itemKey || '';
+      if (!allocDate || allocAmount <= 0 || !allocItemKey) return;
+
+      const baseKey = allocItemKey.split('_susulan_')[0].split('_date_')[0].split('_note_')[0];
+      const keyMatch = baseKey.match(/^(cat_[^_]+)_(item_[^_]+|direct)$/);
+      const catId = alloc.categoryId || (keyMatch ? keyMatch[1] : '');
+      const itemId = alloc.itemId || (keyMatch ? keyMatch[2] : '');
+      if (!catId || !itemId) return;
+
+      if (!cleanReports[allocDate] || typeof cleanReports[allocDate] !== 'object') {
+        cleanReports[allocDate] = {};
+      }
+      const dayData = cleanReports[allocDate];
+
+      let docKey = rawDocKey;
+      if (rawDocKey === 'lain' || rawDocKey.startsWith('lain_')) {
+        const existingLainKey = Object.keys(dayData).find(k =>
+          (k === 'lain' || k.startsWith('lain_')) &&
+          Array.isArray(dayData[k]?.activeItems) &&
+          dayData[k].activeItems.some(i => i && i.catId === catId)
+        );
+        if (existingLainKey) {
+          docKey = existingLainKey;
+          if (alloc.docKey !== existingLainKey) {
+            alloc.docKey = existingLainKey;
+            rowsModified = true;
+          }
+        }
+      }
+
+      if (!dayData[docKey] || typeof dayData[docKey] !== 'object') {
+        dayData[docKey] = { sequence: '', signatureDate: allocDate, activeItems: [], formData: {} };
+      }
+      const typeData = dayData[docKey];
+      if (!Array.isArray(typeData.activeItems)) typeData.activeItems = [];
+      if (!typeData.formData || typeof typeData.formData !== 'object') typeData.formData = {};
+
+      const displayDesc = r.tenant
+        ? (r.location && r.location !== r.tenant ? `${r.tenant} - ${r.location}` : r.tenant)
+        : (r.description || 'Mutasi Bank');
+      const cleanProofUrl = (r.proofUrl && typeof r.proofUrl === 'string' && !r.proofUrl.startsWith('data:image'))
+        ? r.proofUrl
+        : (r.linkedTo?.proofUrl && typeof r.linkedTo.proofUrl === 'string' && !r.linkedTo.proofUrl.startsWith('data:image') ? r.linkedTo.proofUrl : '');
+
+      const allocDetail = {
+        bankRowId: r.id,
+        bankDate: r.date,
+        amount: allocAmount,
+        desc: displayDesc,
+        tenant: r.tenant || '',
+        location: r.location || '',
+        itemId: itemId,
+        itemName: alloc.itemName || '',
+        apiRefId: r.apiRefId || '',
+        proofUrl: cleanProofUrl
+      };
+
+      const existingItem = typeData.activeItems.find(i =>
+        i && i.catId === catId && ((i.itemId || i.id || 'direct') === itemId)
+      );
+
+      if (!existingItem) {
+        const dateMatch = allocItemKey.match(/_date_(\d{4}-\d{2}-\d{2})/);
+        const susulanMatch = allocItemKey.match(/_susulan_(\d{4}-\d{2}-\d{2})/);
+        const newItem = {
+          catId,
+          itemId,
+          bankMatched: true,
+          bankMatchRowId: r.id,
+          bankMatchDate: r.date,
+          bankMatchRowIds: [r.id],
+          createdFromBank: true,
+          originBankRowId: r.id,
+          originBankDate: r.date,
+          originBankAllocAmount: allocAmount,
+          bankAllocations: [allocDetail],
+          ...(r.apiRefId ? { apiRefId: r.apiRefId } : {}),
+          ...(cleanProofUrl ? { proofUrl: cleanProofUrl } : {})
+        };
+        if (susulanMatch) {
+          newItem.isSusulan = true;
+          newItem.validDate = susulanMatch[1];
+        }
+        if (docKey === 'lain' || docKey.startsWith('lain_')) {
+          newItem.itemDate = dateMatch ? dateMatch[1] : allocDate;
+        }
+        const targetItemKey = getActiveItemKey(newItem.catId, newItem.itemId, newItem.isSusulan, newItem.validDate, newItem.itemDate, newItem.itemNote);
+        typeData.activeItems.push(newItem);
+        typeData.formData[targetItemKey] = allocAmount;
+        if (cleanProofUrl) {
+          typeData.formData[targetItemKey + '_buktiUrl'] = cleanProofUrl;
+        }
+        if (alloc.itemKey !== targetItemKey) {
+          alloc.itemKey = targetItemKey;
+          rowsModified = true;
+        }
+        modified = true;
+      } else {
+        const targetItemKey = getActiveItemKey(existingItem.catId, existingItem.itemId || existingItem.id, existingItem.isSusulan, existingItem.validDate, existingItem.itemDate, existingItem.itemNote);
+        if (!Array.isArray(existingItem.bankAllocations) || existingItem.bankAllocations.length === 0) {
+          existingItem.bankAllocations = extractItemAllocations(existingItem, typeData.formData);
+        }
+
+        const exactIdMatch = existingItem.bankAllocations.find(ba => ba && r.id && ba.bankRowId === r.id);
+        if (!exactIdMatch) {
+          const legacyMatch = existingItem.bankAllocations.find(ba =>
+            ba && (!ba.bankRowId || ba.bankRowId === 'prior_0') &&
+            ba.bankDate === r.date && Number(ba.amount) === allocAmount
+          );
+          if (legacyMatch) {
+            legacyMatch.bankRowId = r.id;
+            if (!legacyMatch.desc || legacyMatch.desc === 'Mutasi Bank' || legacyMatch.desc === 'Transaksi Sebelumnya') {
+              legacyMatch.desc = displayDesc;
+            }
+            if (!legacyMatch.proofUrl && cleanProofUrl) legacyMatch.proofUrl = cleanProofUrl;
+            if (!legacyMatch.apiRefId && r.apiRefId) legacyMatch.apiRefId = r.apiRefId;
+            modified = true;
+          } else {
+            existingItem.bankAllocations.push(allocDetail);
+            modified = true;
+          }
+        }
+
+        if (!Array.isArray(existingItem.bankMatchRowIds)) {
+          existingItem.bankMatchRowIds = existingItem.bankMatchRowId ? [existingItem.bankMatchRowId] : [];
+        }
+        if (r.id && !existingItem.bankMatchRowIds.includes(r.id)) {
+          existingItem.bankMatchRowIds.push(r.id);
+          modified = true;
+        }
+        if (!existingItem.bankMatched) {
+          existingItem.bankMatched = true;
+          modified = true;
+        }
+        if (!existingItem.bankMatchRowId && r.id) {
+          existingItem.bankMatchRowId = r.id;
+        }
+        if (!existingItem.bankMatchDate && r.date) {
+          existingItem.bankMatchDate = r.date;
+        }
+        if (cleanProofUrl && !existingItem.proofUrl) {
+          existingItem.proofUrl = cleanProofUrl;
+        }
+        if (cleanProofUrl && !typeData.formData[targetItemKey + '_buktiUrl']) {
+          typeData.formData[targetItemKey + '_buktiUrl'] = cleanProofUrl;
+          modified = true;
+        }
+
+        const sumAlloc = existingItem.bankAllocations.reduce((s, ba) => s + Number(ba?.amount || 0), 0);
+        if (sumAlloc > 0 && Number(typeData.formData[targetItemKey] || 0) !== sumAlloc) {
+          typeData.formData[targetItemKey] = sumAlloc;
+          modified = true;
+        }
+      }
+    });
+  });
+
   // 2a. Ekstrak seluruh alokasi mutasi bank yang sedang aktif di laporan dashboard
   const activeReportAllocations = [];
   Object.keys(cleanReports).forEach(date => {
@@ -512,6 +683,19 @@ export const reconcileOrphanBankItems = (reports, rows) => {
   const activeBankRowIds = new Set(activeBankRows.map(r => r.id).filter(Boolean));
   const activeBankDates = new Set(activeBankRows.map(r => r.date).filter(Boolean));
 
+  const availableBankMonths = new Set();
+  safeRows.forEach(r => {
+    if (!r) return;
+    const ymd = parseYmd(r.date);
+    if (ymd && ymd.length >= 7) availableBankMonths.add(ymd.substring(0, 7));
+    if (r.linkedTo?.date && r.linkedTo.date.length >= 7) availableBankMonths.add(r.linkedTo.date.substring(0, 7));
+    if (Array.isArray(r.inputBaruAllocations)) {
+      r.inputBaruAllocations.forEach(a => {
+        if (a?.date && a.date.length >= 7) availableBankMonths.add(a.date.substring(0, 7));
+      });
+    }
+  });
+
   const isAllocationActive = (ba) => {
     if (!ba) return false;
     if (!ba.bankRowId && !ba.bankDate) return true;
@@ -522,10 +706,19 @@ export const reconcileOrphanBankItems = (reports, rows) => {
     if (ba.bankDate && ba.amount) {
       return activeBankRows.some(r => (r.date === ba.bankDate || r.date.includes(ba.bankDate) || ba.bankDate.includes(r.date)) && Number(r.amount) >= Number(ba.amount));
     }
+    if (ba.bankDate) {
+      const baMonth = parseYmd(ba.bankDate).substring(0, 7);
+      if (baMonth && !availableBankMonths.has(baMonth)) return true;
+    }
     return false;
   };
 
   Object.keys(cleanReports).forEach(date => {
+    const reportMonth = (date || '').substring(0, 7);
+    if (safeRows.length === 0 || (reportMonth && !availableBankMonths.has(reportMonth))) {
+      return;
+    }
+
     Object.keys(cleanReports[date] || {}).forEach(docKey => {
       const typeData = cleanReports[date]?.[docKey];
       if (!typeData || !Array.isArray(typeData.activeItems)) return;
@@ -1483,7 +1676,10 @@ export default function App() {
 
         loadedBankRows = ensureBankRowIds(loadedBankRows);
 
-        // Rekonsiliasi orphan item
+        const rawBankPartitionsBeforeHeal = partitionBankRowsByMonth(loadedBankRows);
+        const rawRepPartitionsBeforeHeal = partitionReportsByMonth(loadedReports);
+
+        // Rekonsiliasi orphan item & auto-heal alokasi mutasi
         const { cleanReports: reconciledReports, cleanRows: reconciledRows, modified: wasReconciled } = reconcileOrphanBankItems(loadedReports, loadedBankRows);
         if (wasReconciled) {
           loadedReports = reconciledReports;
@@ -1577,6 +1773,37 @@ export default function App() {
 
           await Promise.all(seedPromises);
           console.log(`Auto-migration complete! Sharded ${Object.keys(bankPartitions).length} bank months and ${Object.keys(repPartitions).length} report months.`);
+        } else if (wasReconciled) {
+          // Simpan partisi yang baru saja dipulihkan oleh auto-heal ke Firestore
+          const healPromises = [];
+          const nowIso = new Date().toISOString();
+          Object.keys(repPartitions).forEach(m => {
+            if (JSON.stringify(repPartitions[m]) !== JSON.stringify(rawRepPartitionsBeforeHeal[m] || {})) {
+              healPromises.push(
+                setDoc(doc(db, 'tmr_report_months', m), sanitizeForFirestore({
+                  month: m,
+                  reports: repPartitions[m],
+                  lastWriterId: CLIENT_ID,
+                  lastUpdated: nowIso
+                }))
+              );
+            }
+          });
+          Object.keys(bankPartitions).forEach(m => {
+            if (JSON.stringify(bankPartitions[m]) !== JSON.stringify(rawBankPartitionsBeforeHeal[m] || [])) {
+              healPromises.push(
+                setDoc(doc(db, 'tmr_bank_months', m), sanitizeForFirestore({
+                  month: m,
+                  bankRows: bankPartitions[m],
+                  lastWriterId: CLIENT_ID,
+                  lastUpdated: nowIso
+                }))
+              );
+            }
+          });
+          if (healPromises.length > 0) {
+            Promise.all(healPromises).catch(e => console.warn("Auto-heal sync warning:", e));
+          }
         }
 
         setDbReady(true);
@@ -1762,6 +1989,8 @@ export default function App() {
       }
 
       loadedBankRows = ensureBankRowIds(loadedBankRows);
+      const rawBankPartitionsBeforeHeal = partitionBankRowsByMonth(loadedBankRows);
+      const rawRepPartitionsBeforeHeal = partitionReportsByMonth(loadedReports);
       const { cleanReports: cloudClean, cleanRows: cloudRows, modified: cloudMod } = reconcileOrphanBankItems(loadedReports, loadedBankRows);
       if (cloudMod) {
         loadedReports = cloudClean;
@@ -1803,6 +2032,38 @@ export default function App() {
         targets: loadedTargets,
         closedMonths: loadedClosedMonths
       });
+
+      if (cloudMod) {
+        const healPromises = [];
+        const nowIso = new Date().toISOString();
+        Object.keys(repPartitions).forEach(m => {
+          if (JSON.stringify(repPartitions[m]) !== JSON.stringify(rawRepPartitionsBeforeHeal[m] || {})) {
+            healPromises.push(
+              setDoc(doc(db, 'tmr_report_months', m), sanitizeForFirestore({
+                month: m,
+                reports: repPartitions[m],
+                lastWriterId: CLIENT_ID,
+                lastUpdated: nowIso
+              }))
+            );
+          }
+        });
+        Object.keys(bankPartitions).forEach(m => {
+          if (JSON.stringify(bankPartitions[m]) !== JSON.stringify(rawBankPartitionsBeforeHeal[m] || [])) {
+            healPromises.push(
+              setDoc(doc(db, 'tmr_bank_months', m), sanitizeForFirestore({
+                month: m,
+                bankRows: bankPartitions[m],
+                lastWriterId: CLIENT_ID,
+                lastUpdated: nowIso
+              }))
+            );
+          }
+        });
+        if (healPromises.length > 0) {
+          Promise.all(healPromises).catch(e => console.warn("Cloud pull auto-heal sync warning:", e));
+        }
+      }
 
       setSignatures(loadedSigs);
       setCategories(loadedCats);
@@ -2255,12 +2516,15 @@ export default function App() {
       const targetProofUrl = allocToRemove.proofUrl || '';
 
       // 1. Update bankRows: kembalikan mutasi bank terkait ke status 'pending'
+      const hasValidTargetRowId = Boolean(targetRowId && targetRowId !== 'prior_0');
       const newBankRows = baseBankRows.map(r => {
-        const isTarget = (targetRowId && r.id === targetRowId) || (
-          (targetApiRefId && String(r.apiRefId) === targetApiRefId) ||
-          (targetProofUrl && (r.proofUrl === targetProofUrl || r.linkedTo?.proofUrl === targetProofUrl)) ||
-          (r.date === (allocToRemove.bankDate || reportDate) && Number(r.amount) === targetAmount && (r.description || '').trim() === (allocToRemove.desc || '').trim())
-        );
+        const isTarget = hasValidTargetRowId
+          ? (r.id === targetRowId)
+          : (
+              (targetApiRefId && String(r.apiRefId) === targetApiRefId) ||
+              (targetProofUrl && (r.proofUrl === targetProofUrl || r.linkedTo?.proofUrl === targetProofUrl)) ||
+              (r.date === (allocToRemove.bankDate || reportDate) && Number(r.amount) === targetAmount && (r.description || '').trim() === (allocToRemove.desc || '').trim())
+            );
         if (isTarget) {
           const updated = { ...r, status: 'pending' };
           delete updated.linkedTo;
@@ -2279,8 +2543,9 @@ export default function App() {
         return r;
       });
 
-      // 2. Update newReports pada semua tanggal
+      // 2. Update newReports HANYA pada tanggal aktif (reportDate) atau item yang secara eksplisit memiliki targetRowId
       Object.keys(newReports).forEach(date => {
+        if (date !== reportDate && !hasValidTargetRowId) return;
         const dayData = newReports[date];
         if (!dayData || typeof dayData !== 'object') return;
 
@@ -2288,10 +2553,21 @@ export default function App() {
           const typeData = dayData[docKey];
           if (!typeData || !Array.isArray(typeData.activeItems)) return;
 
+          const isCurrentReportDoc = (date === reportDate && docKey === activeTypeKey);
+
           typeData.activeItems = typeData.activeItems.filter(activeItem => {
             const matchesCat = activeItem.catId === group.catId;
             const matchesId = (activeItem.itemId || activeItem.id) === (item.itemId || item.id);
             if (!matchesCat || !matchesId) return true;
+
+            if (!isCurrentReportDoc) {
+              const hasTargetRowInItem = hasValidTargetRowId && (
+                activeItem.bankMatchRowId === targetRowId ||
+                (Array.isArray(activeItem.bankMatchRowIds) && activeItem.bankMatchRowIds.includes(targetRowId)) ||
+                (Array.isArray(activeItem.bankAllocations) && activeItem.bankAllocations.some(ba => ba && ba.bankRowId === targetRowId))
+              );
+              if (!hasTargetRowInItem) return true;
+            }
 
             const itemKey = getActiveItemKey(activeItem.catId, activeItem.itemId || activeItem.id, activeItem.isSusulan, activeItem.validDate, activeItem.itemDate, activeItem.itemNote);
             const baseKey = `${activeItem.catId}_${activeItem.itemId || activeItem.id}`;
@@ -2299,9 +2575,12 @@ export default function App() {
 
             const remainingAllocations = Array.isArray(activeItem.bankAllocations)
               ? activeItem.bankAllocations.filter((ba, idx) => {
-                  if (allocIndex !== undefined && allocIndex !== null && idx === allocIndex) return false;
-                  if (targetRowId && ba.bankRowId === targetRowId) return false;
-                  if (targetApiRefId && String(ba.apiRefId) === targetApiRefId) return false;
+                  if (hasValidTargetRowId && ba.bankRowId && ba.bankRowId !== 'prior_0') {
+                    return ba.bankRowId !== targetRowId;
+                  }
+                  if (isCurrentReportDoc && allocIndex !== undefined && allocIndex !== null && idx === allocIndex) return false;
+                  if (hasValidTargetRowId && ba.bankRowId === targetRowId) return false;
+                  if (isCurrentReportDoc && targetApiRefId && String(ba.apiRefId) === targetApiRefId) return false;
                   return true;
                 })
               : [];
@@ -3028,11 +3307,19 @@ export default function App() {
                         const createdAllocationsSummary = [];
 
                         const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
-                        const targetIndex = baseBankRows.findIndex(r =>
-                          (bankRow.id && r.id && r.id === bankRow.id) ||
-                          (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && (r.description || '').trim() === (bankRow.description || '').trim()) ||
-                          (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount))
+                        let targetIndex = baseBankRows.findIndex(r =>
+                          bankRow.id && r.id && r.id === bankRow.id
                         );
+                        if (targetIndex < 0) {
+                          targetIndex = baseBankRows.findIndex(r =>
+                            r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && (r.description || '').trim() === (bankRow.description || '').trim()
+                          );
+                        }
+                        if (targetIndex < 0) {
+                          targetIndex = baseBankRows.findIndex(r =>
+                            r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount)
+                          );
+                        }
                         const effectiveRowId = (targetIndex >= 0 && baseBankRows[targetIndex].id)
                           ? baseBankRows[targetIndex].id
                           : (bankRow.id || `bank_${Date.now()}`);
@@ -3168,10 +3455,12 @@ export default function App() {
                             existingItem.bankMatchRowId = effectiveRowId;
                             existingItem.bankMatchDate = bankRow.date;
 
-                            const existingAllocIdx = existingItem.bankAllocations.findIndex(ba =>
-                              (ba.bankRowId === effectiveRowId && ba.bankRowId !== 'prior_0' && ba.bankRowId !== priorRowId) ||
-                              (ba.bankDate === bankRow.date && Number(ba.amount) === allocAmount)
-                            );
+                            const existingAllocIdx = existingItem.bankAllocations.findIndex(ba => {
+                              if (ba.bankRowId && ba.bankRowId !== 'prior_0' && effectiveRowId) {
+                                return ba.bankRowId === effectiveRowId;
+                              }
+                              return ba.bankDate === bankRow.date && Number(ba.amount) === allocAmount;
+                            });
 
                             if (existingAllocIdx >= 0) {
                               existingItem.bankAllocations[existingAllocIdx] = {
@@ -3249,10 +3538,13 @@ export default function App() {
                         });
 
                         const newBankRows = baseBankRows.map((r, idx) => {
-                          const isTarget = (targetIndex >= 0 && idx === targetIndex) ||
-                            (bankRow.id && r.id && r.id === bankRow.id) ||
-                            (r.id && r.id === effectiveRowId) ||
-                            (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount));
+                          const isTarget = targetIndex >= 0
+                            ? idx === targetIndex
+                            : (
+                                (bankRow.id && r.id && r.id === bankRow.id) ||
+                                (r.id && r.id === effectiveRowId) ||
+                                (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && (r.description || '').trim() === (bankRow.description || '').trim())
+                              );
                           if (isTarget) {
                             const finalProofUrl = matchedProofUrl || r.proofUrl || bankRow.proofUrl || '';
                             return {
