@@ -1,5 +1,6 @@
-import React from 'react';
-import { Trash, Database, AlertCircle, RefreshCw, Tag, Save } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Trash, Database, AlertCircle, RefreshCw, Tag, Save, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { checkTransitItemTarif, validateIwmDiskonRow } from '../../utils/transitValidation';
 
 /**
  * Komponen Modal Ruang Transit 3A & IWM
@@ -19,6 +20,21 @@ export default function TransitModal({
   formatRp,
   safeString
 }) {
+  const itemChecks = useMemo(() => {
+    return (transitModal?.data || []).map(item => ({
+      item,
+      check: checkTransitItemTarif(item, categories, transitModal?.targetDate)
+    }));
+  }, [transitModal?.data, categories, transitModal?.targetDate]);
+
+  const invalidCount = useMemo(() => {
+    return itemChecks.filter(ic => !ic.check.isValid).length;
+  }, [itemChecks]);
+
+  const validCount = useMemo(() => {
+    return itemChecks.filter(ic => ic.check.isValid).length;
+  }, [itemChecks]);
+
   if (!transitModal || !transitModal.isOpen) return null;
 
   return (
@@ -116,19 +132,86 @@ export default function TransitModal({
             <div className="p-4 sm:p-5 border-b border-gray-200 flex justify-between items-center bg-white shrink-0">
               <div className="flex items-center gap-3">
                 <Database size={24} className={transitModal.source === 'iwm' ? 'text-purple-600' : 'text-blue-600'} />
-                <h3 className="font-bold text-lg sm:text-xl text-gray-800">Ruang Transit {transitModal.source === '3a' ? '3A' : 'IWM'}</h3>
+                <div>
+                  <h3 className="font-bold text-lg sm:text-xl text-gray-800">Ruang Transit {transitModal.source === '3a' ? '3A' : 'IWM'}</h3>
+                  <p className="text-xs text-gray-500 font-medium">Validasi & sesuaikan kategori item sebelum disuntikkan ke formulir input STSU</p>
+                </div>
               </div>
               <button onClick={closeTransitModal} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-2 rounded-lg transition-colors">✕</button>
             </div>
             
             <div className="p-4 sm:p-5 bg-gray-50 flex-1 overflow-y-auto min-h-0">
               <div className="space-y-3">
-                {transitModal.data.map((item) => (
-                  <div key={item.id} className="bg-white border border-gray-200 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-gray-800 text-sm truncate" title={safeString(item.nameAPI)}>{safeString(item.nameAPI)}</div>
-                      <div className={`${transitModal.source === 'iwm' ? 'text-purple-600' : 'text-blue-600'} font-black text-sm`}>Rp {formatRp(item.amount)}</div>
+                {/* 🛡️ BANNER PARAMETER PENGECEKAN TARIF & NOMINAL */}
+                {transitModal.data.length > 0 && (
+                  <div className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs shadow-2xs mb-3 ${
+                    invalidCount > 0 ? 'bg-amber-50/90 border-amber-300 text-amber-950' : 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      {invalidCount > 0 ? (
+                        <AlertTriangle size={18} className="text-amber-600 shrink-0" />
+                      ) : (
+                        <ShieldCheck size={18} className="text-emerald-600 shrink-0" />
+                      )}
+                      <div>
+                        <div className="font-extrabold text-xs flex items-center gap-1.5">
+                          <span>{invalidCount > 0 ? `Perhatian: Ada ${invalidCount} nominal yang perlu dicek kembali!` : 'Parameter Pengecekan Tarif: Semua Nominal Valid & Bulat'}</span>
+                        </div>
+                        <div className="text-gray-600 text-[11px] mt-0.5">
+                          Setiap nominal rupiah dibagi tarif resmi wajib bulat / tidak berkoma (Dewasa: Rp 4rb, Anak: Rp 3rb, Gol I: Rp 15rb, Gol II: Rp 12.5rb, Gol III: Rp 6rb, Motor: Rp 3rb, Sepeda: Rp 1rb, Primata: Rp 6rb/7.5rb, Diskon Rombongan: 25%).
+                        </div>
+                      </div>
                     </div>
+                    <div className="flex items-center gap-2 shrink-0 font-bold self-end sm:self-center">
+                      <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                        <CheckCircle2 size={12} className="text-emerald-600" /> {validCount} OK
+                      </span>
+                      {invalidCount > 0 && (
+                        <span className="px-2.5 py-1 rounded-full bg-red-100 text-red-800 border border-red-300 flex items-center gap-1 animate-pulse">
+                          <AlertTriangle size={12} className="text-red-600" /> {invalidCount} Cek Kembali
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {itemChecks.map(({ item, check }) => (
+                  <div 
+                    key={item.id} 
+                    className={`bg-white border rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm hover:shadow-md transition-all ${
+                      !check.isValid ? 'border-red-300 bg-red-50/20 ring-1 ring-red-200' : 'border-gray-200'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-gray-800 text-sm truncate" title={safeString(item.nameAPI)}>
+                        {safeString(item.nameAPI)}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <span className={`${transitModal.source === 'iwm' ? 'text-purple-600' : 'text-blue-600'} font-black text-sm`}>
+                          Rp {formatRp(item.amount)}
+                        </span>
+                        
+                        {/* 🟢 PARAMETER HIJAU (OK) / 🔴 MERAH (CEK KEMBALI) */}
+                        {check.isValid ? (
+                          <span 
+                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs"
+                            title={`Nominal bulat habis dibagi tarif ${check.unitLabel || ''}`}
+                          >
+                            <CheckCircle2 size={12} className="text-emerald-600 shrink-0" />
+                            <span>OK: {check.label}</span>
+                          </span>
+                        ) : (
+                          <span 
+                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-700 border border-red-300 shadow-2xs"
+                            title={check.message}
+                          >
+                            <AlertTriangle size={12} className="text-red-600 shrink-0" />
+                            <span>⚠️ {check.message || 'Cek Kembali'}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="flex flex-col sm:flex-row gap-2 shrink-0 items-center">
                       <select 
                         value={item.mappedCat || ''} 
@@ -165,9 +248,14 @@ export default function TransitModal({
 
                 {transitModal.source === 'iwm' && transitModal.iwmDiskon && transitModal.iwmDiskon.length > 0 && (
                   <div className="mt-4 border border-yellow-200 rounded-xl overflow-hidden shadow-sm bg-white">
-                    <div className="bg-yellow-50 px-3 py-2 border-b border-yellow-200 flex items-center gap-2">
-                      <Tag size={16} className="text-yellow-700" />
-                      <span className="font-bold text-xs text-yellow-800 uppercase">Daftar Mentah Rombongan IWM</span>
+                    <div className="bg-yellow-50 px-3 py-2 border-b border-yellow-200 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Tag size={16} className="text-yellow-700" />
+                        <span className="font-bold text-xs text-yellow-800 uppercase">Daftar Mentah Rombongan IWM</span>
+                      </div>
+                      <span className="text-[11px] font-semibold text-yellow-800 bg-yellow-100/70 border border-yellow-300 px-2 py-0.5 rounded-full">
+                        Diskon Rombongan Resmi: 25%
+                      </span>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs whitespace-nowrap">
@@ -177,19 +265,42 @@ export default function TransitModal({
                             <th className="p-2">Nama Rombongan</th>
                             <th className="p-2 text-right">Anak</th>
                             <th className="p-2 text-right">Dewasa</th>
-                            <th className="p-2 text-right pr-3">Total Nominal (Rp)</th>
+                            <th className="p-2 text-right">Total Nominal (Rp)</th>
+                            <th className="p-2 text-center pr-3">Pengecekan Diskon 25%</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                          {transitModal.iwmDiskon.map((d, i) => (
-                            <tr key={i} className="hover:bg-gray-50">
-                              <td className="p-2 pl-3 font-medium text-gray-800">{safeString(d.lokasi)}</td>
-                              <td className="p-2 text-gray-600 truncate max-w-[150px]" title={safeString(d.nama_rombongan)}>{safeString(d.nama_rombongan)}</td>
-                              <td className="p-2 text-right text-gray-600">{d.masuk_anak}</td>
-                              <td className="p-2 text-right text-gray-600">{d.masuk_dewasa}</td>
-                              <td className="p-2 text-right pr-3 font-bold text-green-600">{formatRp(d.pendapatan_rp)}</td>
-                            </tr>
-                          ))}
+                          {transitModal.iwmDiskon.map((d, i) => {
+                            const diskonCheck = validateIwmDiskonRow(d, transitModal.targetDate);
+                            return (
+                              <tr key={i} className={`hover:bg-gray-50 ${!diskonCheck.isValid ? 'bg-red-50/30' : ''}`}>
+                                <td className="p-2 pl-3 font-medium text-gray-800">{safeString(d.lokasi)}</td>
+                                <td className="p-2 text-gray-600 truncate max-w-[150px]" title={safeString(d.nama_rombongan)}>{safeString(d.nama_rombongan)}</td>
+                                <td className="p-2 text-right text-gray-600">{d.masuk_anak}</td>
+                                <td className="p-2 text-right text-gray-600">{d.masuk_dewasa}</td>
+                                <td className="p-2 text-right font-bold text-green-600">Rp {formatRp(d.pendapatan_rp)}</td>
+                                <td className="p-2 text-center pr-3">
+                                  {diskonCheck.isValid ? (
+                                    <span 
+                                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                      title={diskonCheck.label}
+                                    >
+                                      <CheckCircle2 size={11} className="text-emerald-600 shrink-0" />
+                                      <span>OK ({diskonCheck.label})</span>
+                                    </span>
+                                  ) : (
+                                    <span 
+                                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-red-50 text-red-700 border border-red-300"
+                                      title={diskonCheck.message}
+                                    >
+                                      <AlertTriangle size={11} className="text-red-600 shrink-0" />
+                                      <span>Cek Kembali ({diskonCheck.message})</span>
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -203,7 +314,14 @@ export default function TransitModal({
                 Batal / Kembali
               </button>
               <button 
-                onClick={confirmTransitInjection}
+                onClick={() => {
+                  if (invalidCount > 0) {
+                    if (!window.confirm(`Perhatian: Ditemukan ${invalidCount} item dengan nominal yang tidak bulat / perlu dicek kembali (tanda merah).\n\nApakah Anda yakin ingin tetap melanjutkan import data ini ke formulir input?`)) {
+                      return;
+                    }
+                  }
+                  confirmTransitInjection();
+                }}
                 disabled={transitModal.data.length === 0 || transitModal.data.some(d => d.mappedCat && !d.mappedItem)}
                 className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
               >
