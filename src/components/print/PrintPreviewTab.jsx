@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FileText, Printer, RefreshCw, Download, FileSpreadsheet } from 'lucide-react';
 import DraggableElement from './DraggableElement';
 import FormatPemasaranReport from './FormatPemasaranReport';
+import FormatDinasStsuReport from './FormatDinasStsuReport';
 import {
   safeString,
   terbilang,
@@ -59,6 +60,11 @@ export default function PrintPreviewTab({
                   <FileSpreadsheet size={20} className="text-blue-600" />
                   Format Baru Pemasaran (STSU Retribusi)
                 </>
+              ) : reportFormat === 'dinas' ? (
+                <>
+                  <FileText size={20} className="text-amber-600" />
+                  Format Dinas STSU (Per Kategori)
+                </>
               ) : (
                 <>
                   <FileText size={20} className={activeType === 'utama' ? 'text-green-600' : 'text-purple-600'} />
@@ -87,6 +93,8 @@ export default function PrintPreviewTab({
                   handleDownloadPDF(
                     reportFormat === 'pemasaran'
                       ? `Laporan_STSU_Hasil_Retribusi_Pemasaran_${reportDate}.pdf`
+                      : reportFormat === 'dinas'
+                      ? `STSU_Format_Dinas_${reportDate}.pdf`
                       : undefined
                   )
                 }
@@ -160,6 +168,17 @@ export default function PrintPreviewTab({
             >
               <FileText size={15} /> Format Standar STSU (DRAFT)
             </button>
+            <button
+              type="button"
+              onClick={() => setReportFormat('dinas')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all ${
+                reportFormat === 'dinas'
+                  ? 'bg-amber-600 text-white shadow-xs scale-102'
+                  : 'text-gray-600 hover:text-amber-600 hover:bg-amber-50'
+              }`}
+            >
+              <FileText size={15} /> Format Dinas STSU (Per Kategori)
+            </button>
           </div>
         </div>
       )}
@@ -196,6 +215,19 @@ export default function PrintPreviewTab({
             activeType={activeType}
             activeLainIndex={activeLainIndex}
             signatures={signatures}
+            onUpdateSequence={handleSequenceChange}
+            onUpdateSignatureDate={handleSignatureDateChange}
+            isMonthClosed={isMonthClosed}
+          />
+        ) : reportFormat === 'dinas' ? (
+          <FormatDinasStsuReport
+            reportDate={reportDate}
+            currentReport={currentReport}
+            activeGroups={activeGroups}
+            subtotals={subtotals}
+            computedStsuNo={computedStsuNo}
+            signatures={signatures}
+            activeType={activeType}
             onUpdateSequence={handleSequenceChange}
             onUpdateSignatureDate={handleSignatureDateChange}
             isMonthClosed={isMonthClosed}
