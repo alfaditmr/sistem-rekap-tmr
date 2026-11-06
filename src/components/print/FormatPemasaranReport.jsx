@@ -83,13 +83,13 @@ export const PEMASARAN_STANDARD_ITEMS = [
     no: 8,
     groupId: '4.1.02.02.20.00001',
     name: 'Program Televisi',
-    match: (name = '', catName = '', note = '') => /program televisi|acara tv|shooting tv|televisi/i.test(`${name} ${catName} ${note}`)
+    match: (name = '', catName = '', note = '') => /program televisi|acara tv|shooting tv|televisi|program tv/i.test(`${name} ${catName} ${note}`)
   },
   {
     no: 9,
     groupId: '4.1.02.02.20.00001',
     name: 'Video Clip',
-    match: (name = '', catName = '', note = '') => /video clip|videoclip|klip video/i.test(`${name} ${catName} ${note}`)
+    match: (name = '', catName = '', note = '') => /video clip|videoclip|klip video|video klip/i.test(`${name} ${catName} ${note}`)
   },
   {
     no: 10,
@@ -101,7 +101,9 @@ export const PEMASARAN_STANDARD_ITEMS = [
     no: 11,
     groupId: '4.1.02.02.20.00001',
     name: 'Pemakaian Lokasi/Tempat Lahan Terbuka',
-    match: (name = '', catName = '', note = '') => /lahan terbuka|tempat terbuka|lokasi terbuka/i.test(`${name} ${catName} ${note}`)
+    match: (name = '', catName = '', note = '') =>
+      /lahan terbuka|tempat terbuka|lokasi terbuka|lahan|lapangan/i.test(`${name} ${catName} ${note}`) &&
+      !/panggung|gedung|sound|banner|spanduk/i.test(`${name} ${catName} ${note}`)
   },
   {
     no: 12,
@@ -125,19 +127,19 @@ export const PEMASARAN_STANDARD_ITEMS = [
     no: 15,
     groupId: '4.1.02.02.20.00001',
     name: 'Fasilitas Gedung Informasi',
-    match: (name = '', catName = '', note = '') => /gedung informasi|ruang informasi/i.test(`${name} ${catName} ${note}`)
+    match: (name = '', catName = '', note = '') => /gedung informasi|ruang informasi|teras informasi/i.test(`${name} ${catName} ${note}`)
   },
   {
     no: 16,
     groupId: '4.1.02.02.20.00001',
     name: 'Fasilitas Gedung Auditorium',
-    match: (name = '', catName = '', note = '') => /auditorium|gedung auditorium/i.test(`${name} ${catName} ${note}`)
+    match: (name = '', catName = '', note = '') => /auditorium|gedung auditorium|aula serbaguna/i.test(`${name} ${catName} ${note}`)
   },
   {
     no: 17,
     groupId: '4.1.02.02.20.00001',
     name: 'Pemakaian Sound System',
-    match: (name = '', catName = '', note = '') => /sound system|sound/i.test(`${name} ${catName} ${note}`) && !/wireles/i.test(`${name} ${catName} ${note}`)
+    match: (name = '', catName = '', note = '') => /sound system|sound/i.test(`${name} ${catName} ${note}`) && !/wireles|wireless/i.test(`${name} ${catName} ${note}`)
   },
   {
     no: 18,
@@ -149,7 +151,9 @@ export const PEMASARAN_STANDARD_ITEMS = [
     no: 19,
     groupId: '4.1.02.02.20.00001',
     name: 'Pelayanan Pengambilan Foto',
-    match: (name = '', catName = '', note = '') => (/pengambilan foto|foto/i.test(`${name} ${catName} ${note}`)) && !/pre-wedding|prewedding|satwa/i.test(`${name} ${catName} ${note}`)
+    match: (name = '', catName = '', note = '') =>
+      (/pengambilan foto|ambil foto|layanan foto|pelayanan foto|foto model|pemotretan/i.test(`${name} ${catName} ${note}`)) &&
+      !/pre-wedding|prewedding|satwa/i.test(`${name} ${catName} ${note}`)
   },
   {
     no: 20,
@@ -222,8 +226,18 @@ export default function FormatPemasaranReport({
 
       activeItems.forEach((ai) => {
         const cat = categories.find((c) => c.id === ai.catId);
+
+        // Laporan STSU Pemasaran & Hasil Retribusi (Gambar 2) khusus mencakup pos retribusi:
+        // 1. Pemakaian Fasilitas TMR (cat_1 atau kategori fasilitas)
+        // 2. Retribusi Pedagang (cat_2 atau pedagang)
+        // 3. Penyediaan Satwa Jinak untuk Berfoto
+        // Lewati kategori tiket masuk gerbang/wahana (E-Ticketing/TVM/Online) agar tidak tercampur
+        if (cat && /e-ticketing|ticket online|vending|gate/i.test(cat.name || '')) {
+          return;
+        }
+
         const catItem = cat?.items?.find((i) => i.id === (ai.itemId || ai.id));
-        const itemName = catItem ? catItem.name : ai.id === 'direct' ? (cat?.name || '') : (ai.name || '');
+        const itemName = catItem ? catItem.name : (ai.itemName || (ai.id === 'direct' ? (cat?.name || '') : (ai.name || '')));
         const catName = cat?.name || '';
         const itemNote = ai.itemNote || '';
 
@@ -236,7 +250,7 @@ export default function FormatPemasaranReport({
           ai.itemNote
         );
 
-        const nominal = Number(fData[itemKey] || fData[ai.catId + '_' + (ai.itemId || ai.id)] || 0);
+        const nominal = Number(fData[itemKey] || fData[ai.catId + '_' + (ai.itemId || ai.id)] || fData[ai.catId] || 0);
         if (nominal <= 0) return;
 
         let matchedNo = null;

@@ -39,6 +39,7 @@ import {
   getActiveItemKey,
   formatDetailsTooltip
 } from './utils/formatters';
+import { STANDARD_FACILITY_ITEMS, ensureStandardFacilityCategories } from './utils/categoryHelper';
 
 // ==========================================
 // 🔴 FUNGSI PEMANGGILAN API GEMINI (LLM) 
@@ -919,14 +920,14 @@ export default function App() {
     rightRole: 'Bendahara Penerimaan', rightName: 'Evi Irmawati', rightNip: '198101082009042006', location: 'Jakarta'
   }));
 
-  const [categories, setCategories] = useState(() => getInitialState('tmr_v19_categories', [
-    { id: 'cat_1', name: 'Pemakaian Fasilitas', type: 'utama', items: [{ id: 'item_1a', name: 'Promo Penjualan Produk' }, { id: 'item_1b', name: 'Penempatan banner promosi' }, { id: 'item_1c', name: 'Panggung' }] },
+  const [categories, setCategories] = useState(() => ensureStandardFacilityCategories(getInitialState('tmr_v19_categories', [
+    { id: 'cat_1', name: 'Pemakaian Fasilitas TMR', type: 'utama', items: STANDARD_FACILITY_ITEMS },
     { id: 'cat_2', name: 'Retribusi Pedagang', type: 'utama', items: [{ id: 'item_2a', name: 'Retribusi pedagang Hari Biasa' }, { id: 'item_2b', name: 'Retribusi pedagang Hari Besar' }] },
     { id: 'cat_3', name: 'E-Ticketing New Gate', type: 'utama', items: [{ id: 'item_3a', name: 'Tiket Masuk Dewasa' }, { id: 'item_3b', name: 'Tiket Masuk Anak' }, { id: 'item_3c', name: 'Taman Satwa Anak' }, { id: 'item_3d', name: 'Pusat Primata Hari Biasa Dewasa' }, { id: 'item_3e', name: 'Pusat Primata Hari Biasa Anak' }, { id: 'item_3f', name: 'Pusat Primata Hari Besar Dewasa' }, { id: 'item_3g', name: 'Pusat Primata Hari Besar Anak' }, { id: 'item_3h', name: 'Kendaraan Motor' }, { id: 'item_3i', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_3j', name: 'Kendaraan Gol 2' }, { id: 'item_3k', name: 'Kendaraan Gol 1' }, { id: 'item_3l', name: 'Kendaraan Sepeda' }, { id: 'item_3m', name: 'Rombongan' }] },
     { id: 'cat_4', name: 'Ticket Online', type: 'utama', items: [{ id: 'item_4a', name: 'Tiket Masuk Dewasa' }, { id: 'item_4b', name: 'Tiket Masuk Anak' }, { id: 'item_4c', name: 'Taman Satwa Anak' }, { id: 'item_4d', name: 'Pusat Primata Hari Biasa Dewasa' }, { id: 'item_4d2', name: 'Pusat Primata Hari Biasa Anak' }, { id: 'item_4e', name: 'Pusat Primata Hari Besar Dewasa' }, { id: 'item_4e2', name: 'Pusat Primata Hari Besar Anak' }, { id: 'item_4f', name: 'Kendaraan Motor' }, { id: 'item_4g', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_4h', name: 'Kendaraan Gol 1' }, { id: 'item_4i', name: 'Kendaraan Gol 2' }, { id: 'item_4j', name: 'Motor' }, { id: 'item_4k', name: 'Sepeda' }] },
     { id: 'cat_5', name: 'Ticket Vending Machine (TVM)', type: 'utama', items: [{ id: 'item_5a', name: 'Tiket Masuk Dewasa' }, { id: 'item_5b', name: 'Tiket Masuk Anak' }, { id: 'item_5c', name: 'Taman Satwa Anak' }] },
     { id: 'cat_6', name: 'E-Ticketing Old Gate', type: 'utama', items: [{ id: 'item_6a', name: 'Tiket Masuk Dewasa' }, { id: 'item_6b', name: 'Tiket Masuk Anak' }, { id: 'item_6c', name: 'Taman Satwa Anak' }, { id: 'item_6d', name: 'Pusat Primata Hari Biasa Dewasa' }, { id: 'item_6e', name: 'Pusat Primata Hari Biasa Anak' }, { id: 'item_6f', name: 'Pusat Primata Hari Besar Dewasa' }, { id: 'item_6g', name: 'Pusat Primata Hari Besar Anak' }, { id: 'item_6h', name: 'Kendaraan Motor' }, { id: 'item_6i', name: 'Kendaraan Gol 3 / Mobil' }, { id: 'item_6j', name: 'Kendaraan Gol 2' }, { id: 'item_6k', name: 'Kendaraan Gol 1' }, { id: 'item_6l', name: 'Kendaraan Sepeda' }, { id: 'item_6m', name: 'Rombongan Dewasa' }, { id: 'item_6n', name: 'Rombongan Anak' }] }
-  ]));
+  ])));
 
   const [targets, setTargets] = useState(() => getInitialState('tmr_v19_targets', {}));
   const [closedMonths, setClosedMonths] = useState(() => getInitialState('tmr_v19_closedMonths', {}));
@@ -1667,9 +1668,7 @@ export default function App() {
         if (Object.keys(loadedSigs).length === 0) {
           loadedSigs = stateRef.current.signatures || {};
         }
-        if (loadedCats.length === 0) {
-          loadedCats = stateRef.current.categories || [];
-        }
+        loadedCats = ensureStandardFacilityCategories(loadedCats.length > 0 ? loadedCats : (stateRef.current.categories || []));
         if (Object.keys(loadedTargets).length === 0) {
           loadedTargets = stateRef.current.targets || {};
         }
@@ -1894,9 +1893,10 @@ export default function App() {
             safeSetLocalStorage('tmr_v19_signatures', data.signatures);
           }
           if (data.categories) {
-            stateRef.current.categories = data.categories;
-            setCategories(data.categories);
-            safeSetLocalStorage('tmr_v19_categories', data.categories);
+            const enrichedCats = ensureStandardFacilityCategories(data.categories);
+            stateRef.current.categories = enrichedCats;
+            setCategories(enrichedCats);
+            safeSetLocalStorage('tmr_v19_categories', enrichedCats);
           }
           if (data.targets) {
             stateRef.current.targets = data.targets;
@@ -1969,7 +1969,7 @@ export default function App() {
       if (configSnap.exists()) {
         const cd = configSnap.data();
         loadedSigs = cd.signatures || {};
-        loadedCats = cd.categories || [];
+        loadedCats = ensureStandardFacilityCategories(cd.categories || []);
         loadedTargets = cd.targets || {};
         loadedClosedMonths = cd.closedMonths || {};
       }
@@ -1980,7 +1980,7 @@ export default function App() {
         if (docSnap.exists()) {
           const data = docSnap.data();
           loadedSigs = data.signatures || {};
-          loadedCats = data.categories || [];
+          loadedCats = ensureStandardFacilityCategories(data.categories || []);
           loadedTargets = data.targets || {};
           loadedReports = data.allReports || {};
           loadedBankRows = ensureBankRowIds(data.bankRows || []);
