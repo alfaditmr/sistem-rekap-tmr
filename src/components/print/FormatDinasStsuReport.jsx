@@ -1,13 +1,14 @@
 import React, { useMemo } from 'react';
 import { safeString, formatRp, terbilang, formatTanggalTtd, getActiveItemKey } from '../../utils/formatters';
-import { resolveStsuTemplate } from '../../utils/stsuTemplates';
+import { resolveStsuTemplate, isTicketCategory } from '../../utils/stsuTemplates';
 
 const capitalizeFirst = (s = '') => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 /**
  * Cetak STSU Format Dinas (mengikuti contoh di folder "format cetak").
- * Satu kategori/grup transaksi = satu lembar STSU dengan judul, kode rekening,
+ * Satu kategori/grup transaksi non-tiket = satu lembar STSU dengan judul, kode rekening,
  * uraian, terbilang, dan tanda tangan sesuai template resmi.
+ * Seluruh transaksi tiket masuk/gerbang (e-ticketing, ticket online, TVM) tidak dicetak.
  */
 export default function FormatDinasStsuReport({
   reportDate,
@@ -26,11 +27,13 @@ export default function FormatDinasStsuReport({
   const pages = useMemo(() => {
     const formData = currentReport.formData || {};
     return activeGroups
+      .filter((group) => !isTicketCategory(group.name, group.catId))
       .map((group) => {
         const subtotal = Number(subtotals[group.groupId] || 0);
         if (subtotal <= 0) return null;
 
         const items = (group.activeItems || [])
+          .filter((item) => !isTicketCategory(item.name, item.id))
           .map((item) => {
             const amount = Number(
               formData[
@@ -45,11 +48,16 @@ export default function FormatDinasStsuReport({
           })
           .filter((i) => i.amount > 0);
 
+        if (items.length === 0) return null;
+
         const template = resolveStsuTemplate(
           group.name,
           items.map((i) => i.name).filter(Boolean),
-          items.map((i) => i.note).filter(Boolean)
+          items.map((i) => i.note).filter(Boolean),
+          group.catId
         );
+
+        if (!template) return null;
 
         const dateText = formatTanggalTtd(group.itemDate || group.validDate || reportDate);
         const itemDateText = group.itemDate ? formatTanggalTtd(group.itemDate) : '';
@@ -95,7 +103,10 @@ export default function FormatDinasStsuReport({
         <div className="text-xs text-amber-900">
           <div className="font-bold uppercase tracking-wider">Format Dinas STSU ({activeType === 'utama' ? 'SU' : 'SU/L'})</div>
           <div className="text-amber-800 mt-0.5">
-            {pages.length} lembar STSU: {pages.map((p) => p.template.label).join(' • ') || '—'}
+            {pages.length} lembar STSU non-tiket: {pages.map((p) => p.template.label).join(' • ') || '—'}
+          </div>
+          <div className="text-[11px] text-amber-700 italic mt-0.5">
+            * Seluruh transaksi tiket (E-Ticketing Old/New Gate, Ticket Online, TVM) dikecualikan dari cetakan STSU ini.
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -126,7 +137,12 @@ export default function FormatDinasStsuReport({
       <div id="printable-area" className="print-container">
         {pages.length === 0 && (
           <div className="dinas-page border border-gray-300 shadow-xl text-center text-gray-500 py-20">
-            Belum ada transaksi bernominal pada dokumen ini untuk dicetak.
+            <div className="font-semibold text-base text-gray-700 mb-1">
+              Tidak ada transaksi non-tiket pada dokumen ini untuk dicetak.
+            </div>
+            <div className="text-xs text-gray-500">
+              Sesuai ketentuan, seluruh transaksi tiket (E-ticketing gerbang, Ticket Online, TVM) tidak dicetak sebagai lembar STSU.
+            </div>
           </div>
         )}
         {pages.map((page) => {
@@ -234,3 +250,4 @@ export default function FormatDinasStsuReport({
     </div>
   );
 }
+

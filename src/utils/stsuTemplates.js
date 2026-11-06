@@ -20,6 +20,30 @@ const joinNote = (items) =>
   items.map((i) => clean(i.note)).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ');
 
 /**
+ * Memeriksa apakah suatu kategori / item merupakan transaksi tiket gerbang / wahana / online.
+ * (Sesuai arahan resmi TMR: seluruh transaksi tiket tidak dibuatkan lembar cetak STSU)
+ */
+export const isTicketCategory = (catOrGroupName = '', catId = '') => {
+  const name = String(catOrGroupName || '').toLowerCase();
+  const id = String(catId || '').toLowerCase();
+
+  // ID bawaan kategori tiket gerbang / e-ticketing / wahana
+  if (['cat_3', 'cat_4', 'cat_5', 'cat_6'].includes(id)) return true;
+
+  // Pola nama kategori / grup tiket gerbang & wahana
+  if (/e-?ticketing|ticket|tiket|vending|tvm|\bgate\b|gerbang/i.test(name)) {
+    return true;
+  }
+
+  // Pola nama item tiket masuk / wahana
+  if (/tiket masuk|pintu masuk|schmutzer|pusat primata|taman satwa anak|rombongan dewasa|rombongan anak/i.test(name)) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
  * Daftar template. Urutan penting: yang paling spesifik lebih dulu.
  * `test` menerima teks gabungan (nama kategori + nama item + catatan) huruf kecil.
  */
@@ -228,10 +252,15 @@ export const GENERIC_STSU_TEMPLATE = {
 /**
  * Memilih template berdasarkan nama kategori, nama item, dan keterangan.
  * Kategori didahulukan agar item bernama umum tidak salah template.
+ * Jika kategori/item adalah transaksi tiket gerbang/wahana, mengembalikan null (tidak dicetak).
  */
-export const resolveStsuTemplate = (catName = '', itemNames = [], notes = []) => {
+export const resolveStsuTemplate = (catName = '', itemNames = [], notes = [], catId = '') => {
+  if (isTicketCategory(catName, catId)) return null;
+
   const byCat = String(catName).toLowerCase();
   const all = `${catName} ${itemNames.join(' ')} ${notes.join(' ')}`.toLowerCase();
+
+  if (isTicketCategory(all, catId)) return null;
 
   // Kategori yang sama persis tidak ambigu: cocokkan nama kategori dulu
   const catHit = STSU_TEMPLATES.find((t) => t.id !== 'fasilitas' && t.id !== 'promo' && t.test(byCat));
@@ -248,3 +277,4 @@ export const resolveStsuTemplate = (catName = '', itemNames = [], notes = []) =>
   const anyHit = STSU_TEMPLATES.find((t) => t.test(all));
   return anyHit || GENERIC_STSU_TEMPLATE;
 };
+

@@ -112,3 +112,4 @@ export function ensureStandardFacilityCategories(categoriesList) {
   updatedCategories[catIdx] = updatedCat;
   return updatedCategories;
 }
+
