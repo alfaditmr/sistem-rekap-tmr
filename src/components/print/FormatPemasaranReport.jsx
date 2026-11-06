@@ -227,14 +227,10 @@ export default function FormatPemasaranReport({
       activeItems.forEach((ai) => {
         const cat = categories.find((c) => c.id === ai.catId);
 
-        // Laporan STSU Pemasaran & Hasil Retribusi (Gambar 2) khusus mencakup pos retribusi:
-        // 1. Pemakaian Fasilitas TMR (cat_1 atau kategori fasilitas)
-        // 2. Retribusi Pedagang (cat_2 atau pedagang)
-        // 3. Penyediaan Satwa Jinak untuk Berfoto
-        // Lewati kategori tiket masuk gerbang/wahana (E-Ticketing/TVM/Online) agar tidak tercampur
-        if (cat && /e-ticketing|ticket online|vending|gate/i.test(cat.name || '')) {
-          return;
-        }
+        // Laporan STSU Format Baru Pemasaran HANYA memuat nominal dari
+        // sub-kategori "Pemakaian Fasilitas TMR" (cat_1). Kategori lain diabaikan.
+        const isFasilitasTmr = Boolean(cat && (cat.id === 'cat_1' || /fasilitas/i.test(cat.name || '')));
+        if (!isFasilitasTmr) return;
 
         const catItem = cat?.items?.find((i) => i.id === (ai.itemId || ai.id));
         const itemName = catItem ? catItem.name : (ai.itemName || (ai.id === 'direct' ? (cat?.name || '') : (ai.name || '')));
