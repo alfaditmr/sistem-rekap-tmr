@@ -182,11 +182,27 @@ export const STSU_TEMPLATES = [
     title: PENGEMBANGAN_USAHA_TITLE,
     kode: '4.1.04.16.006.00006',
     heading: ['PENDAPATAN BLUD DARI', 'PENGEMBANGAN USAHA :'],
-    rows: ({ items, subtotal }) => {
-      const note = joinNote(items);
+    rows: ({ items, subtotal, itemDateText, dateText }) => {
+      const fallbackDate = itemDateText || items.find((i) => i.itemDateText)?.itemDateText || dateText || '';
+      const descList = items
+        .map((it) => {
+          const n = clean(it.note || (it.name && !/listrik/i.test(it.name) ? it.name : ''));
+          const d = it.itemDateText || fallbackDate;
+          if (n) {
+            return d && !/tanggal|tgl|pemakaian/i.test(n) ? `${n} pemakaian tanggal ${d}` : n;
+          }
+          return d ? `pemakaian tanggal ${d}` : '';
+        })
+        .filter(Boolean);
+
+      const uniqueDescs = Array.from(new Set(descList));
+
       return [
         {
-          lines: ['Hasil pendapatan rekening listrik dari', ...(note ? [note] : [])],
+          lines: [
+            'Hasil pendapatan rekening listrik dari',
+            ...(uniqueDescs.length > 0 ? uniqueDescs : fallbackDate ? [`pemakaian tanggal ${fallbackDate}`] : [])
+          ],
           amount: subtotal
         }
       ];

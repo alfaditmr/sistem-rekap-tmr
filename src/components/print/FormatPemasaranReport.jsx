@@ -310,7 +310,7 @@ export default function FormatPemasaranReport({
           width: 210mm;
           max-width: 100%;
           min-height: 297mm;
-          padding: 14mm 16mm 12mm 16mm;
+          padding: 20mm 16mm 12mm 16mm;
           box-sizing: border-box;
           font-family: Arial, Helvetica, sans-serif !important;
           font-size: 10pt;
@@ -327,7 +327,7 @@ export default function FormatPemasaranReport({
         @media print {
           @page {
             size: A4 portrait;
-            margin: 12mm 15mm 10mm 15mm !important;
+            margin: 20mm 15mm 10mm 15mm !important;
           }
           html, body {
             background-color: #ffffff !important;

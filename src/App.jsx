@@ -3161,7 +3161,7 @@ export default function App() {
             }
           ` : `
             .print-container:not(.pemasaran-sheet) { width: 100%; max-width: 100%; margin: 0; padding: 0; font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: black; box-shadow: none !important; border: none !important; }
-            @page { margin: 12mm 15mm 10mm 15mm; }
+            @page { margin: 20mm 15mm 10mm 15mm; }
           `}
         }
         /* Sticky Column for Excel Report */

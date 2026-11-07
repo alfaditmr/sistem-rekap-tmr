@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { safeString, formatRp, terbilang, formatTanggalTtd, getActiveItemKey } from '../../utils/formatters';
+import { safeString, formatRp, terbilang, formatTanggalTtd, parseYmd, getActiveItemKey } from '../../utils/formatters';
 import { resolveStsuTemplate, isTicketCategory, isExcludedFromFormatDinas } from '../../utils/stsuTemplates';
 
 const capitalizeFirst = (s = '') => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
@@ -104,11 +104,39 @@ export default function FormatDinasStsuReport({
 
           const displayName = safeString(item.name || (itemId === 'direct' ? group.name : ''));
 
+          // Ambil tanggal transaksi secara presisi
+          let itemDateVal = item.itemDate || group.itemDate || '';
+          if (!itemDateVal && Array.isArray(item.bankAllocations) && item.bankAllocations.length > 0) {
+            const allocWithDate = item.bankAllocations.find(
+              (ba) => ba.itemDate || ba.date || ba.bankDate || ba.tanggal || ba.tgl
+            );
+            if (allocWithDate) {
+              itemDateVal =
+                allocWithDate.itemDate ||
+                allocWithDate.date ||
+                allocWithDate.bankDate ||
+                allocWithDate.tanggal ||
+                allocWithDate.tgl ||
+                '';
+            }
+          }
+          if (!itemDateVal) {
+            itemDateVal = item.validDate || group.validDate || item.bankMatchDate || item.originBankDate || '';
+          }
+          if (!itemDateVal) {
+            itemDateVal = reportDate || '';
+          }
+
+          const ymd = parseYmd ? (parseYmd(itemDateVal) || itemDateVal) : itemDateVal;
+          const itemDateText = ymd ? formatTanggalTtd(ymd) : '';
+
           return {
             id: itemId,
             name: displayName,
             note: note ? note.replace(/\r?\n+/g, ' ') : '',
-            amount
+            amount,
+            itemDate: itemDateVal,
+            itemDateText
           };
         })
         .filter((i) => i.amount > 0);
@@ -119,10 +147,14 @@ export default function FormatDinasStsuReport({
         if (groupSub > 0 && !isExcludedFromFormatDinas(group.name, group.catId, '')) {
           const template = resolveStsuTemplate(group.name, [], [group.itemNote || ''], group.catId);
           if (template) {
-            const dateText = formatTanggalTtd(group.itemDate || group.validDate || reportDate);
-            const itemDateText = group.itemDate ? formatTanggalTtd(group.itemDate) : '';
+            const rawDate = group.itemDate || group.validDate || reportDate;
+            const ymd = parseYmd ? (parseYmd(rawDate) || rawDate) : rawDate;
+            const dateText = formatTanggalTtd(ymd);
+            const itemDateText = group.itemDate
+              ? formatTanggalTtd(parseYmd ? (parseYmd(group.itemDate) || group.itemDate) : group.itemDate)
+              : dateText;
             const ctx = {
-              items: [{ id: 'direct', name: group.name, note: group.itemNote || '', amount: groupSub }],
+              items: [{ id: 'direct', name: group.name, note: group.itemNote || '', amount: groupSub, itemDateText }],
               subtotal: groupSub,
               catName: group.name,
               dateText,
@@ -163,9 +195,15 @@ export default function FormatDinasStsuReport({
         const subtotal = items.reduce((sum, it) => sum + it.amount, 0);
         if (subtotal <= 0) return;
 
-        const dateText = formatTanggalTtd(group.itemDate || group.validDate || reportDate);
-        const itemDateText = group.itemDate ? formatTanggalTtd(group.itemDate) : '';
-        const ctx = { items, subtotal, catName: group.name, dateText, itemDateText };
+        const rawDate = group.itemDate || group.validDate || reportDate;
+        const ymd = parseYmd ? (parseYmd(rawDate) || rawDate) : rawDate;
+        const dateText = formatTanggalTtd(ymd);
+        const effectiveItemDateText =
+          items.find((it) => it.itemDateText)?.itemDateText ||
+          (group.itemDate ? formatTanggalTtd(parseYmd ? (parseYmd(group.itemDate) || group.itemDate) : group.itemDate) : '') ||
+          (group.validDate ? formatTanggalTtd(parseYmd ? (parseYmd(group.validDate) || group.validDate) : group.validDate) : '') ||
+          dateText;
+        const ctx = { items, subtotal, catName: group.name, dateText, itemDateText: effectiveItemDateText };
 
         generatedPages.push({
           key: `${group.groupId}_${templateId}`,
@@ -189,7 +227,7 @@ export default function FormatDinasStsuReport({
           width: 210mm;
           max-width: 100%;
           min-height: 148mm;
-          padding: 14mm 16mm 12mm 16mm;
+          padding: 20mm 16mm 12mm 16mm;
           box-sizing: border-box;
           background: #ffffff;
           color: #000000;
@@ -205,7 +243,7 @@ export default function FormatDinasStsuReport({
         @media print {
           @page {
             size: A4 portrait;
-            margin: 12mm 15mm 10mm 15mm !important;
+            margin: 20mm 15mm 10mm 15mm !important;
           }
           html, body {
             background: #ffffff !important;
