@@ -2909,14 +2909,15 @@ export default function App() {
         const enrichedAllocs = ai.bankAllocations.map(ba => {
           if (!ba) return ba;
           let desc = ba.desc || ba.tenant || '';
-          if (!desc || desc === 'Mutasi Bank' || desc === 'Transaksi Sebelumnya') {
-            const matchedRow = safeBankRows.find(r =>
+          let matchedRow = null;
+          if (!desc || desc === 'Mutasi Bank' || desc === 'Transaksi Sebelumnya' || !ba.tanggalSewa) {
+            matchedRow = safeBankRows.find(r =>
               r && (
                 (ba.bankRowId && ba.bankRowId !== 'prior_0' && r.id === ba.bankRowId) ||
                 (ba.bankDate && r.date === ba.bankDate && Number(r.amount) >= Number(ba.amount || 0))
               )
             );
-            if (matchedRow) {
+            if (matchedRow && (!desc || desc === 'Mutasi Bank' || desc === 'Transaksi Sebelumnya')) {
               desc = matchedRow.tenant
                 ? (matchedRow.location && matchedRow.location !== matchedRow.tenant ? `${matchedRow.tenant} - ${matchedRow.location}` : matchedRow.tenant)
                 : (matchedRow.description || (matchedRow.date ? `Mutasi (${matchedRow.date})` : 'Mutasi Bank'));
@@ -3321,20 +3322,22 @@ export default function App() {
               {/* ============================================================== */}
               {/* 🔴 TAB: KALENDER */}
               {/* ============================================================== */}
-              <KalenderTab
-                activeTab={activeTab}
-                allReports={allReports}
-                reportDate={reportDate}
-                closedMonths={closedMonths}
-                isMonthClosed={isMonthClosed}
-                onSelectDay={({ dateStr, type, lainIndex }) => {
-                  handleDateChange(dateStr);
-                  if (type) setActiveType(type);
-                  if (lainIndex !== undefined) setActiveLainIndex(lainIndex);
-                  setActiveTab('input');
-                  setTopLevelRoute('operasional');
-                }}
-              />
+              <ErrorBoundary onReset={() => setActiveTab('kalender')}>
+                <KalenderTab
+                  activeTab={activeTab}
+                  allReports={allReports}
+                  reportDate={reportDate}
+                  closedMonths={closedMonths}
+                  isMonthClosed={isMonthClosed}
+                  onSelectDay={({ dateStr, type, lainIndex }) => {
+                    handleDateChange(dateStr);
+                    if (type) setActiveType(type);
+                    if (lainIndex !== undefined) setActiveLainIndex(lainIndex);
+                    setActiveTab('input');
+                    setTopLevelRoute('operasional');
+                  }}
+                />
+              </ErrorBoundary>
 
               {activeTab === 'rekonBank' && (
                 <div className="no-print w-full bg-gray-50 min-h-screen">
@@ -4121,62 +4124,64 @@ export default function App() {
               {/* ============================================================== */}
               {/* 🔴 TAB: INPUT */}
               {/* ============================================================== */}
-              <InputHarianTab
-                activeTab={activeTab}
-                activeType={activeType}
-                handleTypeSwitch={handleTypeSwitch}
-                handleOpenTransit3A={handleOpenTransit3A}
-                handleOpenTransitIWM={handleOpenTransitIWM}
-                lainDocIndices={lainDocIndices}
-                activeLainIndex={activeLainIndex}
-                setActiveLainIndex={setActiveLainIndex}
-                handleAddLainDoc={handleAddLainDoc}
-                handleRemoveLainDoc={handleRemoveLainDoc}
-                reportDate={reportDate}
-                handleDateChange={handleDateChange}
-                currentReport={currentReport}
-                handleSignatureDateChange={handleSignatureDateChange}
-                handleSequenceChange={handleSequenceChange}
-                computedStsuNo={computedStsuNo}
-                grandTotal={grandTotal}
-                isAddingSusulan={isAddingSusulan}
-                setIsAddingSusulan={setIsAddingSusulan}
-                susulanValidDate={susulanValidDate}
-                setSusulanValidDate={setSusulanValidDate}
-                lainItemDate={lainItemDate}
-                setLainItemDate={setLainItemDate}
-                selectedCatToAdd={selectedCatToAdd}
-                setSelectedCatToAdd={setSelectedCatToAdd}
-                handleCatChange={handleCatChange}
-                filteredCategories={filteredCategories}
-                selectedItemToAdd={selectedItemToAdd}
-                setSelectedItemToAdd={setSelectedItemToAdd}
-                availableItemsToAdd={availableItemsToAdd}
-                manualNominalToAdd={manualNominalToAdd}
-                setManualNominalToAdd={setManualNominalToAdd}
-                lainItemNote={lainItemNote}
-                setLainItemNote={setLainItemNote}
-                handleGenerateUraian={handleGenerateUraian}
-                isGeneratingUraian={isGeneratingUraian}
-                handleAddActiveItem={handleAddActiveItem}
-                activeGroups={activeGroups}
-                handleRemoveActiveItem={handleRemoveActiveItem}
-                handleUnlinkAllocation={handleUnlinkAllocation}
-                openEditNote={openEditNote}
-                handleInputChange={handleInputChange}
-                triggerSaveToFirebase={() => {
-                  flushPendingSave();
-                }}
-                subtotals={subtotals}
-                clearCurrentReport={clearCurrentReport}
-                handleForceSave={handleForceSave}
-                isMonthClosed={isMonthClosed(reportDate)}
-                closedInfo={(closedMonths || {})[getPartitionMonth(reportDate)]}
-                onViewDraftCetak={() => {
-                  setActiveTab('print');
-                  setPrintMode('pdf');
-                }}
-              />
+              <ErrorBoundary onReset={() => setActiveTab('input')}>
+                <InputHarianTab
+                  activeTab={activeTab}
+                  activeType={activeType}
+                  handleTypeSwitch={handleTypeSwitch}
+                  handleOpenTransit3A={handleOpenTransit3A}
+                  handleOpenTransitIWM={handleOpenTransitIWM}
+                  lainDocIndices={lainDocIndices}
+                  activeLainIndex={activeLainIndex}
+                  setActiveLainIndex={setActiveLainIndex}
+                  handleAddLainDoc={handleAddLainDoc}
+                  handleRemoveLainDoc={handleRemoveLainDoc}
+                  reportDate={reportDate}
+                  handleDateChange={handleDateChange}
+                  currentReport={currentReport}
+                  handleSignatureDateChange={handleSignatureDateChange}
+                  handleSequenceChange={handleSequenceChange}
+                  computedStsuNo={computedStsuNo}
+                  grandTotal={grandTotal}
+                  isAddingSusulan={isAddingSusulan}
+                  setIsAddingSusulan={setIsAddingSusulan}
+                  susulanValidDate={susulanValidDate}
+                  setSusulanValidDate={setSusulanValidDate}
+                  lainItemDate={lainItemDate}
+                  setLainItemDate={setLainItemDate}
+                  selectedCatToAdd={selectedCatToAdd}
+                  setSelectedCatToAdd={setSelectedCatToAdd}
+                  handleCatChange={handleCatChange}
+                  filteredCategories={filteredCategories}
+                  selectedItemToAdd={selectedItemToAdd}
+                  setSelectedItemToAdd={setSelectedItemToAdd}
+                  availableItemsToAdd={availableItemsToAdd}
+                  manualNominalToAdd={manualNominalToAdd}
+                  setManualNominalToAdd={setManualNominalToAdd}
+                  lainItemNote={lainItemNote}
+                  setLainItemNote={setLainItemNote}
+                  handleGenerateUraian={handleGenerateUraian}
+                  isGeneratingUraian={isGeneratingUraian}
+                  handleAddActiveItem={handleAddActiveItem}
+                  activeGroups={activeGroups}
+                  handleRemoveActiveItem={handleRemoveActiveItem}
+                  handleUnlinkAllocation={handleUnlinkAllocation}
+                  openEditNote={openEditNote}
+                  handleInputChange={handleInputChange}
+                  triggerSaveToFirebase={() => {
+                    flushPendingSave();
+                  }}
+                  subtotals={subtotals}
+                  clearCurrentReport={clearCurrentReport}
+                  handleForceSave={handleForceSave}
+                  isMonthClosed={isMonthClosed(reportDate)}
+                  closedInfo={(closedMonths || {})[getPartitionMonth(reportDate)]}
+                  onViewDraftCetak={() => {
+                    setActiveTab('print');
+                    setPrintMode('pdf');
+                  }}
+                />
+              </ErrorBoundary>
 
               {/* ============================================================== */}
               {/* 🔴 TAB: SETTINGS (MASTER) */}
@@ -4211,31 +4216,33 @@ export default function App() {
               {/* ============================================================== */}
               {/* 🔴 TAB: PRINT & NCR DOT MATRIX */}
               {/* ============================================================== */}
-              <PrintPreviewTab
-                activeTab={activeTab}
-                printMode={printMode}
-                setPrintMode={setPrintMode}
-                selectedNcrGroup={selectedNcrGroup}
-                setSelectedNcrGroup={setSelectedNcrGroup}
-                activeType={activeType}
-                activeGroups={activeGroups}
-                setActiveTab={setActiveTab}
-                handleDownloadPDF={handleDownloadPDF}
-                pdfLoading={pdfLoading}
-                handlePrint={handlePrint}
-                reportDate={reportDate}
-                computedStsuNo={computedStsuNo}
-                subtotals={subtotals}
-                grandTotal={grandTotal}
-                currentReport={currentReport}
-                signatures={signatures}
-                categories={categories}
-                allReports={allReports}
-                activeLainIndex={activeLainIndex}
-                handleSequenceChange={handleSequenceChange}
-                handleSignatureDateChange={handleSignatureDateChange}
-                isMonthClosed={isMonthClosed(reportDate)}
-              />
+              <ErrorBoundary onReset={() => setActiveTab('print')}>
+                <PrintPreviewTab
+                  activeTab={activeTab}
+                  printMode={printMode}
+                  setPrintMode={setPrintMode}
+                  selectedNcrGroup={selectedNcrGroup}
+                  setSelectedNcrGroup={setSelectedNcrGroup}
+                  activeType={activeType}
+                  activeGroups={activeGroups}
+                  setActiveTab={setActiveTab}
+                  handleDownloadPDF={handleDownloadPDF}
+                  pdfLoading={pdfLoading}
+                  handlePrint={handlePrint}
+                  reportDate={reportDate}
+                  computedStsuNo={computedStsuNo}
+                  subtotals={subtotals}
+                  grandTotal={grandTotal}
+                  currentReport={currentReport}
+                  signatures={signatures}
+                  categories={categories}
+                  allReports={allReports}
+                  activeLainIndex={activeLainIndex}
+                  handleSequenceChange={handleSequenceChange}
+                  handleSignatureDateChange={handleSignatureDateChange}
+                  isMonthClosed={isMonthClosed(reportDate)}
+                />
+              </ErrorBoundary>
 
             </>
           )}
