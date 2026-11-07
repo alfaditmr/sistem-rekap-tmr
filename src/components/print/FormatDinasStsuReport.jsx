@@ -1,14 +1,20 @@
 import React, { useMemo } from 'react';
 import { safeString, formatRp, terbilang, formatTanggalTtd, getActiveItemKey } from '../../utils/formatters';
-import { resolveStsuTemplate, isTicketCategory } from '../../utils/stsuTemplates';
+import { resolveStsuTemplate, isTicketCategory, isExcludedFromFormatDinas } from '../../utils/stsuTemplates';
+import { LOGO_DKI_JAYA_RAYA, LOGO_RAGUNAN } from '../../assets/stsuLogos';
 
 const capitalizeFirst = (s = '') => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 /**
- * Cetak STSU Format Dinas (mengikuti contoh di folder "format cetak").
- * Satu kategori/grup transaksi non-tiket = satu lembar STSU dengan judul, kode rekening,
- * uraian, terbilang, dan tanda tangan sesuai template resmi.
- * Seluruh transaksi tiket masuk/gerbang (e-ticketing, ticket online, TVM) tidak dicetak.
+ * Cetak STSU Format Dinas (mengikuti contoh resmi di folder "format cetak").
+ * Satu kategori transaksi resmi = satu lembar STSU dengan kop surat resmi (Logo DKI & Logo Ragunan),
+ * nomor STSU, kode rekening, uraian baku, terbilang, dan tanda tangan kedinasan.
+ *
+ * Ketentuan pengecualian:
+ * 1. Seluruh transaksi tiket masuk/gerbang (New Gate, Old Gate, Online, TVM) tidak dicetak di sini.
+ * 2. Promo / Penjualan Produk dan Pemakaian Fasilitas TMR (lahan, gedung, panggung, sound, shooting, dll.)
+ *    tidak dicetak di sini karena sudah dimuat secara khusus pada Format Baru Pemasaran (23 nomor pos baku).
+ * 3. Transaksi Foto Satwa dan Juru Foto tetap dicetak sesuai file resmi masing-masing.
  */
 export default function FormatDinasStsuReport({
   reportDate,
@@ -26,53 +32,77 @@ export default function FormatDinasStsuReport({
 
   const pages = useMemo(() => {
     const formData = currentReport.formData || {};
-    return activeGroups
-      .filter((group) => !isTicketCategory(group.name, group.catId))
-      .map((group) => {
-        const subtotal = Number(subtotals[group.groupId] || 0);
-        if (subtotal <= 0) return null;
+    const generatedPages = [];
 
-        const items = (group.activeItems || [])
-          .filter((item) => !isTicketCategory(item.name, item.id))
-          .map((item) => {
-            const amount = Number(
-              formData[
-                getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate, item.itemNote)
-              ] || 0
-            );
-            return {
-              name: item.id === 'direct' ? '' : safeString(item.name),
-              note: item.itemNote || group.itemNote || '',
-              amount
-            };
-          })
-          .filter((i) => i.amount > 0);
+    activeGroups.forEach((group) => {
+      // 1. Abaikan kategori tiket gerbang / wahana
+      if (isTicketCategory(group.name, group.catId)) return;
 
-        if (items.length === 0) return null;
+      // 2. Kumpulkan item transaksi aktif dengan nominal > 0
+      const rawItems = (group.activeItems || [])
+        .map((item) => {
+          let note = item.itemNote || group.itemNote || '';
+          if (!note && Array.isArray(item.bankAllocations) && item.bankAllocations.length > 0) {
+            note = item.bankAllocations
+              .map((ba) => ba.tenant || ba.desc)
+              .filter(Boolean)
+              .join(', ');
+          }
+          const amount = Number(
+            formData[
+              getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate, item.itemNote)
+            ] || 0
+          );
+          return {
+            id: item.id,
+            name: item.id === 'direct' ? '' : safeString(item.name),
+            note: note ? note.replace(/\r?\n+/g, ' ') : '',
+            amount
+          };
+        })
+        .filter((i) => i.amount > 0);
 
-        const template = resolveStsuTemplate(
-          group.name,
-          items.map((i) => i.name).filter(Boolean),
-          items.map((i) => i.note).filter(Boolean),
-          group.catId
-        );
+      if (rawItems.length === 0) return;
 
-        if (!template) return null;
+      // 3. Saring item: kecualikan tiket, promo, dan fasilitas umum yang tidak memiliki lembar di format cetak
+      const validItems = rawItems.filter(
+        (item) => !isExcludedFromFormatDinas(group.name, group.catId, item.name)
+      );
+
+      if (validItems.length === 0) return;
+
+      // 4. Kelompokkan item berdasarkan template resmi STSU
+      const itemsByTemplate = new Map();
+      validItems.forEach((item) => {
+        const template = resolveStsuTemplate(group.name, [item.name], [item.note], group.catId);
+        if (!template) return;
+        if (!itemsByTemplate.has(template.id)) {
+          itemsByTemplate.set(template.id, { template, items: [] });
+        }
+        itemsByTemplate.get(template.id).items.push(item);
+      });
+
+      // 5. Susun halaman per template
+      itemsByTemplate.forEach(({ template, items }, templateId) => {
+        const subtotal = items.reduce((sum, it) => sum + it.amount, 0);
+        if (subtotal <= 0) return;
 
         const dateText = formatTanggalTtd(group.itemDate || group.validDate || reportDate);
         const itemDateText = group.itemDate ? formatTanggalTtd(group.itemDate) : '';
         const ctx = { items, subtotal, catName: group.name, dateText, itemDateText };
 
-        return {
-          key: group.groupId,
+        generatedPages.push({
+          key: `${group.groupId}_${templateId}`,
           template,
           rows: template.rows(ctx),
           footerLines: template.footerLines(ctx),
           subtotal
-        };
-      })
-      .filter(Boolean);
-  }, [activeGroups, subtotals, currentReport.formData, reportDate]);
+        });
+      });
+    });
+
+    return generatedPages;
+  }, [activeGroups, currentReport.formData, reportDate]);
 
   const signatureText = signatureDateStr ? formatTanggalTtd(signatureDateStr) : '';
 
@@ -80,33 +110,75 @@ export default function FormatDinasStsuReport({
     <div className="w-full">
       <style>{`
         .dinas-page {
-          width: 210mm; max-width: 100%; min-height: 148mm;
-          padding: 14mm 16mm 10mm 16mm; box-sizing: border-box;
-          background: #fff; color: #000; font-family: Arial, Helvetica, sans-serif;
-          font-size: 10.5pt; line-height: 1.35; margin: 0 auto 16px auto;
+          width: 210mm;
+          max-width: 100%;
+          min-height: 148mm;
+          padding: 14mm 16mm 12mm 16mm;
+          box-sizing: border-box;
+          background: #ffffff;
+          color: #000000;
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 10pt;
+          line-height: 1.35;
+          margin: 0 auto 20px auto;
         }
-        .dinas-page * { font-family: Arial, Helvetica, sans-serif !important; box-sizing: border-box; }
+        .dinas-page * {
+          font-family: Arial, Helvetica, sans-serif !important;
+          box-sizing: border-box;
+        }
         @media print {
-          @page { size: A4 portrait; margin: 12mm 15mm 10mm 15mm !important; }
-          html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
-          .no-print { display: none !important; }
-          .dinas-page {
-            width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 0 10mm 0 !important;
-            min-height: 0 !important; box-shadow: none !important; border: none !important;
-            page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid;
+          @page {
+            size: A4 portrait;
+            margin: 12mm 15mm 10mm 15mm !important;
           }
-          .dinas-page:last-child { page-break-after: auto; break-after: auto; }
+          html, body {
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .dinas-page {
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 0 10mm 0 !important;
+            min-height: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            page-break-after: always;
+            break-after: page;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          .dinas-page:last-child {
+            page-break-after: auto;
+            break-after: auto;
+          }
         }
       `}</style>
 
+      {/* TOOLBAR KONTROL DI ATAS CETAKAN */}
       <div className="bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-200 p-3 sm:p-4 rounded-xl shadow-xs mb-6 no-print flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
         <div className="text-xs text-amber-900">
-          <div className="font-bold uppercase tracking-wider">Format Dinas STSU ({activeType === 'utama' ? 'SU' : 'SU/L'})</div>
+          <div className="font-bold uppercase tracking-wider">
+            Format Dinas STSU ({activeType === 'utama' ? 'SU' : 'SU/L'})
+          </div>
           <div className="text-amber-800 mt-0.5">
-            {pages.length} lembar STSU non-tiket: {pages.map((p) => p.template.label).join(' • ') || '—'}
+            {pages.length > 0 ? (
+              <>
+                <span className="font-bold">{pages.length} lembar STSU aktif:</span>{' '}
+                {pages.map((p) => p.template.label).join(' • ')}
+              </>
+            ) : (
+              'Tidak ada lembar STSU aktif'
+            )}
           </div>
           <div className="text-[11px] text-amber-700 italic mt-0.5">
-            * Seluruh transaksi tiket (E-Ticketing Old/New Gate, Ticket Online, TVM) dikecualikan dari cetakan STSU ini.
+            * Transaksi tiket (Gerbang/Online/TVM) serta Pemakaian Fasilitas & Promo dicetak melalui Format Pemasaran.
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -118,7 +190,7 @@ export default function FormatDinasStsuReport({
               value={currentReport.sequence || ''}
               onChange={onUpdateSequence}
               disabled={isMonthClosed}
-              className="w-14 px-2 py-1 bg-white border border-gray-300 rounded-lg text-center font-bold text-xs text-blue-700 outline-none focus:border-blue-500 disabled:bg-gray-100"
+              className="w-14 px-2 py-1 bg-white border border-gray-300 rounded-lg text-center font-bold text-xs text-blue-700 outline-none focus:border-blue-500 shadow-2xs disabled:bg-gray-100"
             />
           </div>
           <div className="flex items-center gap-1.5">
@@ -128,64 +200,102 @@ export default function FormatDinasStsuReport({
               value={signatureDateStr}
               onChange={onUpdateSignatureDate}
               disabled={isMonthClosed}
-              className="px-2 py-1 bg-white border border-gray-300 rounded-lg font-bold text-xs text-blue-700 outline-none focus:border-blue-500 disabled:bg-gray-100"
+              className="px-2 py-1 bg-white border border-gray-300 rounded-lg font-bold text-xs text-blue-700 outline-none focus:border-blue-500 shadow-2xs disabled:bg-gray-100"
             />
           </div>
         </div>
       </div>
 
+      {/* AREA CETAK SELURUH LEMBAR DINAS */}
       <div id="printable-area" className="print-container">
         {pages.length === 0 && (
-          <div className="dinas-page border border-gray-300 shadow-xl text-center text-gray-500 py-20">
-            <div className="font-semibold text-base text-gray-700 mb-1">
-              Tidak ada transaksi non-tiket pada dokumen ini untuk dicetak.
+          <div className="dinas-page border border-gray-300 shadow-xl text-center text-gray-500 py-20 rounded-xl">
+            <div className="font-bold text-base text-gray-700 mb-1">
+              Tidak ada transaksi kategori dinas untuk dicetak pada dokumen ini.
             </div>
-            <div className="text-xs text-gray-500">
-              Sesuai ketentuan, seluruh transaksi tiket (E-ticketing gerbang, Ticket Online, TVM) tidak dicetak sebagai lembar STSU.
+            <div className="text-xs text-gray-500 max-w-md mx-auto leading-relaxed">
+              Sesuai ketentuan kedinasan:
+              <br />• Transaksi tiket masuk/gerbang (New Gate, Old Gate, Online, TVM) tidak dibuatkan STSU dinas.
+              <br />• Pemakaian Fasilitas TMR dan Promo Produk dicetak melalui tab <strong>Format Baru Pemasaran</strong>.
             </div>
           </div>
         )}
+
         {pages.map((page) => {
           const t = page.template;
           return (
-            <div key={page.key} className="dinas-page border border-gray-300 shadow-xl print:border-none print:shadow-none">
-              <div className="font-bold leading-tight">
-                <div>PEMERINTAH PROVINSI DAERAH KHUSUS IBUKOTA JAKARTA</div>
-                <div>UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN</div>
+            <div
+              key={page.key}
+              className="dinas-page border border-gray-300 shadow-xl print:border-none print:shadow-none mb-6 print:mb-0"
+            >
+              {/* KOP SURAT RESMI KEDINASAN */}
+              <div className="flex items-center justify-between pb-2 mb-3 border-b-[2.5px] border-black">
+                <div className="w-16 h-16 flex items-center justify-center shrink-0">
+                  <img
+                    src={LOGO_DKI_JAYA_RAYA}
+                    alt="Logo Pemprov DKI Jakarta"
+                    className="max-h-16 max-w-full object-contain"
+                  />
+                </div>
+                <div className="text-center font-bold flex-1 px-3 leading-tight select-none">
+                  <div className="text-[11.5pt] uppercase tracking-wide">
+                    PEMERINTAH PROVINSI DAERAH KHUSUS IBUKOTA JAKARTA
+                  </div>
+                  <div className="text-[11pt] uppercase tracking-wider mt-0.5">
+                    UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN
+                  </div>
+                </div>
+                <div className="w-16 h-16 flex items-center justify-center shrink-0">
+                  <img
+                    src={LOGO_RAGUNAN}
+                    alt="Logo Taman Margasatwa Ragunan"
+                    className="max-h-16 max-w-full object-contain"
+                  />
+                </div>
               </div>
-              <div className="mt-2 mb-3">No. &nbsp; {safeString(computedStsuNo)}</div>
 
+              {/* NOMOR SURAT STSU */}
+              <div className="mt-1 mb-3 text-[10pt]">No. &nbsp; {safeString(computedStsuNo)}</div>
+
+              {/* JUDUL DOKUMEN & SUBTITLE */}
               <div className="text-center font-bold leading-snug">
-                <div>SURAT TANDA SETOR UANG</div>
+                <div className="text-[11pt] tracking-wide">SURAT TANDA SETOR UANG</div>
                 {t.title.map((l, i) => (
-                  <div key={i}>{l}</div>
+                  <div key={i} className="text-[10.5pt]">
+                    {l}
+                  </div>
                 ))}
               </div>
-              <div className="mt-3 mb-1">dengan rincian sebagai berikut :</div>
+              <div className="mt-3 mb-1 text-[10pt]">dengan rincian sebagai berikut :</div>
 
+              {/* TABEL RINCIAN STSU KEDINASAN */}
               <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
                 <colgroup>
-                  <col style={{ width: '38px' }} />
+                  <col style={{ width: '40px' }} />
                   <col style={{ width: '150px' }} />
                   <col />
-                  <col style={{ width: '34px' }} />
-                  <col style={{ width: '110px' }} />
+                  <col style={{ width: '36px' }} />
+                  <col style={{ width: '120px' }} />
                 </colgroup>
                 <thead>
-                  <tr className="border-t border-b border-dashed border-black font-bold text-center">
+                  <tr className="border-t border-b border-dashed border-black font-bold text-center text-[10pt]">
                     <th className="py-1">NO.</th>
                     <th className="py-1">KODE REKENING</th>
                     <th className="py-1 text-left pl-1">U R A I A N</th>
-                    <th colSpan={2} className="py-1 text-right pr-1">JUMLAH</th>
+                    <th colSpan={2} className="py-1 text-right pr-1">
+                      JUMLAH
+                    </th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="text-[10pt]">
                   <tr>
                     <td></td>
-                    <td className="align-top pt-2">{t.kode}</td>
+                    <td className="align-top pt-2 font-normal">{t.kode}</td>
                     <td colSpan={3} className="pt-2 pl-1 font-bold">
                       {t.heading.map((l, i) => (
-                        <div key={i} className={i >= 2 ? 'font-normal' : ''}>{l}</div>
+                        <div key={i} className={i >= 2 ? 'font-normal' : ''}>
+                          {l}
+                        </div>
                       ))}
                     </td>
                   </tr>
@@ -199,20 +309,22 @@ export default function FormatDinasStsuReport({
                         ))}
                       </td>
                       <td className="align-top pt-1">Rp.</td>
-                      <td className="align-top pt-1 text-right pr-1">{formatRp(row.amount)}</td>
+                      <td className="align-top pt-1 text-right pr-1 font-normal">{formatRp(row.amount)}</td>
                     </tr>
                   ))}
                   {page.footerLines.map((l, i) => (
                     <tr key={`f${i}`}>
                       <td></td>
                       <td></td>
-                      <td colSpan={3} className="pl-1">{l}</td>
+                      <td colSpan={3} className="pl-1 pt-0.5">
+                        {l}
+                      </td>
                     </tr>
                   ))}
                   <tr>
                     <td colSpan={5} className="h-2"></td>
                   </tr>
-                  <tr className="border-t border-b border-dashed border-black font-bold">
+                  <tr className="border-t border-b border-dashed border-black font-bold text-[10pt]">
                     <td></td>
                     <td></td>
                     <td className="py-1 pl-1">T o t a l</td>
@@ -222,23 +334,29 @@ export default function FormatDinasStsuReport({
                 </tbody>
               </table>
 
-              <div className="mt-2 mb-6">
+              {/* TERBILANG NOMINAL */}
+              <div className="mt-3 mb-6 text-[10pt]">
                 <span className="font-bold">Terbilang : </span>
                 <span className="italic">{capitalizeFirst(terbilang(page.subtotal))} rupiah.-</span>
               </div>
 
-              <div className="grid grid-cols-2 text-center break-inside-avoid">
+              {/* TANDA TANGAN KEDINASAN (2 KOLOM) */}
+              <div className="grid grid-cols-2 text-center break-inside-avoid text-[10pt]">
                 <div>
                   <div>&nbsp;</div>
                   <div>{safeString(signatures.leftRole || 'Kepala Seksi Pelayanan dan Informasi')}</div>
-                  <div className="h-16"></div>
-                  <div className="font-bold underline">{safeString(signatures.leftName || 'Afriana Pulungan, S.Si., M.AP.')}</div>
+                  <div className="h-20"></div>
+                  <div className="font-bold underline">
+                    {safeString(signatures.leftName || 'Afriana Pulungan, S.Si., M.AP.')}
+                  </div>
                   <div>NIP {safeString(signatures.leftNip || '197304212007012021')}</div>
                 </div>
                 <div>
-                  <div>{safeString(signatures.location || 'Jakarta')}, {signatureText}</div>
+                  <div>
+                    {safeString(signatures.location || 'Jakarta')}, {signatureText}
+                  </div>
                   <div>{safeString(signatures.rightRole || 'Bendahara Penerimaan')}</div>
-                  <div className="h-16"></div>
+                  <div className="h-20"></div>
                   <div className="font-bold underline">{safeString(signatures.rightName || 'Evi Irmawati')}</div>
                   <div>NIP {safeString(signatures.rightNip || '198101082009042006')}</div>
                 </div>
@@ -250,4 +368,3 @@ export default function FormatDinasStsuReport({
     </div>
   );
 }
-

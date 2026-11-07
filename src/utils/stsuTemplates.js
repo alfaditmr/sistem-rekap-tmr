@@ -1,6 +1,6 @@
 /**
  * stsuTemplates.js
- * Template cetak STSU format dinas (folder "format cetak"):
+ * Template cetak STSU format dinas (sesuai file resmi di folder "format cetak"):
  *  - STSU Foto Satwa.xls            -> Retribusi Pemanfaatan Aset Daerah (Satwa Jinak untuk Berfoto)
  *  - STSU-PLL E-Car.xls             -> Pendapatan BLUD dari Pengembangan Usaha (E-Car)
  *  - STSU-PLL Kerjasama Dll.xls     -> Jasa Giro / Hasil Kerjasama dengan Pihak Lain
@@ -8,7 +8,13 @@
  *  - STSU-PLL Pedagang dan Foto.xls -> Retribusi Pedagang (Autodebet) & Juru Foto
  *  - STSU-PLL Virtual .xls          -> Bank Sampah & Paket Wisata Edukasi
  *
- * Modul ini murni presentasi: tidak mengubah data/logic yang sudah ada.
+ * Catatan penting kedinasan:
+ * - Seluruh tiket masuk/gerbang (New Gate, Old Gate, Online, TVM) TIDAK dicetak di Format Dinas STSU.
+ * - Promo / Penjualan Produk dan Pemakaian Fasilitas TMR TIDAK dicetak di Format Dinas STSU
+ *   (dicetak di Format Baru Pemasaran 23 pos baku hasil retribusi), KECUALI item khusus
+ *   yang memiliki template resmi tersendiri yaitu "Foto Satwa" dan "Juru Foto".
+ *
+ * Modul ini murni presentasi: tidak mengubah data/logic/fitur yang sudah ada.
  */
 
 const PEMANFAATAN_ASET_TITLE = ['RETRIBUSI PEMANFAATAN ASET DAERAH'];
@@ -17,11 +23,14 @@ const PENGEMBANGAN_USAHA_TITLE = ['PENDAPATAN BLUD DARI PENGEMBANGAN USAHA'];
 const clean = (s = '') => String(s).replace(/\s*\n+\s*/g, ' ').trim();
 
 const joinNote = (items) =>
-  items.map((i) => clean(i.note)).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ');
+  items
+    .map((i) => clean(i.note))
+    .filter(Boolean)
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .join(', ');
 
 /**
  * Memeriksa apakah suatu kategori / item merupakan transaksi tiket gerbang / wahana / online.
- * (Sesuai arahan resmi TMR: seluruh transaksi tiket tidak dibuatkan lembar cetak STSU)
  */
 export const isTicketCategory = (catOrGroupName = '', catId = '') => {
   const name = String(catOrGroupName || '').toLowerCase();
@@ -44,8 +53,44 @@ export const isTicketCategory = (catOrGroupName = '', catId = '') => {
 };
 
 /**
- * Daftar template. Urutan penting: yang paling spesifik lebih dulu.
- * `test` menerima teks gabungan (nama kategori + nama item + catatan) huruf kecil.
+ * Memeriksa apakah transaksi dikecualikan dari Format Dinas STSU.
+ * - Tiket masuk/gerbang -> Dikecualikan
+ * - Promo / Penjualan Produk (Pos 4.1.02.02.012 00001) -> Dikecualikan (dicetak di Format Baru Pemasaran)
+ * - Pemakaian Fasilitas TMR umum (Pos 4.1.02.02.020.00001) -> Dikecualikan (dicetak di Format Baru Pemasaran)
+ *   KECUALI: Satwa Jinak untuk Berfoto (STSU Foto Satwa) & Juru Foto (STSU Juru Foto)
+ */
+export const isExcludedFromFormatDinas = (catOrGroupName = '', catId = '', itemName = '') => {
+  const cName = String(catOrGroupName || '').toLowerCase();
+  const cId = String(catId || '').toLowerCase();
+  const iName = String(itemName || '').toLowerCase();
+  const combined = `${cName} ${iName}`.trim();
+
+  // 1. Seluruh transaksi tiket
+  if (isTicketCategory(cName, cId) || isTicketCategory(iName, '')) {
+    return true;
+  }
+
+  // 2. Promo / Penjualan Produk dikecualikan dari format dinas
+  if (/promo|penjualan produk/i.test(combined) && !/banner|spanduk|umbul/i.test(combined)) {
+    return true;
+  }
+
+  // 3. Pemakaian Fasilitas TMR: hanya Foto Satwa dan Juru Foto yang dicetak di Format Dinas
+  const isFasilitas = cId === 'cat_1' || /fasilitas/i.test(cName);
+  if (isFasilitas) {
+    const isFotoSatwa = /satwa jinak|foto satwa|berfoto/i.test(combined);
+    const isJuruFoto = /juru foto|jurufoto|pengambilan foto/i.test(combined);
+    if (!isFotoSatwa && !isJuruFoto) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+/**
+ * Daftar template STSU resmi yang memiliki file template cetak di folder "format cetak".
+ * Urutan penting: yang paling spesifik lebih dulu.
  */
 export const STSU_TEMPLATES = [
   {
@@ -55,7 +100,7 @@ export const STSU_TEMPLATES = [
     title: PEMANFAATAN_ASET_TITLE,
     kode: '4.1.02.02.020.00001',
     heading: ['PEMAKAIAN FASILITAS', 'TAMAN MARGASATWA RAGUNAN'],
-    rows: ({ subtotal, dateText }) => [
+    rows: ({ subtotal }) => [
       {
         lines: ['Hasil Pendapatan Retribusi Penyediaan', 'Satwa Jinak untuk Berfoto'],
         amount: subtotal
@@ -84,7 +129,7 @@ export const STSU_TEMPLATES = [
       const note = joinNote(items);
       return [
         {
-          lines: ['Hasil pendapatan Jagir dari Rekening', note || 'Kas Bulan ........................'],
+          lines: ['Hasil pendapatan Jagir dari  Rekening', note ? `Kas Bulan ${note}` : 'Kas Bulan ........................'],
           amount: subtotal
         }
       ];
@@ -94,7 +139,7 @@ export const STSU_TEMPLATES = [
   {
     id: 'kerjasama',
     label: 'STSU Kerjasama Pihak Lain',
-    test: (t) => /kerja ?sama|sewa|pakarindo|laseko|koprimas|dorit|indomaret|minimarket/.test(t),
+    test: (t) => /kerja ?sama|sewa|pakarindo|laseko|koprimas|dorit|indomaret|minimarket|atm/.test(t),
     title: ['PENDAPATAN BLUD DARI HASIL KERJASAMA DENGAN PIHAK LAIN'],
     kode: '4.1.04.16.004.00001',
     heading: ['PENDAPATAN BLUD DARI HASIL', 'KERJASAMA DENGAN PIHAK LAIN'],
@@ -138,7 +183,11 @@ export const STSU_TEMPLATES = [
       const note = joinNote(items);
       return [
         {
-          lines: ['Hasil Pendapatan penjualan sampah', 'Anorganik Bank Sampah Tamara', note || 'UP TMR periode Bulan ..............'],
+          lines: [
+            'Hasil Pendapatan penjualan sampah',
+            'Anorganik Bank Sampah Tamara',
+            note ? `UP TMR periode Bulan ${note}` : 'UP TMR periode Bulan ..............'
+          ],
           amount: subtotal
         }
       ];
@@ -165,7 +214,7 @@ export const STSU_TEMPLATES = [
         }
       ];
     },
-    footerLines: ({ itemDateText }) => (itemDateText ? [`tanggal ${itemDateText}`] : [])
+    footerLines: ({ itemDateText, dateText }) => [itemDateText ? `tanggal ${itemDateText}` : `tanggal ${dateText}`]
   },
   {
     id: 'juru_foto',
@@ -196,85 +245,38 @@ export const STSU_TEMPLATES = [
         amount: i.amount
       })),
     footerLines: ({ dateText }) => [`Autodebet Tanggal ${dateText}`]
-  },
-  {
-    id: 'promo',
-    label: 'STSU Promo / Penjualan Produk',
-    test: (t) => /promo|penjualan produk/.test(t) && !/banner|spanduk|umbul/.test(t),
-    title: [
-      'RETRIBUSI PENYEDIAAN TEMPAT KEGIATAN USAHA BERUPA PASAR GROSIR,',
-      'PERTOKOAN, DAN TEMPAT KEGIATAN USAHA LAINNYA'
-    ],
-    kode: '4.1.02.02.012 00001',
-    heading: ['PEMAKAIAN FASILITAS', 'TAMAN MARGASATWA RAGUNAN', 'Hasil pendapatan Retribusi'],
-    rows: ({ items }) =>
-      items.map((i) => ({
-        lines: [clean(i.name) + (i.note ? ` (${clean(i.note)})` : '')],
-        amount: i.amount
-      })),
-    footerLines: ({ dateText }) => [`Tanggal ${dateText}`]
-  },
-  {
-    id: 'fasilitas',
-    label: 'STSU Pemakaian Fasilitas TMR',
-    test: (t) => /fasilitas/.test(t),
-    title: PEMANFAATAN_ASET_TITLE,
-    kode: '4.1.02.02.020.00001',
-    heading: ['PEMAKAIAN FASILITAS', 'TAMAN MARGASATWA RAGUNAN', 'Hasil Pendapatan Retribusi'],
-    rows: ({ items }) =>
-      items.map((i) => ({
-        lines: [clean(i.name) + (i.note ? ` (${clean(i.note)})` : '')],
-        amount: i.amount
-      })),
-    footerLines: ({ dateText }) => [`Tanggal ${dateText}`]
   }
 ];
 
-/** Template cadangan untuk kategori lain yang belum punya format khusus */
-export const GENERIC_STSU_TEMPLATE = {
-  id: 'generic',
-  label: 'STSU Pendapatan Lain',
-  title: PENGEMBANGAN_USAHA_TITLE,
-  kode: '4.1.04.16.006.00006',
-  heading: ['PENDAPATAN BLUD DARI', 'PENGEMBANGAN USAHA :'],
-  rows: ({ items, subtotal, catName }) => {
-    const note = joinNote(items);
-    return [
-      {
-        lines: [`Hasil Pendapatan ${clean(catName)}`, ...(note ? [note] : [])],
-        amount: subtotal
-      }
-    ];
-  },
-  footerLines: ({ dateText }) => [`Tanggal ${dateText}`]
-};
-
 /**
  * Memilih template berdasarkan nama kategori, nama item, dan keterangan.
- * Kategori didahulukan agar item bernama umum tidak salah template.
- * Jika kategori/item adalah transaksi tiket gerbang/wahana, mengembalikan null (tidak dicetak).
+ * Kategori yang dikecualikan (tiket, promo, fasilitas umum) akan mengembalikan null.
  */
 export const resolveStsuTemplate = (catName = '', itemNames = [], notes = [], catId = '') => {
-  if (isTicketCategory(catName, catId)) return null;
-
-  const byCat = String(catName).toLowerCase();
   const all = `${catName} ${itemNames.join(' ')} ${notes.join(' ')}`.toLowerCase();
 
-  if (isTicketCategory(all, catId)) return null;
+  // 1. Pengecekan tiket: seluruh tiket tidak dicetak
+  if (isTicketCategory(catName, catId) || isTicketCategory(all, catId)) return null;
 
-  // Kategori yang sama persis tidak ambigu: cocokkan nama kategori dulu
-  const catHit = STSU_TEMPLATES.find((t) => t.id !== 'fasilitas' && t.id !== 'promo' && t.test(byCat));
-  if (catHit) return catHit;
-
-  if (/fasilitas/.test(byCat)) {
-    // Pemakaian Fasilitas TMR: promo penjualan produk masuk Pos 4.1.02.02.012
-    const onlyPromo =
-      itemNames.length > 0 &&
-      itemNames.every((n) => /promo|penjualan produk/i.test(n) && !/banner|spanduk|umbul/i.test(n));
-    return STSU_TEMPLATES.find((t) => t.id === (onlyPromo ? 'promo' : 'fasilitas'));
+  // 2. Promo / Penjualan Produk: tidak dicetak di format dinas STSU
+  if (/promo|penjualan produk/i.test(all) && !/banner|spanduk|umbul/i.test(all)) {
+    return null;
   }
 
-  const anyHit = STSU_TEMPLATES.find((t) => t.test(all));
-  return anyHit || GENERIC_STSU_TEMPLATE;
-};
+  // 3. Pemakaian Fasilitas TMR: umum tidak dicetak di format dinas STSU (hanya Foto Satwa dan Juru Foto)
+  if (/fasilitas/i.test(catName) || catId === 'cat_1') {
+    const hasFotoSatwa = /satwa jinak|foto satwa|berfoto/i.test(all);
+    const hasJuruFoto = /juru foto|jurufoto|pengambilan foto/i.test(all);
+    if (hasFotoSatwa) return STSU_TEMPLATES.find((t) => t.id === 'foto_satwa');
+    if (hasJuruFoto) return STSU_TEMPLATES.find((t) => t.id === 'juru_foto');
+    return null;
+  }
 
+  // 4. Cocokkan nama kategori langsung
+  const catHit = STSU_TEMPLATES.find((t) => t.test(String(catName).toLowerCase()));
+  if (catHit) return catHit;
+
+  // 5. Cocokkan dari gabungan teks
+  const anyHit = STSU_TEMPLATES.find((t) => t.test(all));
+  return anyHit || null;
+};
