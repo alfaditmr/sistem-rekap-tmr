@@ -41,6 +41,7 @@ export default function FormatDinasStsuReport({
       // 2. Kumpulkan item transaksi aktif dengan nominal > 0
       const rawItems = (group.activeItems || [])
         .map((item) => {
+          const itemId = item.id || item.itemId || 'direct';
           let note = item.itemNote || group.itemNote || '';
           if (!note && Array.isArray(item.bankAllocations) && item.bankAllocations.length > 0) {
             note = item.bankAllocations
@@ -48,21 +49,97 @@ export default function FormatDinasStsuReport({
               .filter(Boolean)
               .join(', ');
           }
-          const amount = Number(
-            formData[
-              getActiveItemKey(group.catId, item.id, group.isSusulan, group.validDate, group.itemDate, item.itemNote)
-            ] || 0
+
+          // Pencarian nominal transaksi komprehensif
+          const itemKey = getActiveItemKey(
+            group.catId,
+            itemId,
+            group.isSusulan,
+            group.validDate,
+            group.itemDate,
+            item.itemNote
           );
+          const keyWithoutNote = getActiveItemKey(
+            group.catId,
+            itemId,
+            group.isSusulan,
+            group.validDate,
+            group.itemDate,
+            ''
+          );
+          const baseKey = `${group.catId}_${itemId}`;
+          const directKey = `${group.catId}_direct`;
+
+          let matchingFormKeyVal = 0;
+          if (formData[itemKey] !== undefined) matchingFormKeyVal = Number(formData[itemKey] || 0);
+          else if (formData[keyWithoutNote] !== undefined) matchingFormKeyVal = Number(formData[keyWithoutNote] || 0);
+          else if (formData[baseKey] !== undefined) matchingFormKeyVal = Number(formData[baseKey] || 0);
+          else if (formData[directKey] !== undefined) matchingFormKeyVal = Number(formData[directKey] || 0);
+          else if (formData[group.catId] !== undefined) matchingFormKeyVal = Number(formData[group.catId] || 0);
+          else if (itemId && formData[itemId] !== undefined) matchingFormKeyVal = Number(formData[itemId] || 0);
+          else {
+            const prefix = `${group.catId}_${itemId}`;
+            const foundKey = Object.keys(formData).find(k => k === prefix || k.startsWith(`${prefix}_`));
+            if (foundKey) matchingFormKeyVal = Number(formData[foundKey] || 0);
+          }
+
+          let amount = matchingFormKeyVal || Number(item.amount || 0);
+
+          // Fallback mutasi bank
+          if (amount <= 0 && Array.isArray(item.bankAllocations) && item.bankAllocations.length > 0) {
+            amount = item.bankAllocations.reduce((sum, ba) => sum + Number(ba?.amount || 0), 0);
+          }
+          if (amount <= 0 && Number(item.originBankAllocAmount || 0) > 0) {
+            amount = Number(item.originBankAllocAmount);
+          }
+
+          // Fallback jika grup hanya 1 item dan subtotals memiliki nilai
+          if (
+            amount <= 0 &&
+            (group.activeItems || []).length === 1 &&
+            subtotals &&
+            Number(subtotals[group.groupId] || 0) > 0
+          ) {
+            amount = Number(subtotals[group.groupId]);
+          }
+
+          const displayName = safeString(item.name || (itemId === 'direct' ? group.name : ''));
+
           return {
-            id: item.id,
-            name: item.id === 'direct' ? '' : safeString(item.name),
+            id: itemId,
+            name: displayName,
             note: note ? note.replace(/\r?\n+/g, ' ') : '',
             amount
           };
         })
         .filter((i) => i.amount > 0);
 
-      if (rawItems.length === 0) return;
+      if (rawItems.length === 0) {
+        // Fallback cadangan khusus grup yang memiliki subtotal di subtotals
+        const groupSub = Number(subtotals?.[group.groupId] || 0);
+        if (groupSub > 0 && !isExcludedFromFormatDinas(group.name, group.catId, '')) {
+          const template = resolveStsuTemplate(group.name, [], [group.itemNote || ''], group.catId);
+          if (template) {
+            const dateText = formatTanggalTtd(group.itemDate || group.validDate || reportDate);
+            const itemDateText = group.itemDate ? formatTanggalTtd(group.itemDate) : '';
+            const ctx = {
+              items: [{ id: 'direct', name: group.name, note: group.itemNote || '', amount: groupSub }],
+              subtotal: groupSub,
+              catName: group.name,
+              dateText,
+              itemDateText
+            };
+            generatedPages.push({
+              key: `${group.groupId}_${template.id}`,
+              template,
+              rows: template.rows(ctx),
+              footerLines: template.footerLines(ctx),
+              subtotal: groupSub
+            });
+          }
+        }
+        return;
+      }
 
       // 3. Saring item: kecualikan tiket, promo, dan fasilitas umum yang tidak memiliki lembar di format cetak
       const validItems = rawItems.filter(
@@ -102,7 +179,7 @@ export default function FormatDinasStsuReport({
     });
 
     return generatedPages;
-  }, [activeGroups, currentReport.formData, reportDate]);
+  }, [activeGroups, currentReport.formData, subtotals, reportDate]);
 
   const signatureText = signatureDateStr ? formatTanggalTtd(signatureDateStr) : '';
 

@@ -70,19 +70,22 @@ export const isExcludedFromFormatDinas = (catOrGroupName = '', catId = '', itemN
     return true;
   }
 
-  // 2. Promo / Penjualan Produk dikecualikan dari format dinas
+  // 2. Transaksi Foto Satwa & Juru Foto selalu diperbolehkan (TIDAK PERNAH dikecualikan)
+  const isFotoSatwa = (/satwa/i.test(combined) && !/film/i.test(combined)) || /foto satwa|berfoto/i.test(combined);
+  const isJuruFoto = /juru foto|jurufoto|pengambilan foto/i.test(combined);
+  if (isFotoSatwa || isJuruFoto) {
+    return false;
+  }
+
+  // 3. Promo / Penjualan Produk dikecualikan dari format dinas
   if (/promo|penjualan produk/i.test(combined) && !/banner|spanduk|umbul/i.test(combined)) {
     return true;
   }
 
-  // 3. Pemakaian Fasilitas TMR: hanya Foto Satwa dan Juru Foto yang dicetak di Format Dinas
+  // 4. Pemakaian Fasilitas TMR umum dikecualikan (dicetak di Format Baru Pemasaran)
   const isFasilitas = cId === 'cat_1' || /fasilitas/i.test(cName);
   if (isFasilitas) {
-    const isFotoSatwa = /satwa jinak|foto satwa|berfoto/i.test(combined);
-    const isJuruFoto = /juru foto|jurufoto|pengambilan foto/i.test(combined);
-    if (!isFotoSatwa && !isJuruFoto) {
-      return true;
-    }
+    return true;
   }
 
   return false;
@@ -96,7 +99,7 @@ export const STSU_TEMPLATES = [
   {
     id: 'foto_satwa',
     label: 'STSU Foto Satwa',
-    test: (t) => /satwa jinak|foto satwa|berfoto/.test(t),
+    test: (t) => (/satwa/i.test(t) && !/film/i.test(t)) || /foto satwa|berfoto/i.test(t),
     title: PEMANFAATAN_ASET_TITLE,
     kode: '4.1.02.02.020.00001',
     heading: ['PEMAKAIAN FASILITAS', 'TAMAN MARGASATWA RAGUNAN'],
@@ -258,25 +261,27 @@ export const resolveStsuTemplate = (catName = '', itemNames = [], notes = [], ca
   // 1. Pengecekan tiket: seluruh tiket tidak dicetak
   if (isTicketCategory(catName, catId) || isTicketCategory(all, catId)) return null;
 
-  // 2. Promo / Penjualan Produk: tidak dicetak di format dinas STSU
+  // 2. Transaksi Foto Satwa & Juru Foto selalu diprioritaskan utama sebelum filter fasilitas / promo
+  const hasFotoSatwa = (/satwa/i.test(all) && !/film/i.test(all)) || /foto satwa|berfoto/i.test(all);
+  const hasJuruFoto = /juru foto|jurufoto|pengambilan foto/i.test(all);
+  if (hasFotoSatwa) return STSU_TEMPLATES.find((t) => t.id === 'foto_satwa');
+  if (hasJuruFoto) return STSU_TEMPLATES.find((t) => t.id === 'juru_foto');
+
+  // 3. Promo / Penjualan Produk: tidak dicetak di format dinas STSU
   if (/promo|penjualan produk/i.test(all) && !/banner|spanduk|umbul/i.test(all)) {
     return null;
   }
 
-  // 3. Pemakaian Fasilitas TMR: umum tidak dicetak di format dinas STSU (hanya Foto Satwa dan Juru Foto)
+  // 4. Pemakaian Fasilitas TMR umum: tidak dicetak di format dinas STSU (hanya Foto Satwa dan Juru Foto)
   if (/fasilitas/i.test(catName) || catId === 'cat_1') {
-    const hasFotoSatwa = /satwa jinak|foto satwa|berfoto/i.test(all);
-    const hasJuruFoto = /juru foto|jurufoto|pengambilan foto/i.test(all);
-    if (hasFotoSatwa) return STSU_TEMPLATES.find((t) => t.id === 'foto_satwa');
-    if (hasJuruFoto) return STSU_TEMPLATES.find((t) => t.id === 'juru_foto');
     return null;
   }
 
-  // 4. Cocokkan nama kategori langsung
+  // 5. Cocokkan nama kategori langsung
   const catHit = STSU_TEMPLATES.find((t) => t.test(String(catName).toLowerCase()));
   if (catHit) return catHit;
 
-  // 5. Cocokkan dari gabungan teks
+  // 6. Cocokkan dari gabungan teks
   const anyHit = STSU_TEMPLATES.find((t) => t.test(all));
   return anyHit || null;
 };

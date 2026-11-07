@@ -2990,8 +2990,10 @@ export default function App() {
         configsForCat.forEach(config => {
           let displayItems = itemsForCat.filter(ai => !!ai.isSusulan === config.isSusulan && (ai.validDate || '') === (config.validDate || '')).map(ai => {
             const enriched = enrichItemAllocationsForDisplay(ai);
-            if (enriched.itemId === 'direct') return { ...enriched, id: 'direct', name: cat.name, itemNote: enriched.itemNote };
-            const found = cat.items?.find(i => i.id === enriched.itemId); return { ...enriched, id: enriched.itemId, name: found ? found.name : 'Item', itemNote: enriched.itemNote };
+            const actualItemId = enriched.itemId || enriched.id || 'direct';
+            if (actualItemId === 'direct') return { ...enriched, id: 'direct', name: cat.name, itemNote: enriched.itemNote };
+            const found = cat.items?.find(i => i.id === actualItemId);
+            return { ...enriched, id: actualItemId, name: found ? found.name : (enriched.name || cat.name || 'Item'), itemNote: enriched.itemNote };
           });
           displayItems = sortDisplayItems(displayItems, cat.items);
           groups.push({ groupId: `${cat.id}_${config.key}`, catId: cat.id, name: cat.name, isSusulan: config.isSusulan, validDate: config.validDate, activeItems: displayItems, catIndex: index });
@@ -3002,8 +3004,10 @@ export default function App() {
         configsForCat.forEach(config => {
           let displayItems = itemsForCat.filter(ai => (ai.itemDate || '') === (config.itemDate || '') && (ai.itemNote ? ai.itemNote.trim() : '') === config.itemNote).map(ai => {
             const enriched = enrichItemAllocationsForDisplay(ai);
-            if (enriched.itemId === 'direct') return { ...enriched, id: 'direct', name: cat.name, itemNote: enriched.itemNote };
-            const found = cat.items?.find(i => i.id === enriched.itemId); return { ...enriched, id: enriched.itemId, name: found ? found.name : 'Item', itemNote: enriched.itemNote };
+            const actualItemId = enriched.itemId || enriched.id || 'direct';
+            if (actualItemId === 'direct') return { ...enriched, id: 'direct', name: cat.name, itemNote: enriched.itemNote };
+            const found = cat.items?.find(i => i.id === actualItemId);
+            return { ...enriched, id: actualItemId, name: found ? found.name : (enriched.name || cat.name || 'Item'), itemNote: enriched.itemNote };
           });
           displayItems = sortDisplayItems(displayItems, cat.items);
           groups.push({ groupId: `${cat.id}_${config.key}`, catId: cat.id, name: cat.name, isSusulan: false, itemDate: config.itemDate, itemNote: config.itemNote, activeItems: displayItems, catIndex: index });
