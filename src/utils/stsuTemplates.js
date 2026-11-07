@@ -30,17 +30,37 @@ const joinNote = (items) =>
     .join(', ');
 
 /**
- * Memeriksa apakah suatu kategori / item merupakan transaksi tiket gerbang / wahana / online.
+ * Deteksi apakah teks merujuk pada transaksi Penyediaan Satwa Jinak untuk Berfoto (STSU Foto Satwa).
+ * Mengecualikan Taman Satwa Anak (TSA) dan Pemutaran Film Satwa.
  */
-export const isTicketCategory = (catOrGroupName = '', catId = '') => {
+export const isFotoSatwaText = (text = '') => {
+  const t = String(text || '').toLowerCase();
+  if (/taman\s*satwa|film\s*satwa|\btsa\b/i.test(t)) return false;
+  return /satwa\s*jinak|satwa\s*jikan|foto\s*satwa|berfoto|penyedia.*satwa|penyesia.*satwa|peneyedia.*satwa/i.test(t);
+};
+
+/**
+ * Deteksi apakah teks merujuk pada transaksi Juru Foto / Pelayanan Pengambilan Foto (STSU Juru Foto).
+ */
+export const isJuruFotoText = (text = '') => {
+  const t = String(text || '').toLowerCase();
+  if (isFotoSatwaText(t)) return false;
+  return /juru\s*foto|jurufoto|pengambilan\s*foto|ambil\s*foto/i.test(t);
+};
+
+/**
+ * Memeriksa apakah suatu kategori / item merupakan transaksi tiket gerbang / wahana / online.
+ * Catatan penting: JANGAN mengecek berdasarkan ID seperti cat_3/cat_4 karena pada database
+ * eksisting cat_3 = Juru Foto dan cat_4 = Penyediaan satwa jinak untuk berfoto.
+ */
+export const isTicketCategory = (catOrGroupName = '') => {
   const name = String(catOrGroupName || '').toLowerCase();
-  const id = String(catId || '').toLowerCase();
 
-  // ID bawaan kategori tiket gerbang / e-ticketing / wahana
-  if (['cat_3', 'cat_4', 'cat_5', 'cat_6'].includes(id)) return true;
+  // Foto Satwa & Juru Foto bukan tiket gerbang
+  if (isFotoSatwaText(name) || isJuruFotoText(name)) return false;
 
-  // Pola nama kategori / grup tiket gerbang & wahana
-  if (/e-?ticketing|ticket|tiket|vending|tvm|\bgate\b|gerbang/i.test(name)) {
+  // Pola nama kategori / grup tiket gerbang & wahana (termasuk ejaan 'vinding')
+  if (/e-?ticketing|ticket|tiket|vending|vinding|tvm|\bgate\b|gerbang/i.test(name)) {
     return true;
   }
 
@@ -65,16 +85,14 @@ export const isExcludedFromFormatDinas = (catOrGroupName = '', catId = '', itemN
   const iName = String(itemName || '').toLowerCase();
   const combined = `${cName} ${iName}`.trim();
 
-  // 1. Seluruh transaksi tiket
-  if (isTicketCategory(cName, cId) || isTicketCategory(iName, '')) {
-    return true;
+  // 1. Transaksi Foto Satwa & Juru Foto selalu diperbolehkan (TIDAK PERNAH dikecualikan)
+  if (isFotoSatwaText(combined) || isJuruFotoText(combined)) {
+    return false;
   }
 
-  // 2. Transaksi Foto Satwa & Juru Foto selalu diperbolehkan (TIDAK PERNAH dikecualikan)
-  const isFotoSatwa = (/satwa/i.test(combined) && !/film/i.test(combined)) || /foto satwa|berfoto/i.test(combined);
-  const isJuruFoto = /juru foto|jurufoto|pengambilan foto/i.test(combined);
-  if (isFotoSatwa || isJuruFoto) {
-    return false;
+  // 2. Seluruh transaksi tiket
+  if (isTicketCategory(cName) || isTicketCategory(iName)) {
+    return true;
   }
 
   // 3. Promo / Penjualan Produk dikecualikan dari format dinas
@@ -99,7 +117,7 @@ export const STSU_TEMPLATES = [
   {
     id: 'foto_satwa',
     label: 'STSU Foto Satwa',
-    test: (t) => (/satwa/i.test(t) && !/film/i.test(t)) || /foto satwa|berfoto/i.test(t),
+    test: (t) => isFotoSatwaText(t),
     title: PEMANFAATAN_ASET_TITLE,
     kode: '4.1.02.02.020.00001',
     heading: ['PEMAKAIAN FASILITAS', 'TAMAN MARGASATWA RAGUNAN'],
@@ -222,7 +240,7 @@ export const STSU_TEMPLATES = [
   {
     id: 'juru_foto',
     label: 'STSU Juru Foto',
-    test: (t) => /juru foto|jurufoto|pelayanan pengambilan foto|pengambilan foto/.test(t),
+    test: (t) => isJuruFotoText(t),
     title: [
       'RETRIBUSI PEMANFAATAN ASET DAERAH YANG TIDAK MENGGANGGU',
       'PENYELENGGARAAN TUGAS DAN FUNGSI ORGANISASI PERANGKAT DAERAH'
@@ -258,14 +276,12 @@ export const STSU_TEMPLATES = [
 export const resolveStsuTemplate = (catName = '', itemNames = [], notes = [], catId = '') => {
   const all = `${catName} ${itemNames.join(' ')} ${notes.join(' ')}`.toLowerCase();
 
-  // 1. Pengecekan tiket: seluruh tiket tidak dicetak
-  if (isTicketCategory(catName, catId) || isTicketCategory(all, catId)) return null;
+  // 1. Transaksi Foto Satwa & Juru Foto selalu diprioritaskan utama
+  if (isFotoSatwaText(all)) return STSU_TEMPLATES.find((t) => t.id === 'foto_satwa');
+  if (isJuruFotoText(all)) return STSU_TEMPLATES.find((t) => t.id === 'juru_foto');
 
-  // 2. Transaksi Foto Satwa & Juru Foto selalu diprioritaskan utama sebelum filter fasilitas / promo
-  const hasFotoSatwa = (/satwa/i.test(all) && !/film/i.test(all)) || /foto satwa|berfoto/i.test(all);
-  const hasJuruFoto = /juru foto|jurufoto|pengambilan foto/i.test(all);
-  if (hasFotoSatwa) return STSU_TEMPLATES.find((t) => t.id === 'foto_satwa');
-  if (hasJuruFoto) return STSU_TEMPLATES.find((t) => t.id === 'juru_foto');
+  // 2. Pengecekan tiket: seluruh tiket tidak dicetak
+  if (isTicketCategory(catName) || isTicketCategory(all)) return null;
 
   // 3. Promo / Penjualan Produk: tidak dicetak di format dinas STSU
   if (/promo|penjualan produk/i.test(all) && !/banner|spanduk|umbul/i.test(all)) {
