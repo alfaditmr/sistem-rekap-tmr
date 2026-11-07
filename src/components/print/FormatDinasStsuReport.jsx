@@ -2,9 +2,6 @@ import React, { useMemo } from 'react';
 import { safeString, formatRp, terbilang, formatTanggalTtd, getActiveItemKey } from '../../utils/formatters';
 import { resolveStsuTemplate, isTicketCategory, isExcludedFromFormatDinas } from '../../utils/stsuTemplates';
 
-const LOGO_JAYA_RAYA = '/assets/jaya-raya.png';
-const LOGO_TMR = '/assets/logo-tmr.png';
-
 const capitalizeFirst = (s = '') => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 /**
@@ -309,24 +306,24 @@ export default function FormatDinasStsuReport({
             >
               {/* KOP SURAT RESMI KEDINASAN */}
               <div className="flex items-center justify-between pb-2 mb-3 border-b-[2.5px] border-black">
-                <div className="w-28 h-16 flex items-center justify-start shrink-0">
+                <div className="w-24 h-16 flex items-center justify-start shrink-0">
                   <img
-                    src={LOGO_JAYA_RAYA}
+                    src="/assets/jaya-raya.png"
                     alt="Logo Jaya Raya"
                     className="max-h-16 w-auto object-contain"
                   />
                 </div>
-                <div className="text-center font-bold flex-1 px-3 leading-tight select-none">
-                  <div className="text-[11.5pt] uppercase tracking-wide">
+                <div className="text-center font-bold flex-1 px-1 leading-tight select-none">
+                  <div className="text-[10.5pt] sm:text-[11pt] uppercase font-bold tracking-tight whitespace-nowrap">
                     PEMERINTAH PROVINSI DAERAH KHUSUS IBUKOTA JAKARTA
                   </div>
-                  <div className="text-[11pt] uppercase tracking-wider mt-0.5">
+                  <div className="text-[10pt] sm:text-[10.5pt] uppercase font-bold tracking-normal whitespace-nowrap mt-0.5">
                     UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN
                   </div>
                 </div>
-                <div className="w-28 h-16 flex items-center justify-end shrink-0">
+                <div className="w-24 h-16 flex items-center justify-end shrink-0">
                   <img
-                    src={LOGO_TMR}
+                    src="/assets/logo-tmr.png"
                     alt="Logo TMR"
                     className="max-h-16 w-auto object-contain"
                   />
