@@ -1,2 +1,18 @@
 node_modules/
 scratch/
+
+*.png
+*.jpg
+*.jpeg
+*.ico
+*.webp
+*.xls
+*.xlsx
+format cetak/
+format laporan/
+
+!public/assets/*.png
+!dist/assets/*.png
+
+.antigravityignore
+.geminiignore

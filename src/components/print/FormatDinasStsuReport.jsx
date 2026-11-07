@@ -1,7 +1,9 @@
 import React, { useMemo } from 'react';
 import { safeString, formatRp, terbilang, formatTanggalTtd, getActiveItemKey } from '../../utils/formatters';
 import { resolveStsuTemplate, isTicketCategory, isExcludedFromFormatDinas } from '../../utils/stsuTemplates';
-import { LOGO_DKI_JAYA_RAYA, LOGO_RAGUNAN } from '../../assets/stsuLogos';
+
+const LOGO_JAYA_RAYA = '/assets/jaya-raya.png';
+const LOGO_TMR = '/assets/logo-tmr.png';
 
 const capitalizeFirst = (s = '') => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
@@ -307,11 +309,11 @@ export default function FormatDinasStsuReport({
             >
               {/* KOP SURAT RESMI KEDINASAN */}
               <div className="flex items-center justify-between pb-2 mb-3 border-b-[2.5px] border-black">
-                <div className="w-16 h-16 flex items-center justify-center shrink-0">
+                <div className="w-28 h-16 flex items-center justify-start shrink-0">
                   <img
-                    src={LOGO_DKI_JAYA_RAYA}
-                    alt="Logo Pemprov DKI Jakarta"
-                    className="max-h-16 max-w-full object-contain"
+                    src={LOGO_JAYA_RAYA}
+                    alt="Logo Jaya Raya"
+                    className="max-h-16 w-auto object-contain"
                   />
                 </div>
                 <div className="text-center font-bold flex-1 px-3 leading-tight select-none">
@@ -322,11 +324,11 @@ export default function FormatDinasStsuReport({
                     UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN
                   </div>
                 </div>
-                <div className="w-16 h-16 flex items-center justify-center shrink-0">
+                <div className="w-28 h-16 flex items-center justify-end shrink-0">
                   <img
-                    src={LOGO_RAGUNAN}
-                    alt="Logo Taman Margasatwa Ragunan"
-                    className="max-h-16 max-w-full object-contain"
+                    src={LOGO_TMR}
+                    alt="Logo TMR"
+                    className="max-h-16 w-auto object-contain"
                   />
                 </div>
               </div>
