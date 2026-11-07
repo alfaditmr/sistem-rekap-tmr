@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { safeString, formatRp, terbilang, formatTanggalTtd, parseYmd, getActiveItemKey } from '../../utils/formatters';
-import { resolveStsuTemplate, isTicketCategory, isExcludedFromFormatDinas } from '../../utils/stsuTemplates';
+import { resolveStsuTemplate, isTicketCategory, isExcludedFromFormatDinas, resolveTanggalSewa } from '../../utils/stsuTemplates';
 
 const capitalizeFirst = (s = '') => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
@@ -104,39 +104,39 @@ export default function FormatDinasStsuReport({
 
           const displayName = safeString(item.name || (itemId === 'direct' ? group.name : ''));
 
-          // Ambil tanggal transaksi secara presisi
-          let itemDateVal = item.itemDate || group.itemDate || '';
-          if (!itemDateVal && Array.isArray(item.bankAllocations) && item.bankAllocations.length > 0) {
-            const allocWithDate = item.bankAllocations.find(
-              (ba) => ba.itemDate || ba.date || ba.bankDate || ba.tanggal || ba.tgl
-            );
-            if (allocWithDate) {
-              itemDateVal =
-                allocWithDate.itemDate ||
-                allocWithDate.date ||
-                allocWithDate.bankDate ||
-                allocWithDate.tanggal ||
-                allocWithDate.tgl ||
-                '';
-            }
-          }
-          if (!itemDateVal) {
-            itemDateVal = item.validDate || group.validDate || item.bankMatchDate || item.originBankDate || '';
-          }
-          if (!itemDateVal) {
-            itemDateVal = reportDate || '';
-          }
+          // Ambil tanggal pemakaian berdasarkan Tanggal Sewa nyata secara presisi
+          const itemPayload = {
+            ...item,
+            note: note || item.itemNote || '',
+            name: displayName
+          };
+          const tanggalSewaVal = resolveTanggalSewa(itemPayload, group, reportDate);
+          const ymdSewa = parseYmd ? (parseYmd(tanggalSewaVal) || tanggalSewaVal) : tanggalSewaVal;
+          const itemDateText = ymdSewa ? formatTanggalTtd(ymdSewa) : '';
 
-          const ymd = parseYmd ? (parseYmd(itemDateVal) || itemDateVal) : itemDateVal;
-          const itemDateText = ymd ? formatTanggalTtd(ymd) : '';
+          // Rincian alokasi per penyewa bila ada multiple allocations
+          const enrichedAllocations = Array.isArray(item.bankAllocations)
+            ? item.bankAllocations.map((ba) => {
+                const baPayload = { ...ba, note: ba.tenant || ba.desc || '' };
+                const baSewaVal = resolveTanggalSewa(baPayload, group, reportDate);
+                const baYmd = parseYmd ? (parseYmd(baSewaVal) || baSewaVal) : baSewaVal;
+                return {
+                  ...ba,
+                  tanggalSewa: baSewaVal,
+                  itemDateText: baYmd ? formatTanggalTtd(baYmd) : ''
+                };
+              })
+            : [];
 
           return {
             id: itemId,
             name: displayName,
             note: note ? note.replace(/\r?\n+/g, ' ') : '',
             amount,
-            itemDate: itemDateVal,
-            itemDateText
+            itemDate: tanggalSewaVal,
+            tanggalSewa: tanggalSewaVal,
+            itemDateText,
+            allocations: enrichedAllocations
           };
         })
         .filter((i) => i.amount > 0);
@@ -150,9 +150,9 @@ export default function FormatDinasStsuReport({
             const rawDate = group.itemDate || group.validDate || reportDate;
             const ymd = parseYmd ? (parseYmd(rawDate) || rawDate) : rawDate;
             const dateText = formatTanggalTtd(ymd);
-            const itemDateText = group.itemDate
-              ? formatTanggalTtd(parseYmd ? (parseYmd(group.itemDate) || group.itemDate) : group.itemDate)
-              : dateText;
+            const sewaVal = resolveTanggalSewa({ note: group.itemNote || '' }, group, reportDate);
+            const sewaYmd = parseYmd ? (parseYmd(sewaVal) || sewaVal) : sewaVal;
+            const itemDateText = sewaYmd ? formatTanggalTtd(sewaYmd) : dateText;
             const ctx = {
               items: [{ id: 'direct', name: group.name, note: group.itemNote || '', amount: groupSub, itemDateText }],
               subtotal: groupSub,

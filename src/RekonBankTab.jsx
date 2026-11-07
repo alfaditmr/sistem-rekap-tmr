@@ -724,7 +724,8 @@ export default function RekonBankTab({
         amount: Number(a.amount || 0),
         proofUrl: proofUrl,
         tenant: a.tenant || matchedApi?.nama_penyewa || matchedApi?.namaPerusahaan || '',
-        location: a.location || matchedApi?.lokasi_sewa || matchedApi?.namaProduk || ''
+        location: a.location || matchedApi?.lokasi_sewa || matchedApi?.namaProduk || '',
+        tanggalSewa: a.tanggalSewa || matchedApi?.tanggal_sewa || matchedApi?.tanggalPemakaian || ''
       };
     });
 
@@ -1964,6 +1965,10 @@ export default function RekonBankTab({
                             const foundLoc = itemFound.lokasi_sewa || itemFound.namaProduk || '';
                             if (foundLoc) {
                               updateAllocation(alloc.id, 'location', foundLoc);
+                            }
+                            const foundTanggalSewa = itemFound.tanggal_sewa || itemFound.tanggalPemakaian || '';
+                            if (foundTanggalSewa) {
+                              updateAllocation(alloc.id, 'tanggalSewa', foundTanggalSewa);
                             }
                           } else if (!selectedId) {
                             updateAllocation(alloc.id, 'proofUrl', '');

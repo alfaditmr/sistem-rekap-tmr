@@ -17,6 +17,9 @@
  * Modul ini murni presentasi: tidak mengubah data/logic/fitur yang sudah ada.
  */
 
+import { getGlobalApiDataCache } from './reportDataHelper';
+import { parseYmd, formatTanggalTtd } from './formatters';
+
 const PEMANFAATAN_ASET_TITLE = ['RETRIBUSI PEMANFAATAN ASET DAERAH'];
 const PENGEMBANGAN_USAHA_TITLE = ['PENDAPATAN BLUD DARI PENGEMBANGAN USAHA'];
 
@@ -28,6 +31,125 @@ const joinNote = (items) =>
     .filter(Boolean)
     .filter((v, i, a) => a.indexOf(v) === i)
     .join(', ');
+
+/**
+ * Helper untuk menentukan tanggal pemakaian secara presisi berdasarkan Tanggal Sewa nyata:
+ * 1. Prioritaskan tanggalSewa / tanggal_sewa / tanggalPemakaian dari data alokasi atau item.
+ * 2. Cek apakah ada tanggal sewa tersirat di dalam catatan (contoh: "tgl sewa 08/11/2026").
+ * 3. Cocokkan dengan data resmi API Fasilitas (berdasarkan apiRefId atau nama penyewa) yang menyimpan tanggal sewa.
+ * 4. Fallback ke tanggal transaksi dokumen / reportDate bila tidak ada data sewa khusus.
+ */
+export const resolveTanggalSewa = (item = {}, group = {}, reportDate = '') => {
+  if (item.tanggalSewa) return item.tanggalSewa;
+  if (item.tanggal_sewa) return item.tanggal_sewa;
+  if (item.tanggalPemakaian) return item.tanggalPemakaian;
+  if (item.tglEvent) return item.tglEvent;
+  if (group.tanggalSewa) return group.tanggalSewa;
+
+  // 1. Cek di array bankAllocations
+  if (Array.isArray(item.bankAllocations) && item.bankAllocations.length > 0) {
+    const allocWithSewa = item.bankAllocations.find(
+      (ba) => ba.tanggalSewa || ba.tanggal_sewa || ba.tanggalPemakaian || ba.tglEvent
+    );
+    if (allocWithSewa) {
+      return (
+        allocWithSewa.tanggalSewa ||
+        allocWithSewa.tanggal_sewa ||
+        allocWithSewa.tanggalPemakaian ||
+        allocWithSewa.tglEvent
+      );
+    }
+  }
+
+  // 2. Cek apakah ada tanggal sewa tersirat di dalam teks catatan / note
+  const allNotes = [item.note, item.itemNote, group.itemNote, item.name].filter(Boolean).join(' ');
+  const sewaRegexMatch = allNotes.match(
+    /(?:sewa|acara|event|pakai|pemakaian)\s*(?:tanggal|tgl|:|\-)?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}|\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/i
+  );
+  if (sewaRegexMatch && sewaRegexMatch[1]) {
+    const parsed = parseYmd(sewaRegexMatch[1]);
+    if (parsed) return parsed;
+  }
+
+  // 3. Cari dari cache data API (Fasilitas)
+  try {
+    const apiList = getGlobalApiDataCache();
+    if (Array.isArray(apiList) && apiList.length > 0) {
+      // A. Berdasarkan apiRefId
+      const refIds = [
+        item.apiRefId,
+        ...(Array.isArray(item.bankAllocations) ? item.bankAllocations.map((ba) => ba.apiRefId) : [])
+      ].filter(Boolean);
+
+      for (const refId of refIds) {
+        const found = apiList.find(
+          (a) =>
+            String(a.id) === String(refId) ||
+            String(a.docId) === String(refId) ||
+            String(a.id_sewa) === String(refId)
+        );
+        if (found && (found.tanggal_sewa || found.tanggalPemakaian)) {
+          return found.tanggal_sewa || found.tanggalPemakaian;
+        }
+      }
+
+      // B. Berdasarkan nama penyewa / tenant
+      const tenantCandidates = [
+        ...(Array.isArray(item.bankAllocations) ? item.bankAllocations.map((ba) => ba.tenant) : []),
+        item.note,
+        item.itemNote,
+        group.itemNote,
+        item.name
+      ].filter(Boolean);
+
+      for (const rawTenant of tenantCandidates) {
+        const cleanTenant = String(rawTenant)
+          .toLowerCase()
+          .replace(/^(pt|cv|bapak|ibu|bpk|rombongan)\.?\s+/i, '')
+          .trim();
+        if (cleanTenant.length >= 3 && !/^(listrik|mutasi|bank|setor|pendapatan)/i.test(cleanTenant)) {
+          const found = apiList.find((a) => {
+            if (!a.nama_penyewa && !a.namaPerusahaan) return false;
+            const aName = (a.nama_penyewa || a.namaPerusahaan).toLowerCase().trim();
+            if (aName === cleanTenant) return true;
+            if (cleanTenant.length >= 4 && (aName.includes(cleanTenant) || cleanTenant.includes(aName))) return true;
+            return false;
+          });
+          if (found && (found.tanggal_sewa || found.tanggalPemakaian)) {
+            return found.tanggal_sewa || found.tanggalPemakaian;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('resolveTanggalSewa lookup error:', e);
+  }
+
+  // 4. Fallback ke tanggal transaksi dokumen
+  let fallbackDate = item.itemDate || group.itemDate || '';
+  if (!fallbackDate && Array.isArray(item.bankAllocations) && item.bankAllocations.length > 0) {
+    const allocWithDate = item.bankAllocations.find(
+      (ba) => ba.itemDate || ba.date || ba.bankDate || ba.tanggal || ba.tgl
+    );
+    if (allocWithDate) {
+      fallbackDate =
+        allocWithDate.itemDate ||
+        allocWithDate.date ||
+        allocWithDate.bankDate ||
+        allocWithDate.tanggal ||
+        allocWithDate.tgl ||
+        '';
+    }
+  }
+  if (!fallbackDate) {
+    fallbackDate = item.validDate || group.validDate || item.bankMatchDate || item.originBankDate || '';
+  }
+  if (!fallbackDate) {
+    fallbackDate = reportDate || '';
+  }
+
+  return fallbackDate;
+};
 
 /**
  * Deteksi apakah teks merujuk pada transaksi Penyediaan Satwa Jinak untuk Berfoto (STSU Foto Satwa).
@@ -184,16 +306,29 @@ export const STSU_TEMPLATES = [
     heading: ['PENDAPATAN BLUD DARI', 'PENGEMBANGAN USAHA :'],
     rows: ({ items, subtotal, itemDateText, dateText }) => {
       const fallbackDate = itemDateText || items.find((i) => i.itemDateText)?.itemDateText || dateText || '';
-      const descList = items
-        .map((it) => {
+      const descList = [];
+
+      items.forEach((it) => {
+        if (Array.isArray(it.allocations) && it.allocations.length > 0) {
+          it.allocations.forEach((alloc) => {
+            const n = clean(alloc.tenant || alloc.desc || it.note || (it.name && !/listrik/i.test(it.name) ? it.name : ''));
+            const d = alloc.itemDateText || it.itemDateText || fallbackDate;
+            if (n) {
+              descList.push(d && !/tanggal|tgl|pemakaian/i.test(n) ? `${n} pemakaian tanggal ${d}` : n);
+            } else if (d) {
+              descList.push(`pemakaian tanggal ${d}`);
+            }
+          });
+        } else {
           const n = clean(it.note || (it.name && !/listrik/i.test(it.name) ? it.name : ''));
           const d = it.itemDateText || fallbackDate;
           if (n) {
-            return d && !/tanggal|tgl|pemakaian/i.test(n) ? `${n} pemakaian tanggal ${d}` : n;
+            descList.push(d && !/tanggal|tgl|pemakaian/i.test(n) ? `${n} pemakaian tanggal ${d}` : n);
+          } else if (d) {
+            descList.push(`pemakaian tanggal ${d}`);
           }
-          return d ? `pemakaian tanggal ${d}` : '';
-        })
-        .filter(Boolean);
+        }
+      });
 
       const uniqueDescs = Array.from(new Set(descList));
 

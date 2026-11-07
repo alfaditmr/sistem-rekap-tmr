@@ -40,6 +40,7 @@ import {
   formatDetailsTooltip
 } from './utils/formatters';
 import { STANDARD_FACILITY_ITEMS, ensureStandardFacilityCategories } from './utils/categoryHelper';
+import { fetchApiDataBackground } from './utils/reportDataHelper';
 
 // ==========================================
 // 🔴 FUNGSI PEMANGGILAN API GEMINI (LLM) 
@@ -870,6 +871,7 @@ export default function App() {
   const reportCategories = ['E-Ticketing Old Gate', 'Ticket Online', 'Ticket Vending Machine (TVM)', 'E-Ticketing New Gate'];
 
   useEffect(() => {
+    fetchApiDataBackground();
     if (typeof document !== 'undefined') {
       const script = document.createElement('script');
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
@@ -2920,7 +2922,11 @@ export default function App() {
                 : (matchedRow.description || (matchedRow.date ? `Mutasi (${matchedRow.date})` : 'Mutasi Bank'));
             }
           }
-          return { ...ba, desc: desc || 'Mutasi Bank' };
+          return {
+            ...ba,
+            desc: desc || 'Mutasi Bank',
+            tanggalSewa: ba.tanggalSewa || matchedRow?.tanggalSewa || ''
+          };
         });
         return { ...ai, bankAllocations: enrichedAllocs };
       }
@@ -2958,6 +2964,7 @@ export default function App() {
                 tenant: matchedRow?.tenant || '',
                 location: matchedRow?.location || '',
                 apiRefId: ai.apiRefId || matchedRow?.apiRefId || '',
+                tanggalSewa: ai.tanggalSewa || matchedRow?.tanggalSewa || '',
                 proofUrl: ai.proofUrl || matchedRow?.proofUrl || ''
               }]
             };
@@ -3477,6 +3484,7 @@ export default function App() {
                             itemId: theItemId,
                             itemName: subItemName,
                             apiRefId: alloc.apiRefId || '',
+                            tanggalSewa: alloc.tanggalSewa || apiItem?.tanggal_sewa || apiItem?.tanggalPemakaian || '',
                             proofUrl: cleanProofUrl
                           };
 
@@ -3575,6 +3583,7 @@ export default function App() {
                               originBankDate: bankRow.date,
                               originBankAllocAmount: allocAmount,
                               bankAllocations: [newAllocationDetail],
+                              tanggalSewa: alloc.tanggalSewa || apiItem?.tanggal_sewa || apiItem?.tanggalPemakaian || '',
                               ...(alloc.apiRefId ? { apiRefId: alloc.apiRefId } : {}),
                               ...(cleanProofUrl ? { proofUrl: cleanProofUrl } : {})
                             };
