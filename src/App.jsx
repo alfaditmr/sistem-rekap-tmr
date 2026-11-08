@@ -3344,6 +3344,7 @@ export default function App() {
                   <RekonBankTab
                     syncStatus={syncStatus}
                     onRefreshCloud={handleManualSync}
+                    closedMonths={closedMonths}
                     isMonthClosed={isMonthClosed}
                     bankRows={bankRows}
                     setBankRows={setBankRows}
@@ -3375,8 +3376,8 @@ export default function App() {
                       const distinctTargetDates = [...new Set(allocations.map(a => a.targetDate || ymd).filter(Boolean))];
                       const primaryTargetDate = distinctTargetDates[0] || ymd;
 
-                      if (isMonthClosed(primaryTargetDate) || isMonthClosed(ymd) || distinctTargetDates.some(d => isMonthClosed(d))) {
-                        alert('Periode tanggal yang dipilih telah TUTUP BUKU. Tidak dapat menambah atau mengalokasikan data ke periode yang terkunci.');
+                      if (isMonthClosed(primaryTargetDate) || isMonthClosed(ymd) || isMonthClosed(bankRow?.date) || distinctTargetDates.some(d => isMonthClosed(d))) {
+                        alert('Periode tanggal yang dipilih atau mutasi bank telah TUTUP BUKU. Tidak dapat menambah atau mengalokasikan data ke periode yang terkunci.');
                         return;
                       }
 
@@ -3765,6 +3766,11 @@ export default function App() {
                     }}
                     onUpdateBankRow={(rowId, updates) => {
                       const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
+                      const targetRow = baseBankRows.find(r => r.id === rowId);
+                      if (targetRow && isMonthClosed(targetRow.date)) {
+                        alert('Periode tanggal mutasi ini telah TUTUP BUKU. Keterangan mutasi tidak dapat diubah.');
+                        return;
+                      }
                       const newBankRows = baseBankRows.map(r => {
                         if (r.id === rowId) {
                           const updated = { ...r, ...updates };
@@ -3779,8 +3785,41 @@ export default function App() {
                       saveToFirebaseDirectly(stateRef.current.allReports, newBankRows);
                     }}
                     onUnlinkBankRow={async (bankRow) => {
-                      if (isMonthClosed(bankRow?.date) || (bankRow?.linkedTo?.date && isMonthClosed(bankRow.linkedTo.date))) {
+                      if (
+                        isMonthClosed(bankRow?.date) ||
+                        (bankRow?.linkedTo?.date && isMonthClosed(bankRow.linkedTo.date)) ||
+                        (Array.isArray(bankRow?.inputBaruAllocations) && bankRow.inputBaruAllocations.some(a => isMonthClosed(a.date)))
+                      ) {
                         alert('Periode tanggal ini telah TUTUP BUKU. Status pasangan mutasi bank tidak dapat dibatalkan atau dilepas.');
+                        return;
+                      }
+
+                      // Pastikan tidak ada item laporan di bulan tutup buku yang terikat dengan mutasi ini
+                      const baseReports = stateRef.current.allReports || {};
+                      const targetRowId = bankRow?.id;
+                      const hasClosedReportMatch = Object.keys(baseReports).some(date => {
+                        if (!isMonthClosed(date)) return false;
+                        const dayData = baseReports[date];
+                        if (!dayData || typeof dayData !== 'object') return false;
+                        return Object.keys(dayData).some(docKey => {
+                          const typeData = dayData[docKey];
+                          if (!typeData || !Array.isArray(typeData.activeItems)) return false;
+                          return typeData.activeItems.some(item => {
+                            if (!item) return false;
+                            return (
+                              targetRowId && (
+                                item.bankMatchRowId === targetRowId ||
+                                (Array.isArray(item.bankMatchRowIds) && item.bankMatchRowIds.includes(targetRowId)) ||
+                                item.originBankRowId === targetRowId ||
+                                (Array.isArray(item.bankAllocations) && item.bankAllocations.some(ba => ba.bankRowId === targetRowId))
+                              )
+                            );
+                          });
+                        });
+                      });
+
+                      if (hasClosedReportMatch) {
+                        alert('Mutasi ini terhubung dengan laporan harian pada periode yang telah TUTUP BUKU. Status pasangan tidak dapat dibatalkan atau dilepas.');
                         return;
                       }
                       try {
@@ -3972,6 +4011,51 @@ export default function App() {
                         apiItem.fileUrl,
                         apiItem.url
                       ].filter(Boolean);
+
+                      // 🔒 Proteksi Tutup Buku: Cek apakah bukti transfer terkait dengan mutasi bank atau laporan yang telah TUTUP BUKU
+                      const baseBankRows = ensureBankRowIds(stateRef.current.bankRows);
+                      const matchedBankRow = baseBankRows.find(r => (
+                        (r.status === 'matched' || r.status === 'linked') && (
+                          (r.apiRefId && String(r.apiRefId) === apiIdStr) ||
+                          (Array.isArray(r.apiRefIds) && r.apiRefIds.some(id => String(id) === apiIdStr)) ||
+                          urls.some(u => u && (r.proofUrl === u || r.linkedTo?.proofUrl === u || r.transferProof === u))
+                        )
+                      ));
+
+                      if (matchedBankRow) {
+                        if (isMonthClosed(matchedBankRow.date) || (matchedBankRow.linkedTo?.date && isMonthClosed(matchedBankRow.linkedTo.date))) {
+                          alert('Periode tanggal mutasi terkait telah TUTUP BUKU. Status pasangan bukti transfer tidak dapat dibatalkan atau dilepas.');
+                          return;
+                        }
+                        if (Array.isArray(matchedBankRow.inputBaruAllocations) && matchedBankRow.inputBaruAllocations.some(a => isMonthClosed(a.date))) {
+                          alert('Periode tanggal alokasi terkait telah TUTUP BUKU. Status pasangan bukti transfer tidak dapat dibatalkan atau dilepas.');
+                          return;
+                        }
+                      }
+
+                      const baseReports = stateRef.current.allReports || {};
+                      const hasClosedReportMatch = Object.keys(baseReports).some(date => {
+                        if (!isMonthClosed(date)) return false;
+                        const dayData = baseReports[date];
+                        if (!dayData || typeof dayData !== 'object') return false;
+                        return Object.keys(dayData).some(docKey => {
+                          const typeData = dayData[docKey];
+                          if (!typeData || !Array.isArray(typeData.activeItems)) return false;
+                          return typeData.activeItems.some(item => {
+                            if (!item) return false;
+                            return (
+                              (apiIdStr && String(item.apiRefId || '') === apiIdStr) ||
+                              urls.some(u => u && item.proofUrl === u) ||
+                              (Array.isArray(item.bankAllocations) && item.bankAllocations.some(ba => (apiIdStr && String(ba.apiRefId || '') === apiIdStr) || (urls.some(u => u && ba.proofUrl === u))))
+                            );
+                          });
+                        });
+                      });
+
+                      if (hasClosedReportMatch) {
+                        alert('Bukti transfer ini terhubung dengan laporan pendapatan pada periode yang telah TUTUP BUKU. Status pasangan tidak dapat dibatalkan atau dilepas.');
+                        return;
+                      }
 
                       try {
                         const baseReports = stateRef.current.allReports;

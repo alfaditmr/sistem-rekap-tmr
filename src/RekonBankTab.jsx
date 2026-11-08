@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Papa from 'papaparse';
 import { 
   Upload, RefreshCw, Link as LinkIcon, CheckCircle, AlertCircle, Plus, Trash, Database, 
-  Filter, Trash2, Edit, RotateCcw, Zap, Sparkles, Calendar, ChevronLeft, ChevronRight, ListFilter, Check, Cloud 
+  Filter, Trash2, Edit, RotateCcw, Zap, Sparkles, Calendar, ChevronLeft, ChevronRight, ListFilter, Check, Cloud, Lock 
 } from 'lucide-react';
 import MultiDateCalendar from './MultiDateCalendar';
 
@@ -20,6 +20,7 @@ export default function RekonBankTab({
   onSaveBankRows, 
   syncStatus, 
   onRefreshCloud,
+  closedMonths = {},
   isMonthClosed,
   onUnlinkApiItem
 }) {
@@ -546,10 +547,16 @@ export default function RekonBankTab({
         const currentRows = Array.isArray(bankRows) ? bankRows : [];
         const combined = [...currentRows];
         let newAdded = 0;
+        let skippedClosed = 0;
 
         const clean = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
         formattedRows.forEach((r, idx) => {
+          const rowYmd = parseYmd(r.date);
+          if (typeof isMonthClosed === 'function' && (isMonthClosed(r.date) || (rowYmd && isMonthClosed(rowYmd)))) {
+            skippedClosed++;
+            return;
+          }
           const isDup = combined.some(existing => 
             clean(existing.date) === clean(r.date) && 
             Number(existing.amount) === Number(r.amount) && 
@@ -564,6 +571,12 @@ export default function RekonBankTab({
           }
         });
 
+        if (newAdded === 0 && skippedClosed > 0) {
+          e.target.value = null;
+          alert(`File CSV tidak dimuat:\nSeluruh ${skippedClosed} data mutasi pada file CSV berada pada periode yang telah TUTUP BUKU.`);
+          return;
+        }
+
         const finalRows = combined.length > 2000 ? combined.slice(combined.length - 2000) : combined;
 
         if (onSaveBankRows) {
@@ -573,7 +586,11 @@ export default function RekonBankTab({
         }
 
         e.target.value = null;
-        alert(`Berhasil memuat file CSV!\n${newAdded} data mutasi baru ditambahkan (Total: ${finalRows.length} mutasi).\nData langsung disimpan permanen ke Cloud.`);
+        let msg = `Berhasil memuat file CSV!\n${newAdded} data mutasi baru ditambahkan (Total: ${finalRows.length} mutasi).\nData langsung disimpan permanen ke Cloud.`;
+        if (skippedClosed > 0) {
+          msg += `\n\nCatatan: ${skippedClosed} data mutasi dilewati karena berada pada periode TUTUP BUKU.`;
+        }
+        alert(msg);
       }
     });
   };
@@ -583,7 +600,12 @@ export default function RekonBankTab({
   // ==============================================================
   const handleDeleteSingleRow = (rowToDelete) => {
     if (!rowToDelete) return;
-    if (typeof isMonthClosed === 'function' && isMonthClosed(rowToDelete?.date)) {
+    const isRowLocked = typeof isMonthClosed === 'function' && (
+      isMonthClosed(rowToDelete?.date) ||
+      (rowToDelete.linkedTo?.date && isMonthClosed(rowToDelete.linkedTo.date)) ||
+      (Array.isArray(rowToDelete.inputBaruAllocations) && rowToDelete.inputBaruAllocations.some(a => isMonthClosed(a.date)))
+    );
+    if (isRowLocked) {
       alert("Periode tanggal mutasi ini telah TUTUP BUKU. Baris mutasi tidak dapat dihapus.");
       return;
     }
@@ -608,6 +630,17 @@ export default function RekonBankTab({
     
     if (count === 0) {
       alert(`Tidak ada mutasi bank yang ditemukan untuk tanggal ${targetDateStr}.`);
+      return;
+    }
+
+    const hasClosedPair = matchingRows.some(r => 
+      typeof isMonthClosed === 'function' && (
+        (r.linkedTo?.date && isMonthClosed(r.linkedTo.date)) ||
+        (Array.isArray(r.inputBaruAllocations) && r.inputBaruAllocations.some(a => isMonthClosed(a.date)))
+      )
+    );
+    if (hasClosedPair) {
+      alert(`Sebagian mutasi pada tanggal ${targetDateStr} terhubung ke laporan pada periode TUTUP BUKU. Penghapusan dibatalkan.`);
       return;
     }
 
@@ -670,7 +703,12 @@ export default function RekonBankTab({
   };
 
   const openSplitModal = (row) => {
-    if (typeof isMonthClosed === 'function' && isMonthClosed(row?.date)) {
+    const isRowLocked = typeof isMonthClosed === 'function' && (
+      isMonthClosed(row?.date) ||
+      (row?.linkedTo?.date && isMonthClosed(row.linkedTo.date)) ||
+      (Array.isArray(row?.inputBaruAllocations) && row.inputBaruAllocations.some(a => isMonthClosed(a.date)))
+    );
+    if (isRowLocked) {
       alert("Periode tanggal mutasi ini telah TUTUP BUKU (Terkunci). Alokasi mutasi tidak dapat diubah.");
       return;
     }
@@ -713,6 +751,15 @@ export default function RekonBankTab({
     const hasEmptyCat = splitModal.allocations.some(a => !a.categoryId);
     if (hasEmptyCat) {
       alert("Silakan pilih setidaknya Kategori (Dropdown Pertama) untuk setiap alokasi.");
+      return;
+    }
+
+    const hasClosedAlloc = splitModal.allocations.some(a => {
+      const aYmd = a.targetDate || parseYmd(splitModal.bankRow?.date);
+      return typeof isMonthClosed === 'function' && (isMonthClosed(aYmd) || isMonthClosed(splitModal.bankRow?.date));
+    });
+    if (hasClosedAlloc) {
+      alert("Salah satu tanggal alokasi atau periode mutasi berada pada periode yang telah TUTUP BUKU. Alokasi tidak dapat disimpan.");
       return;
     }
     
@@ -762,6 +809,9 @@ export default function RekonBankTab({
     if (!allReports) return groups;
     
     Object.entries(allReports).forEach(([date, dayData]) => {
+      // 🔒 Jika tanggal berada dalam periode TUTUP BUKU, jangan masukkan ke daftar belum dipasangkan
+      if (typeof isMonthClosed === 'function' && isMonthClosed(date)) return;
+
       Object.keys(dayData || {}).forEach(type => {
         if (dayData[type] && dayData[type].activeItems) {
           const typeGroups = {};
@@ -812,7 +862,7 @@ export default function RekonBankTab({
       });
     });
     return groups.sort((a,b) => new Date(b.date) - new Date(a.date));
-  }, [allReports, categories]);
+  }, [allReports, categories, isMonthClosed]);
 
   // Data tanggal H-0, H-1, H-2 untuk modal link
   const linkBankDates = useMemo(() => {
@@ -861,6 +911,7 @@ export default function RekonBankTab({
       const data = itemsByDate[dateStr] || null;
       const bankAmount = Number(linkModal.bankRow?.amount || 0);
       const hasExactMatch = data ? data.items.some(it => Number(it.nominal || 0) === bankAmount) : false;
+      const isDateClosed = typeof isMonthClosed === 'function' && isMonthClosed(dateStr);
       return {
         day: dNum,
         dateStr,
@@ -868,6 +919,7 @@ export default function RekonBankTab({
         count: data ? data.count : 0,
         nominal: data ? data.nominal : 0,
         hasExactMatch,
+        isClosed: isDateClosed,
         isH1: dateStr === linkBankDates.h1,
         isH2: dateStr === linkBankDates.h2,
         isH0: dateStr === linkBankDates.h0
@@ -875,7 +927,7 @@ export default function RekonBankTab({
     });
 
     return { blanks, days, itemsByDate, year, month };
-  }, [linkModalCalendarMonth, unlinkedItems, linkBankDates, linkModal.bankRow]);
+  }, [linkModalCalendarMonth, unlinkedItems, linkBankDates, linkModal.bankRow, isMonthClosed]);
 
   const prevLinkMonth = () => {
     setLinkModalCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
@@ -908,7 +960,12 @@ export default function RekonBankTab({
   }, [unlinkedItems, linkModalFilterDate, linkModal.bankRow]);
 
   const openLinkModal = (row) => {
-    if (typeof isMonthClosed === 'function' && isMonthClosed(row?.date)) {
+    const isRowLocked = typeof isMonthClosed === 'function' && (
+      isMonthClosed(row?.date) ||
+      (row?.linkedTo?.date && isMonthClosed(row.linkedTo.date)) ||
+      (Array.isArray(row?.inputBaruAllocations) && row.inputBaruAllocations.some(a => isMonthClosed(a.date)))
+    );
+    if (isRowLocked) {
       alert("Periode tanggal mutasi ini telah TUTUP BUKU (Terkunci). Mutasi tidak dapat dipasangkan.");
       return;
     }
@@ -964,6 +1021,10 @@ export default function RekonBankTab({
 
   const handleLink = (targetGroupInfo) => {
     if (!linkModal.bankRow) return;
+    if (typeof isMonthClosed === 'function' && (isMonthClosed(targetGroupInfo?.date) || isMonthClosed(linkModal.bankRow?.date))) {
+      alert("Periode tanggal ini telah TUTUP BUKU. Tidak dapat memasangkan ke periode yang terkunci.");
+      return;
+    }
     const bankAmount = Number(linkModal.bankRow.amount || 0);
     const itemAmount = Number(targetGroupInfo?.nominal || 0);
 
@@ -1292,6 +1353,11 @@ export default function RekonBankTab({
   // Render Card Baris Mutasi
   const renderMutationCard = (row) => {
     const isPaired = row.status === 'matched' || row.status === 'linked' || !!row.matchedTo || !!row.linkedTo;
+    const isRowLocked = typeof isMonthClosed === 'function' && (
+      isMonthClosed(row.date) ||
+      (row.linkedTo?.date && isMonthClosed(row.linkedTo.date)) ||
+      (Array.isArray(row.inputBaruAllocations) && row.inputBaruAllocations.some(a => isMonthClosed(a.date)))
+    );
     return (
       <div key={row.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 sm:p-5 border-b border-gray-100 hover:bg-blue-50/30 transition-colors last:border-b-0 gap-4">
         <div className="flex-1 min-w-0 pr-2">
@@ -1318,31 +1384,56 @@ export default function RekonBankTab({
         </div>
         <div className="shrink-0 flex items-center flex-wrap gap-2">
           {!isPaired && (
-            <>
-              <button onClick={() => openLinkModal(row)} className="text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm flex items-center gap-1.5 transition-colors shadow-2xs">
-                <LinkIcon size={15}/> Pasangkan (H-1)
-              </button>
-              <button onClick={() => openSplitModal(row)} className="text-white bg-blue-600 hover:bg-blue-700 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm flex items-center gap-1.5 transition-colors shadow-sm">
-                <Plus size={15}/> Input Baru
-              </button>
-            </>
+            isRowLocked ? (
+              <span className="text-gray-500 bg-gray-100 border border-gray-200 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-2xs select-none" title="Periode tanggal mutasi ini telah TUTUP BUKU.">
+                <Lock size={13} className="text-gray-400" /> Terkunci (Tutup Buku)
+              </span>
+            ) : (
+              <>
+                <button onClick={() => openLinkModal(row)} className="text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm flex items-center gap-1.5 transition-colors shadow-2xs">
+                  <LinkIcon size={15}/> Pasangkan (H-1)
+                </button>
+                <button onClick={() => openSplitModal(row)} className="text-white bg-blue-600 hover:bg-blue-700 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm flex items-center gap-1.5 transition-colors shadow-sm">
+                  <Plus size={15}/> Input Baru
+                </button>
+              </>
+            )
           )}
           {isPaired && (
             <>
               {renderMatchedBadge(row)}
-              <button onClick={() => setEditModal({isOpen: true, row, proof: row.transferProof || '', proofUrl: row.proofUrl || ''})} className="text-gray-500 hover:text-blue-600 bg-white border border-gray-200 shadow-2xs px-2.5 py-2 rounded-lg flex items-center justify-center transition-colors self-start" title="Edit Keterangan / Batalkan Pasangan">
-                <Edit size={16}/>
+              <button 
+                onClick={() => setEditModal({isOpen: true, row, proof: row.transferProof || '', proofUrl: row.proofUrl || ''})} 
+                className={`border shadow-2xs px-2.5 py-2 rounded-lg flex items-center justify-center transition-colors self-start ${
+                  isRowLocked 
+                    ? 'text-indigo-600 bg-indigo-50 border-indigo-200 hover:bg-indigo-100' 
+                    : 'text-gray-500 hover:text-blue-600 bg-white border-gray-200'
+                }`} 
+                title={isRowLocked ? "Lihat Status Pasangan (Terkunci - Tutup Buku)" : "Edit Keterangan / Batalkan Pasangan"}
+              >
+                {isRowLocked ? <Lock size={15} className="text-indigo-600" /> : <Edit size={16}/>}
               </button>
             </>
           )}
-          <button 
-            type="button"
-            onClick={() => handleDeleteSingleRow(row)} 
-            className="text-gray-400 hover:text-red-600 hover:bg-red-50 bg-white border border-gray-200 hover:border-red-200 shadow-2xs p-2 rounded-lg flex items-center justify-center transition-colors self-start" 
-            title="Hapus baris mutasi ini"
-          >
-            <Trash2 size={16}/>
-          </button>
+          {isRowLocked ? (
+            <button 
+              type="button"
+              disabled
+              className="text-gray-300 bg-gray-100 border border-gray-200 shadow-2xs p-2 rounded-lg flex items-center justify-center cursor-not-allowed self-start select-none opacity-60" 
+              title="Periode mutasi ini telah TUTUP BUKU. Baris mutasi tidak dapat dihapus."
+            >
+              <Lock size={15}/>
+            </button>
+          ) : (
+            <button 
+              type="button"
+              onClick={() => handleDeleteSingleRow(row)} 
+              className="text-gray-400 hover:text-red-600 hover:bg-red-50 bg-white border border-gray-200 hover:border-red-200 shadow-2xs p-2 rounded-lg flex items-center justify-center transition-colors self-start" 
+              title="Hapus baris mutasi ini"
+            >
+              <Trash2 size={16}/>
+            </button>
+          )}
         </div>
       </div>
     );
@@ -1481,6 +1572,12 @@ export default function RekonBankTab({
 
               const matchedInfo = getMatchedInfoForApi(item);
               const isMatched = matchedInfo.isMatched;
+              const isMatchedLocked = isMatched && typeof isMonthClosed === 'function' && (
+                (matchedInfo.matchedRow?.date && isMonthClosed(matchedInfo.matchedRow.date)) ||
+                (matchedInfo.reportDate && isMonthClosed(matchedInfo.reportDate)) ||
+                (item.tanggal_sewa && isMonthClosed(item.tanggal_sewa)) ||
+                (item.tanggalPemakaian && isMonthClosed(item.tanggalPemakaian))
+              );
 
               return (
                 <div 
@@ -1525,10 +1622,17 @@ export default function RekonBankTab({
                     </div>
 
                     {isMatched && (
-                      <div className="mt-2 text-[11px] bg-emerald-100/90 text-emerald-900 border border-emerald-200 px-2 py-1 rounded-md font-medium flex items-center justify-between gap-1">
-                        <span className="truncate">✓ Terpasang ke mutasi</span>
+                      <div className={`mt-2 text-[11px] px-2 py-1 rounded-md font-medium flex items-center justify-between gap-1 ${
+                        isMatchedLocked
+                          ? 'bg-indigo-100/90 text-indigo-900 border border-indigo-200'
+                          : 'bg-emerald-100/90 text-emerald-900 border border-emerald-200'
+                      }`}>
+                        <span className="truncate flex items-center gap-1">
+                          {isMatchedLocked ? <Lock size={10} className="text-indigo-700 shrink-0" /> : null}
+                          {isMatchedLocked ? '✓ Terkunci (Tutup Buku)' : '✓ Terpasang ke mutasi'}
+                        </span>
                         {matchedInfo.matchedRow && (
-                          <span className="font-bold shrink-0 text-emerald-800 text-[10px]">
+                          <span className={`font-bold shrink-0 text-[10px] ${isMatchedLocked ? 'text-indigo-800' : 'text-emerald-800'}`}>
                             {matchedInfo.matchedRow.date?.split(' ')[0] || ''}
                           </span>
                         )}
@@ -1542,18 +1646,27 @@ export default function RekonBankTab({
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {isMatched && onUnlinkApiItem && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (window.confirm(`Lepaskan pasangan untuk bukti transfer "${item.nama_penyewa || item.namaPerusahaan || 'ini'}"?\n\nStatus akan dikembalikan menjadi 'Belum Dipasangkan'.`)) {
-                              onUnlinkApiItem(item);
-                            }
-                          }}
-                          className="text-[11px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-colors shadow-2xs cursor-pointer"
-                          title="Lepaskan Pasangan Bukti Transfer Ini"
-                        >
-                          <RotateCcw size={11}/> Lepas
-                        </button>
+                        isMatchedLocked ? (
+                          <span
+                            className="text-[11px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 bg-gray-100 text-gray-400 border border-gray-200 shadow-2xs cursor-not-allowed select-none"
+                            title="Periode pasangan bukti transfer ini telah Tutup Buku. Status pasangan terkunci permanen."
+                          >
+                            <Lock size={11} className="text-gray-400"/> Terkunci
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Lepaskan pasangan untuk bukti transfer "${item.nama_penyewa || item.namaPerusahaan || 'ini'}"?\n\nStatus akan dikembalikan menjadi 'Belum Dipasangkan'.`)) {
+                                onUnlinkApiItem(item);
+                              }
+                            }}
+                            className="text-[11px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-colors shadow-2xs cursor-pointer"
+                            title="Lepaskan Pasangan Bukti Transfer Ini"
+                          >
+                            <RotateCcw size={11}/> Lepas
+                          </button>
+                        )
                       )}
                       <button 
                         type="button" 
@@ -1624,6 +1737,28 @@ export default function RekonBankTab({
             </div>
           </div>
 
+          {/* Banner Tutup Buku jika bulan yang dilihat sedang ditutup buku */}
+          {Boolean(closedMonths && closedMonths[`${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, '0')}`]) && (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-3.5 sm:p-4 flex items-center justify-between gap-3 text-indigo-900 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center shrink-0 text-indigo-700">
+                  <Lock size={18} />
+                </div>
+                <div>
+                  <div className="font-bold text-xs sm:text-sm text-indigo-950 flex items-center gap-1.5">
+                    Bulan {calendarMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })} Telah Ditutup Buku (Locked)
+                  </div>
+                  <div className="text-[11px] sm:text-xs text-indigo-700/90 mt-0.5">
+                    Seluruh mutasi bank dan status rekonsiliasi pada bulan ini terkunci (Read-Only) untuk melindungi data pembukuan.
+                  </div>
+                </div>
+              </div>
+              <span className="hidden sm:inline-block text-[10px] font-black uppercase tracking-wider bg-indigo-200/80 text-indigo-800 px-2.5 py-1 rounded-lg">
+                Terkunci Aman
+              </span>
+            </div>
+          )}
+
           {/* Kalender Grid Container */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6">
             {/* Header navigasi bulan */}
@@ -1632,9 +1767,16 @@ export default function RekonBankTab({
                 <button onClick={prevMonth} className="p-2 rounded-xl border border-gray-200 hover:bg-gray-100 text-gray-700 transition-colors shadow-2xs" title="Bulan Sebelumnya">
                   <ChevronLeft size={20}/>
                 </button>
-                <h3 className="text-base sm:text-lg font-black text-gray-800 uppercase tracking-wide min-w-[200px] text-center">
-                  {calendarMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
-                </h3>
+                <div className="flex items-center gap-2 min-w-[200px] justify-center">
+                  <h3 className="text-base sm:text-lg font-black text-gray-800 uppercase tracking-wide text-center">
+                    {calendarMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+                  </h3>
+                  {Boolean(closedMonths && closedMonths[`${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, '0')}`]) && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-black bg-indigo-100 text-indigo-800 border border-indigo-200 px-2.5 py-0.5 rounded-full shadow-2xs">
+                      <Lock size={12} className="text-indigo-600" /> Tutup Buku
+                    </span>
+                  )}
+                </div>
                 <button onClick={nextMonth} className="p-2 rounded-xl border border-gray-200 hover:bg-gray-100 text-gray-700 transition-colors shadow-2xs" title="Bulan Berikutnya">
                   <ChevronRight size={20}/>
                 </button>
@@ -1674,6 +1816,7 @@ export default function RekonBankTab({
               {days.map(d => {
                 const isSelected = selectedDate === d.dateStr;
                 const isToday = d.dateStr === new Date().toISOString().split('T')[0];
+                const isDayLocked = typeof isMonthClosed === 'function' && isMonthClosed(d.dateStr);
                 return (
                   <div 
                     key={d.dateStr}
@@ -1698,7 +1841,14 @@ export default function RekonBankTab({
                       }`}>
                         {d.day}
                       </span>
-                      {isToday && <span className="text-[9px] font-bold text-indigo-600 uppercase">Hari Ini</span>}
+                      <div className="flex items-center gap-1">
+                        {isDayLocked && (
+                          <span className="text-indigo-600/80" title="Periode Bulan Ini Telah Ditutup Buku (Terkunci)">
+                            <Lock size={12} />
+                          </span>
+                        )}
+                        {isToday && <span className="text-[9px] font-bold text-indigo-600 uppercase">Hari Ini</span>}
+                      </div>
                     </div>
 
                     {d.hasData ? (
@@ -1735,6 +1885,17 @@ export default function RekonBankTab({
 
           {/* Detail Mutasi Pada Tanggal Terpilih */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            {selectedDate && typeof isMonthClosed === 'function' && isMonthClosed(selectedDate) && (
+              <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-between gap-2 text-xs font-bold text-amber-900">
+                <span className="flex items-center gap-1.5">
+                  <Lock size={14} className="text-amber-700 shrink-0" />
+                  Periode {formatDateIndo(selectedDate)} telah TUTUP BUKU. Status pasangan mutasi dikunci permanen (Read-Only).
+                </span>
+                <span className="bg-amber-200/80 text-amber-900 text-[10px] px-2 py-0.5 rounded-md uppercase tracking-wider">
+                  Terkunci
+                </span>
+              </div>
+            )}
             <div className="bg-gradient-to-r from-slate-50 to-indigo-50/50 p-4 sm:p-5 border-b border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="text-xs font-bold uppercase tracking-wider text-indigo-600 mb-1 flex items-center gap-1.5">
@@ -1789,14 +1950,25 @@ export default function RekonBankTab({
                   >
                     <CheckCircle size={12}/> Sudah Dipasangkan ({activeDateData.pairedCount})
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteDateGroup(selectedDate)}
-                    className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 border border-red-200 flex items-center gap-1 transition-colors ml-1"
-                    title={`Hapus seluruh ${activeDateData.rows.length} mutasi tanggal ini`}
-                  >
-                    <Trash2 size={12}/> Hapus Tanggal Ini
-                  </button>
+                  {selectedDate && typeof isMonthClosed === 'function' && isMonthClosed(selectedDate) ? (
+                    <button
+                      type="button"
+                      disabled
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-gray-400 bg-gray-100 border border-gray-200 flex items-center gap-1 cursor-not-allowed opacity-60 ml-1 select-none"
+                      title="Periode tanggal ini telah Tutup Buku. Penghapusan tidak diizinkan."
+                    >
+                      <Lock size={12}/> Hapus Terkunci
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteDateGroup(selectedDate)}
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 border border-red-200 flex items-center gap-1 transition-colors ml-1"
+                      title={`Hapus seluruh ${activeDateData.rows.length} mutasi tanggal ini`}
+                    >
+                      <Trash2 size={12}/> Hapus Tanggal Ini
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1869,14 +2041,20 @@ export default function RekonBankTab({
                     <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
                       <Database size={18} className="text-gray-400"/> {dateGroup}
                     </h3>
-                    <button 
-                      type="button"
-                      onClick={() => handleDeleteDateGroup(dateGroup)}
-                      className="text-xs text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 shadow-2xs transition-colors"
-                      title={`Hapus seluruh ${data.rows.length} mutasi pada tanggal ${dateGroup}`}
-                    >
-                      <Trash2 size={12} /> Hapus Mutasi Tanggal Ini
-                    </button>
+                    {typeof isMonthClosed === 'function' && isMonthClosed(dateGroup) ? (
+                      <span className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 shadow-2xs select-none">
+                        <Lock size={12} className="text-indigo-600" /> Tutup Buku
+                      </span>
+                    ) : (
+                      <button 
+                        type="button"
+                        onClick={() => handleDeleteDateGroup(dateGroup)}
+                        className="text-xs text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                        title={`Hapus seluruh ${data.rows.length} mutasi pada tanggal ${dateGroup}`}
+                      >
+                        <Trash2 size={12} /> Hapus Mutasi Tanggal Ini
+                      </button>
+                    )}
                   </div>
                   <div className="text-right">
                     <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-0.5">Total Pemasukan</div>
@@ -2360,74 +2538,109 @@ export default function RekonBankTab({
       {/* ============================================================== */}
       {/* 🔴 MODAL: EDIT KETERANGAN / BATALKAN PASANGAN */}
       {/* ============================================================== */}
-      {editModal.isOpen && editModal.row && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
-            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <h3 className="font-bold text-lg text-gray-800">Edit Mutasi Bank</h3>
-            </div>
-            <div className="p-6">
-              <div className="mb-4">
-                <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wider">Keterangan / Nama Pentransfer</label>
-                <textarea 
-                  value={editModal.proof}
-                  onChange={e => setEditModal(prev => ({...prev, proof: e.target.value}))}
-                  className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  rows={2}
-                  placeholder="Contoh: Transfer dari Zainal Abidin PT..."
-                />
+      {editModal.isOpen && editModal.row && (() => {
+        const isModalRowLocked = typeof isMonthClosed === 'function' && editModal.row && (
+          isMonthClosed(editModal.row.date) ||
+          (editModal.row.linkedTo?.date && isMonthClosed(editModal.row.linkedTo.date)) ||
+          (Array.isArray(editModal.row.inputBaruAllocations) && editModal.row.inputBaruAllocations.some(a => isMonthClosed(a.date)))
+        );
+
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+              <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-lg text-gray-800">
+                    {isModalRowLocked ? 'Detail Pasangan Mutasi Bank' : 'Edit Mutasi Bank'}
+                  </h3>
+                  {isModalRowLocked && (
+                    <span className="text-[10px] font-black bg-indigo-100 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">
+                      <Lock size={10} className="text-indigo-600"/> Terkunci
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="mb-5">
-                <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wider">Link Bukti Transfer (URL / Google Drive / Gambar)</label>
-                <input 
-                  type="text"
-                  value={editModal.proofUrl || ''}
-                  onChange={e => setEditModal(prev => ({...prev, proofUrl: e.target.value}))}
-                  className="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-medium"
-                  placeholder="https://drive.google.com/... atau https://..."
-                />
-                {editModal.proofUrl && (
-                  <button 
-                    type="button" 
-                    onClick={(e) => handleViewProof(e, editModal.proofUrl)} 
-                    className="mt-1.5 text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1"
-                  >
-                    <LinkIcon size={12}/> Uji Buka Link Bukti
-                  </button>
+              <div className="p-6">
+                <div className="mb-4">
+                  <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wider">Keterangan / Nama Pentransfer</label>
+                  <textarea 
+                    value={editModal.proof}
+                    disabled={isModalRowLocked}
+                    onChange={e => setEditModal(prev => ({...prev, proof: e.target.value}))}
+                    className={`w-full border rounded-xl p-3 text-sm outline-none ${isModalRowLocked ? 'bg-gray-100 text-gray-600 border-gray-200 cursor-not-allowed' : 'border-gray-300 focus:ring-2 focus:ring-blue-500'}`}
+                    rows={2}
+                    placeholder="Contoh: Transfer dari Zainal Abidin PT..."
+                  />
+                </div>
+                <div className="mb-5">
+                  <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wider">Link Bukti Transfer (URL / Google Drive / Gambar)</label>
+                  <input 
+                    type="text"
+                    disabled={isModalRowLocked}
+                    value={editModal.proofUrl || ''}
+                    onChange={e => setEditModal(prev => ({...prev, proofUrl: e.target.value}))}
+                    className={`w-full border rounded-xl p-2.5 text-sm outline-none font-medium ${isModalRowLocked ? 'bg-gray-100 text-gray-600 border-gray-200 cursor-not-allowed' : 'border-gray-300 focus:ring-2 focus:ring-blue-500'}`}
+                    placeholder="https://drive.google.com/... atau https://..."
+                  />
+                  {editModal.proofUrl && (
+                    <button 
+                      type="button" 
+                      onClick={(e) => handleViewProof(e, editModal.proofUrl)} 
+                      className="mt-1.5 text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1"
+                    >
+                      <LinkIcon size={12}/> Uji Buka Link Bukti
+                    </button>
+                  )}
+                </div>
+
+                {isModalRowLocked ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-2">
+                    <h4 className="text-sm font-bold text-amber-900 mb-1 flex items-center gap-1.5">
+                      <Lock size={16} className="text-amber-700"/> Status Pasangan Terkunci (Tutup Buku)
+                    </h4>
+                    <p className="text-xs text-amber-800 font-medium leading-relaxed">
+                      Periode transaksi mutasi atau laporan harian ini telah <b>TUTUP BUKU</b>.
+                      Seluruh status pasangan, alokasi STSU, dan bukti transfer dikunci permanen agar data rekapitulasi keuangan tidak berubah atau terlepas.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-red-50 border border-red-100 rounded-xl p-4 mb-2">
+                    <h4 className="text-sm font-bold text-red-800 mb-1 flex items-center gap-1.5"><RotateCcw size={16}/> Salah Pasang?</h4>
+                    <p className="text-[11px] text-red-700 font-medium mb-3">
+                      {editModal.row?.status === 'matched' || editModal.row?.isFromInputBaru || editModal.row?.inputBaruAllocations
+                        ? "Mutasi ini dibuat melalui 'Input Baru'. Jika dibatalkan, data pendapatan terkait di dashboard akan otomatis dihapus."
+                        : "Jika mutasi ini salah dipasangkan, Anda dapat membatalkannya untuk mengembalikan mutasi ini menjadi Pending."}
+                    </p>
+                    <button onClick={() => {
+                      const isInputBaru = editModal.row?.status === 'matched' || editModal.row?.isFromInputBaru || editModal.row?.inputBaruAllocations;
+                      const confirmMsg = isInputBaru
+                        ? 'Yakin ingin membatalkan pasangan? Karena mutasi ini berasal dari "Input Baru", data pendapatan terkait di dashboard akan otomatis dihapus.'
+                        : 'Yakin ingin membatalkan status pasangan pada mutasi ini?';
+                      if (confirm(confirmMsg)) {
+                        if (onUnlinkBankRow) onUnlinkBankRow(editModal.row);
+                        setEditModal({isOpen:false, row:null, proof:'', proofUrl:''});
+                      }
+                    }} className="text-xs font-bold text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg shadow-sm transition-colors w-full text-center flex items-center justify-center gap-1">
+                      <RotateCcw size={14} /> Batalkan Pasangan
+                    </button>
+                  </div>
                 )}
               </div>
-
-              <div className="bg-red-50 border border-red-100 rounded-xl p-4 mb-2">
-                <h4 className="text-sm font-bold text-red-800 mb-1 flex items-center gap-1.5"><RotateCcw size={16}/> Salah Pasang?</h4>
-                <p className="text-[11px] text-red-700 font-medium mb-3">
-                  {editModal.row?.status === 'matched' || editModal.row?.isFromInputBaru || editModal.row?.inputBaruAllocations
-                    ? "Mutasi ini dibuat melalui 'Input Baru'. Jika dibatalkan, data pendapatan terkait di dashboard akan otomatis dihapus."
-                    : "Jika mutasi ini salah dipasangkan, Anda dapat membatalkannya untuk mengembalikan mutasi ini menjadi Pending."}
-                </p>
-                <button onClick={() => {
-                  const isInputBaru = editModal.row?.status === 'matched' || editModal.row?.isFromInputBaru || editModal.row?.inputBaruAllocations;
-                  const confirmMsg = isInputBaru
-                    ? 'Yakin ingin membatalkan pasangan? Karena mutasi ini berasal dari "Input Baru", data pendapatan terkait di dashboard akan otomatis dihapus.'
-                    : 'Yakin ingin membatalkan status pasangan pada mutasi ini?';
-                  if (confirm(confirmMsg)) {
-                    if (onUnlinkBankRow) onUnlinkBankRow(editModal.row);
-                    setEditModal({isOpen:false, row:null, proof:'', proofUrl:''});
-                  }
-                }} className="text-xs font-bold text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg shadow-sm transition-colors w-full text-center flex items-center justify-center gap-1">
-                  <RotateCcw size={14} /> Batalkan Pasangan
+              <div className="p-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50">
+                <button onClick={() => setEditModal({isOpen:false, row:null, proof:'', proofUrl:''})} className="px-4 py-2 font-bold text-gray-600 hover:bg-gray-200 rounded-xl text-sm transition-colors">
+                  {isModalRowLocked ? 'Tutup' : 'Batal'}
                 </button>
+                {!isModalRowLocked && (
+                  <button onClick={() => {
+                    if (onUpdateBankRow) onUpdateBankRow(editModal.row.id, { transferProof: editModal.proof, proofUrl: editModal.proofUrl || '' });
+                    setEditModal({isOpen:false, row:null, proof:'', proofUrl:''});
+                  }} className="px-5 py-2 font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl text-sm transition-colors shadow-sm">Simpan Keterangan</button>
+                )}
               </div>
             </div>
-            <div className="p-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50">
-              <button onClick={() => setEditModal({isOpen:false, row:null, proof:'', proofUrl:''})} className="px-4 py-2 font-bold text-gray-600 hover:bg-gray-200 rounded-xl text-sm transition-colors">Batal</button>
-              <button onClick={() => {
-                if (onUpdateBankRow) onUpdateBankRow(editModal.row.id, { transferProof: editModal.proof, proofUrl: editModal.proofUrl || '' });
-                setEditModal({isOpen:false, row:null, proof:'', proofUrl:''});
-              }} className="px-5 py-2 font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl text-sm transition-colors shadow-sm">Simpan Keterangan</button>
-            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
     </div>
   );
