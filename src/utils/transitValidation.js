@@ -335,3 +335,243 @@ export const validateIwmDiskonRow = (d, targetDate = '') => {
   }
 };
 
+/**
+ * Mengecek keabsahan nominal rupiah terhadap tarif resmi tiket untuk form input operasional harian (InputHarianTab).
+ * Mendukung tiket reguler pintu masuk, rombongan (diskon 25%), pusat primata hari biasa & hari besar,
+ * rombongan primata (diskon 25%), Taman Satwa Anak (TSA), wahana rekreasi, dan parkir kendaraan.
+ *
+ * @param {Object} item - Objek item dari group.activeItems ({ id, name, itemNote, ... })
+ * @param {Object} group - Objek group ({ catId, name, validDate, itemDate, ... })
+ * @param {number|string} rawAmount - Nominal input rupiah
+ * @param {string} targetDate - Tanggal laporan / transaksi (YYYY-MM-DD)
+ * @returns {Object} {
+ *   hasCheck: boolean,
+ *   isValid: boolean,
+ *   unitPrice: number|null,
+ *   qty: number,
+ *   unitLabel: string,
+ *   unitText: string,
+ *   label: string,
+ *   message: string,
+ *   remainder: number
+ * }
+ */
+export const checkTicketItemTarif = (item, group = {}, rawAmount = 0, targetDate = '') => {
+  const amount = Number(rawAmount) || 0;
+  if (!item || amount <= 0) {
+    return { hasCheck: false };
+  }
+
+  const itemName = (item.name || '').toLowerCase();
+  const groupName = (group.name || '').toLowerCase();
+  const itemNote = (item.itemNote || '').toLowerCase();
+  const combined = `${groupName} ${itemName} ${itemNote}`;
+
+  // Filter out non-ticket categories/items (sewa lahan, listrik, shooting, kantin, dsb.)
+  if (
+    /sewa|lahan|listrik|shooting|syuting|pemasaran|reklame|banner|kantin|kios|toilet|sampah|gedung|aula/i.test(itemName) &&
+    !/tiket|rombongan/i.test(itemName)
+  ) {
+    return { hasCheck: false };
+  }
+
+  // Identifikasi kategori tiket
+  const isTicketingGroup = /tiket|ticket|gate|tvm|vending|online|merchant|wahana|schmutzer|primata/i.test(groupName);
+  const isTicketItem = /dewasa|anak|rombongan|romb\b|primata|schmutzer|satwa\s*anak|children|tsa\b|motor|mobil|gol\s*(1|2|3|i\b|ii\b|iii\b)|sepeda|perahu|kereta|kuda|unta|gajah/i.test(itemName);
+
+  if (!isTicketingGroup && !isTicketItem) {
+    return { hasCheck: false };
+  }
+
+  // Jika input memiliki nilai desimal sejak awal
+  if (amount % 1 !== 0) {
+    return {
+      hasCheck: true,
+      isValid: false,
+      unitPrice: null,
+      qty: amount,
+      unitLabel: 'Nominal Berkoma',
+      unitText: '',
+      label: '',
+      message: `Nominal tidak bulat (${amount})`,
+      remainder: 0
+    };
+  }
+
+  // Deteksi Tipe Tiket
+  const isRombongan = /rombongan|romb\b|reduksi\s*25%|diskon\s*25%/i.test(combined);
+  const isPrimata = /primata|schmutzer/i.test(combined);
+  const isTSA = /taman\s*satwa|satwa\s*anak|children|tsa\b/i.test(combined);
+
+  const isGol1 = /gol\s*(1|i\b)|bus\s*besar|truk\s*besar/i.test(combined);
+  const isGol2 = /gol\s*(2|ii\b)|bus\s*kecil|truk\s*kecil/i.test(combined);
+  const isGol3 = /gol\s*(3|iii\b)|mobil|sedan|minibus/i.test(combined);
+  const isMotor = /motor/i.test(combined);
+  const isSepeda = /sepeda\b/i.test(combined) && !/sepeda\s*(tunggal|ganda)/i.test(combined);
+
+  const isPerahu = /perahu/i.test(combined);
+  const isKereta = /kereta/i.test(combined);
+  const isSepedaTunggal = /sepeda\s*tunggal/i.test(combined);
+  const isSepedaGanda = /sepeda\s*ganda/i.test(combined);
+  const isKuda = /kuda\b/i.test(combined);
+  const isUntaGajah = /unta|gajah/i.test(combined);
+
+  const isDewasa = /dewasa/i.test(combined);
+  const isAnak = /anak|3-12/i.test(combined) && !isTSA;
+
+  let unitPrice = null;
+  let unitLabel = '';
+
+  if (isRombongan) {
+    if (isPrimata) {
+      const isWeekend = /we\b|weekend|holiday|libur|besar|sabtu|minggu/i.test(combined);
+      const isWeekday = /wd\b|weekday|biasa|selasa|rabu|kamis|jumat/i.test(combined);
+      if (isWeekend) {
+        unitPrice = TARIF_STANDAR.ROMB_PRIMATA_WE; // 5.625
+        unitLabel = 'Romb. Primata Weekend (Diskon 25%)';
+      } else if (isWeekday) {
+        unitPrice = TARIF_STANDAR.ROMB_PRIMATA_WD; // 4.500
+        unitLabel = 'Romb. Primata Hari Biasa (Diskon 25%)';
+      } else {
+        if (amount % TARIF_STANDAR.ROMB_PRIMATA_WD === 0 && amount % TARIF_STANDAR.ROMB_PRIMATA_WE !== 0) {
+          unitPrice = TARIF_STANDAR.ROMB_PRIMATA_WD;
+          unitLabel = 'Romb. Primata Hari Biasa (Diskon 25%)';
+        } else if (amount % TARIF_STANDAR.ROMB_PRIMATA_WE === 0 && amount % TARIF_STANDAR.ROMB_PRIMATA_WD !== 0) {
+          unitPrice = TARIF_STANDAR.ROMB_PRIMATA_WE;
+          unitLabel = 'Romb. Primata Weekend (Diskon 25%)';
+        } else {
+          const tgl = targetDate || group.validDate || group.itemDate ? new Date(targetDate || group.validDate || group.itemDate) : null;
+          const isCalWeekend = tgl && !isNaN(tgl) ? (tgl.getDay() === 0 || tgl.getDay() === 6) : false;
+          unitPrice = isCalWeekend ? TARIF_STANDAR.ROMB_PRIMATA_WE : TARIF_STANDAR.ROMB_PRIMATA_WD;
+          unitLabel = `Romb. Primata ${isCalWeekend ? 'Weekend' : 'Hari Biasa'} (Diskon 25%)`;
+        }
+      }
+    } else if (isDewasa && !isAnak) {
+      unitPrice = TARIF_STANDAR.ROMB_DEWASA; // 3.000
+      unitLabel = 'Romb. Dewasa (Diskon 25%)';
+    } else if (isAnak && !isDewasa) {
+      unitPrice = TARIF_STANDAR.ROMB_ANAK; // 2.250
+      unitLabel = 'Romb. Anak (Diskon 25%)';
+    } else {
+      // Jika nama hanya 'Rombongan'
+      if (amount % TARIF_STANDAR.ROMB_ANAK === 0 && amount % TARIF_STANDAR.ROMB_DEWASA !== 0) {
+        unitPrice = TARIF_STANDAR.ROMB_ANAK;
+        unitLabel = 'Romb. Anak (Diskon 25%)';
+      } else if (amount % TARIF_STANDAR.ROMB_DEWASA === 0 && amount % TARIF_STANDAR.ROMB_ANAK !== 0) {
+        unitPrice = TARIF_STANDAR.ROMB_DEWASA;
+        unitLabel = 'Romb. Dewasa (Diskon 25%)';
+      } else {
+        unitPrice = TARIF_STANDAR.ROMB_ANAK;
+        unitLabel = 'Rombongan (Diskon 25%)';
+      }
+    }
+  } else if (isPrimata) {
+    const isWeekend = /we\b|weekend|holiday|libur|besar|sabtu|minggu/i.test(combined);
+    const isWeekday = /wd\b|weekday|biasa|selasa|rabu|kamis|jumat/i.test(combined);
+    if (isWeekend) {
+      unitPrice = TARIF_STANDAR.PRIMATA_WE; // 7.500
+      unitLabel = 'Primata Weekend/Libur';
+    } else if (isWeekday) {
+      unitPrice = TARIF_STANDAR.PRIMATA_WD; // 6.000
+      unitLabel = 'Primata Hari Biasa';
+    } else {
+      if (amount % TARIF_STANDAR.PRIMATA_WD === 0 && amount % TARIF_STANDAR.PRIMATA_WE !== 0) {
+        unitPrice = TARIF_STANDAR.PRIMATA_WD;
+        unitLabel = 'Primata Hari Biasa';
+      } else if (amount % TARIF_STANDAR.PRIMATA_WE === 0 && amount % TARIF_STANDAR.PRIMATA_WD !== 0) {
+        unitPrice = TARIF_STANDAR.PRIMATA_WE;
+        unitLabel = 'Primata Weekend/Libur';
+      } else {
+        const tgl = targetDate || group.validDate || group.itemDate ? new Date(targetDate || group.validDate || group.itemDate) : null;
+        const isCalWeekend = tgl && !isNaN(tgl) ? (tgl.getDay() === 0 || tgl.getDay() === 6) : false;
+        unitPrice = isCalWeekend ? TARIF_STANDAR.PRIMATA_WE : TARIF_STANDAR.PRIMATA_WD;
+        unitLabel = isCalWeekend ? 'Primata Weekend/Libur' : 'Primata Hari Biasa';
+      }
+    }
+  } else if (isTSA) {
+    unitPrice = TARIF_STANDAR.TSA; // 2.500
+    unitLabel = 'Taman Satwa Anak';
+  } else if (isPerahu) {
+    unitPrice = TARIF_STANDAR.PERAHU_ANGSA; // 40.000
+    unitLabel = 'Perahu Angsa';
+  } else if (isKereta) {
+    unitPrice = TARIF_STANDAR.KERETA_KELILING; // 20.000
+    unitLabel = 'Kereta Keliling';
+  } else if (isSepedaGanda) {
+    unitPrice = TARIF_STANDAR.SEPEDA_GANDA; // 20.000
+    unitLabel = 'Sepeda Ganda';
+  } else if (isSepedaTunggal) {
+    unitPrice = TARIF_STANDAR.SEPEDA_TUNGGAL; // 15.000
+    unitLabel = 'Sepeda Tunggal';
+  } else if (isKuda) {
+    unitPrice = 5000;
+    unitLabel = 'Wahana Kuda Tunggang';
+  } else if (isUntaGajah) {
+    unitPrice = 7500;
+    unitLabel = 'Wahana Gajah / Unta';
+  } else if (isGol1) {
+    unitPrice = TARIF_STANDAR.GOL_1; // 15.000
+    unitLabel = 'Gol I (Bus/Truk Besar)';
+  } else if (isGol2) {
+    unitPrice = TARIF_STANDAR.GOL_2; // 12.500
+    unitLabel = 'Gol II (Bus/Truk Kecil)';
+  } else if (isGol3) {
+    unitPrice = TARIF_STANDAR.GOL_3; // 6.000
+    unitLabel = 'Gol III (Mobil/Sedan)';
+  } else if (isMotor) {
+    unitPrice = TARIF_STANDAR.MOTOR; // 3.000
+    unitLabel = 'Sepeda Motor';
+  } else if (isSepeda) {
+    unitPrice = TARIF_STANDAR.SEPEDA; // 1.000
+    unitLabel = 'Sepeda';
+  } else if (isDewasa) {
+    unitPrice = TARIF_STANDAR.PINTU_DEWASA; // 4.000
+    unitLabel = 'Tiket Masuk Dewasa';
+  } else if (isAnak) {
+    unitPrice = TARIF_STANDAR.PINTU_ANAK; // 3.000
+    unitLabel = 'Tiket Masuk Anak';
+  }
+
+  // Jika item tidak cocok dengan tarif resmi manapun
+  if (!unitPrice) {
+    return { hasCheck: false };
+  }
+
+  const qty = amount / unitPrice;
+  const isInteger = Math.abs(qty - Math.round(qty)) < 1e-4;
+  const roundedQty = Math.round(qty);
+  const remainder = amount % unitPrice;
+
+  const unitText = (isMotor || isSepeda || isGol1 || isGol2 || isGol3)
+    ? 'kendaraan'
+    : (isPerahu || isKereta ? 'keliling' : (isRombongan ? 'org (Diskon 25%)' : 'orang'));
+
+  if (isInteger && roundedQty > 0) {
+    return {
+      hasCheck: true,
+      isValid: true,
+      unitPrice,
+      qty: roundedQty,
+      unitLabel,
+      unitText,
+      label: `${roundedQty.toLocaleString('id-ID')} ${unitText} @ Rp ${unitPrice.toLocaleString('id-ID')}`,
+      message: '',
+      remainder: 0
+    };
+  } else {
+    const formattedQty = (amount / unitPrice).toFixed(2).replace('.', ',');
+    return {
+      hasCheck: true,
+      isValid: false,
+      unitPrice,
+      qty,
+      unitLabel,
+      unitText,
+      label: '',
+      message: `Pecahan: Rp ${amount.toLocaleString('id-ID')} / Rp ${unitPrice.toLocaleString('id-ID')} = ${formattedQty} (Sisa Rp ${remainder.toLocaleString('id-ID')})`,
+      remainder
+    };
+  }
+};
+
+

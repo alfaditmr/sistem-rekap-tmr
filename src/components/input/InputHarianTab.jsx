@@ -9,6 +9,8 @@ import {
   Trash,
   Edit,
   CheckCircle,
+  CheckCircle2,
+  AlertTriangle,
   ArrowUp,
   Save,
   FileText,
@@ -23,6 +25,7 @@ import {
   parseYmd,
   getActiveItemKey
 } from '../../utils/formatters';
+import { checkTicketItemTarif } from '../../utils/transitValidation';
 
 /**
  * Komponen Tab Input Operasional Harian STSU
@@ -540,6 +543,46 @@ export default function InputHarianTab({
                     </span>
                   )}
                 </h3>
+
+                {/* Indikator Validasi Pecahan Tiket Level Kategori */}
+                {(() => {
+                  let ticketCount = 0;
+                  let validCount = 0;
+                  let fractionCount = 0;
+
+                  group.activeItems.forEach((it) => {
+                    const itKey = getActiveItemKey(group.catId, it.id, group.isSusulan, group.validDate, group.itemDate, it.itemNote);
+                    const val = currentReport?.formData?.[itKey];
+                    const chk = checkTicketItemTarif(it, group, val, group.validDate || group.itemDate || reportDate);
+                    if (chk.hasCheck) {
+                      ticketCount++;
+                      if (chk.isValid) validCount++;
+                      else fractionCount++;
+                    }
+                  });
+
+                  if (ticketCount === 0) return null;
+
+                  if (fractionCount > 0) {
+                    return (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-700 bg-red-100/90 border border-red-300 px-2.5 py-0.5 rounded-full shadow-2xs animate-pulse" title="Terdapat nominal tiket yang memiliki pecahan / tidak bulat">
+                        <AlertTriangle size={12} className="text-red-600 shrink-0" />
+                        <span>{fractionCount} Pecahan Perlu Dicek</span>
+                      </span>
+                    );
+                  }
+
+                  if (validCount > 0) {
+                    return (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100/90 border border-emerald-300 px-2.5 py-0.5 rounded-full shadow-2xs" title="Semua nominal tiket terisi habis dibagi tarif resmi (bebas pecahan)">
+                        <CheckCircle2 size={12} className="text-emerald-600 shrink-0" />
+                        <span>{validCount} Tiket Valid & Bulat</span>
+                      </span>
+                    );
+                  }
+
+                  return null;
+                })()}
               </div>
               <div className="p-4 space-y-3">
                 {group.activeItems.map((item) => {
@@ -609,6 +652,17 @@ export default function InputHarianTab({
                                       • {alloc.desc || alloc.tenant || (alloc.bankDate ? `Mutasi (${alloc.bankDate})` : `Transaksi ${aIdx + 1}`)}
                                     </span>
                                     <div className="flex items-center gap-2 shrink-0">
+                                      {(() => {
+                                        const allocCheck = checkTicketItemTarif(item, group, alloc.amount, alloc.bankDate || group.validDate || group.itemDate || reportDate);
+                                        if (allocCheck.hasCheck && allocCheck.isValid) {
+                                          return (
+                                            <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-bold" title={allocCheck.label}>
+                                              {allocCheck.qty} {allocCheck.unitText.startsWith('org') ? 'org' : 'unit'}
+                                            </span>
+                                          );
+                                        }
+                                        return null;
+                                      })()}
                                       <span className="font-black text-indigo-900 text-xs">
                                         Rp {formatRp(alloc.amount)}
                                       </span>
@@ -670,6 +724,36 @@ export default function InputHarianTab({
                             placeholder="0"
                           />
                         </div>
+
+                        {/* Pengecekan Pecahan Tiket & Tarif Resmi (Termasuk Rombongan) */}
+                        {(() => {
+                          const rawVal = currentReport?.formData?.[inputKey];
+                          const ticketCheck = checkTicketItemTarif(item, group, rawVal, group.validDate || group.itemDate || reportDate);
+                          if (!ticketCheck.hasCheck) return null;
+
+                          if (ticketCheck.isValid) {
+                            return (
+                              <div
+                                className="mt-1.5 flex items-center gap-1.5 text-[11px] text-emerald-700 bg-emerald-50/90 border border-emerald-200 px-2 py-0.5 rounded-md font-semibold shadow-2xs select-none"
+                                title={`Valid & Bulat: ${ticketCheck.label}`}
+                              >
+                                <CheckCircle2 size={12} className="text-emerald-600 shrink-0" />
+                                <span>OK: {ticketCheck.label}</span>
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div
+                                className="mt-1.5 flex items-center gap-1.5 text-[11px] text-red-700 bg-red-50 border border-red-300 px-2.5 py-1 rounded-md font-bold shadow-xs select-none"
+                                title={ticketCheck.message}
+                              >
+                                <AlertTriangle size={12} className="text-red-600 shrink-0" />
+                                <span>⚠️ {ticketCheck.message}</span>
+                              </div>
+                            );
+                          }
+                        })()}
+
                         {/* Inline Warning for Abnormal Big Numbers (Anti-Typo safeguard) */}
                         {Number(currentReport?.formData?.[inputKey] || 0) >= 100000000 && (
                           <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md mt-1 font-semibold flex items-center gap-1 shadow-2xs">
