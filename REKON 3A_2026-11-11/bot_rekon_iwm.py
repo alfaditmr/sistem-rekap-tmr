@@ -7,7 +7,9 @@ from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from selenium import webdriver
+import selenium.webdriver.chrome.webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -81,8 +83,8 @@ def buat_driver_chrome_iwm(use_profile=True):
 def proses_tarik_data_iwm(tanggal_target):
     try:
         driver = buat_driver_chrome_iwm(use_profile=True)
-    except Exception:
-        print("⚠️ [IWM] Profil utama sedang digunakan proses lain, membuka sesi Chrome headless baru...")
+    except Exception as e_prof:
+        print(f"⚠️ [IWM] Profil utama sedang digunakan proses lain atau terkunci ({e_prof}), membuka sesi Chrome headless baru...")
         driver = buat_driver_chrome_iwm(use_profile=False)
     
     # Hapus jejak webdriver
