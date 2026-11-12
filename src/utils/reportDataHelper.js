@@ -606,21 +606,9 @@ export const getChannelTransactionRecapData = (allReports, categories, monthStr)
   const rows = days.map(dInfo => {
     const dayAll = allReports[dInfo.dateStr] || {};
     
-    // Periksa apakah ada metadata rekon 3A dan IWM
-    const rekon3a = dayAll.rekon3aSummary || (dInfo.dateStr === '2026-11-11' ? {
-      GATE: { channelName: 'NEW GATE', transactionQty: 1326, totalTiket: 1326, totalNominal: 5142000 },
-      TVM: { channelName: 'TICKET VENDING MACHINE', transactionQty: 249, totalTiket: 823, totalNominal: 3054500 },
-      MERCHANT_PAGE: { channelName: 'TIKET ONLINE', transactionQty: 342, totalTiket: 1874, totalNominal: 7528500 }
-    } : null);
-
-    const rekonIwm = dayAll.rekonIwmSettlement || (dInfo.dateStr === '2026-11-11' ? {
-      status: 'Total Transaksi Approve',
-      jumlah_transaksi: 1280,
-      pengunjung_anak: 3131,
-      pengunjung_dewasa: 3972,
-      jumlah_kendaraan: 771,
-      nominal: 29444500
-    } : null);
+    // Hanya gunakan metadata rekon 3A dan IWM yang benar-benar sudah ditarik & disimpan pada tanggal tersebut
+    const rekon3a = dayAll.rekon3aSummary || null;
+    const rekonIwm = dayAll.rekonIwmSettlement || null;
 
     let gateTrx = 0, tvmTrx = 0, onlineTrx = 0;
     let gateTiket = 0, tvmTiket = 0, onlineTiket = 0;
@@ -639,7 +627,7 @@ export const getChannelTransactionRecapData = (allReports, categories, monthStr)
       onlineTiket = Number(rekon3a.MERCHANT_PAGE?.totalTiket || 0);
       onlineNom = Number(rekon3a.MERCHANT_PAGE?.totalNominal || 0);
     } else {
-      // Hitung dari formData jika ada
+      // Hitung dari formData jika ada kategori tiket yang sudah diinput pada tanggal tersebut
       let dUtama = 0, dOnline = 0, dTvm = 0;
       Object.keys(dayAll).forEach(tKey => {
         const typeData = dayAll[tKey];
@@ -647,10 +635,16 @@ export const getChannelTransactionRecapData = (allReports, categories, monthStr)
           Object.keys(typeData.formData).forEach(fKey => {
             const val = Number(typeData.formData[fKey]) || 0;
             if (val > 0) {
-              const lower = fKey.toLowerCase();
-              if (/online/i.test(lower)) dOnline += val;
-              else if (/tvm|vending/i.test(lower)) dTvm += val;
-              else if (/pintu|gate/i.test(lower) || !tKey.includes('lain')) dUtama += val;
+              let catName = '';
+              const parts = fKey.split('_');
+              if (parts.length >= 2 && parts[0] === 'cat') {
+                const catId = `${parts[0]}_${parts[1]}`;
+                const cat = categories.find(c => c.id === catId);
+                catName = (cat?.name || '').toLowerCase();
+              }
+              if (/online|merchant/i.test(catName)) dOnline += val;
+              else if (/tvm|vending|vinding/i.test(catName)) dTvm += val;
+              else if (/new\s*gate/i.test(catName)) dUtama += val;
             }
           });
         }
@@ -689,14 +683,23 @@ export const getChannelTransactionRecapData = (allReports, categories, monthStr)
       oldGateKendaraan = Number(rekonIwm.jumlah_kendaraan || 0);
       oldGateNom = Number(rekonIwm.nominal || 0);
     } else {
-      // Estimasi Old Gate
+      // Hitung dari formData jika kategori Old Gate / IWM sudah diinput pada tanggal tersebut
       let dIwm = 0;
       Object.keys(dayAll).forEach(tKey => {
         const typeData = dayAll[tKey];
         if (typeData?.formData) {
           Object.keys(typeData.formData).forEach(fKey => {
             const val = Number(typeData.formData[fKey]) || 0;
-            if (val > 0 && /old|iwm/i.test(fKey)) dIwm += val;
+            if (val > 0) {
+              let catName = '';
+              const parts = fKey.split('_');
+              if (parts.length >= 2 && parts[0] === 'cat') {
+                const catId = `${parts[0]}_${parts[1]}`;
+                const cat = categories.find(c => c.id === catId);
+                catName = (cat?.name || '').toLowerCase();
+              }
+              if (/old\s*gate|iwm/i.test(catName)) dIwm += val;
+            }
           });
         }
       });

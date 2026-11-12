@@ -1,20 +1,18 @@
 import React, { useState, useMemo } from 'react';
 import {
   Printer,
-  FileSpreadsheet,
   Layers,
   Tag,
-  CheckCircle2,
-  Calendar,
   Building,
   CreditCard,
-  Ticket
+  Ticket,
+  Info
 } from 'lucide-react';
 import {
   formatRp,
   terbilang,
   formatTanggalCetak,
-  safeString
+  getActiveItemKey
 } from '../../utils/formatters';
 
 // 21 Baris Standar STSU Hasil Retribusi Tiket & Parkir
@@ -44,8 +42,78 @@ const STSU_ITEMS_DEF = [
   { no: 21, name: 'Sepeda', group: 'parkir', rate: 1000 }
 ];
 
+/**
+ * Mencocokkan kategori dari daftar categories berdasarkan channel yang dipilih
+ */
+const isCategoryMatchChannel = (catName = '', selectedChannel = '') => {
+  const lower = String(catName || '').toLowerCase();
+  if (selectedChannel === 'GATE') {
+    return /new\s*gate/i.test(lower);
+  }
+  if (selectedChannel === 'TVM') {
+    return /tvm|vending|vinding/i.test(lower);
+  }
+  if (selectedChannel === 'MERCHANT_PAGE') {
+    return /online|merchant/i.test(lower);
+  }
+  if (selectedChannel === 'OLD_GATE') {
+    return /old\s*gate|iwm/i.test(lower);
+  }
+  return false;
+};
+
+/**
+ * Mencocokkan nama sub-item ke nomor urut baris STSU (1 s/d 21)
+ */
+const matchItemToStsuRowNo = (itemName = '', itemNote = '', isWeekend = false) => {
+  const norm = `${itemName} ${itemNote}`
+    .toLowerCase()
+    .replace(/sepededa/g, 'sepeda')
+    .replace(/gol iii/g, 'gol 3')
+    .replace(/gol ii\b/g, 'gol 2')
+    .replace(/gol i\b/g, 'gol 1');
+
+  if (/kuda/i.test(norm)) return 5;
+  if (/unta/i.test(norm)) return 6;
+  if (/gajah/i.test(norm)) return 7;
+  if (/taman\s*satwa|satwa\s*anak|\btsa\b|children/i.test(norm)) return 8;
+  if (/motor/i.test(norm)) return 20;
+  if (/sepeda/i.test(norm)) return 21;
+  if (/gol\s*3|golongan\s*3|golongan\s*iii|mobil/i.test(norm)) return 19;
+  if (/gol\s*2|golongan\s*2|golongan\s*ii\b|bus\s*kecil/i.test(norm)) return 18;
+  if (/gol\s*1|golongan\s*1|golongan\s*i\b|bus\s*besar/i.test(norm)) return 17;
+
+  const isPrimata = /primata|schmutzer/i.test(norm);
+  const isRomb = /romb/i.test(norm);
+  const isAnak = /anak|3-12/i.test(norm);
+  const isDewasa = /dewasa/i.test(norm);
+
+  if (isPrimata) {
+    const isExplicitLibur = /we|weekend|holiday|libur|besar|sabtu|minggu/i.test(norm);
+    const isExplicitBiasa = /wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at/i.test(norm);
+    const libur = isExplicitLibur ? true : isExplicitBiasa ? false : isWeekend;
+
+    if (isRomb) {
+      if (libur) return isAnak ? 15 : 16;
+      return isAnak ? 12 : 11;
+    } else {
+      if (libur) return isAnak ? 14 : 13;
+      return isAnak ? 10 : 9;
+    }
+  }
+
+  if (isRomb) {
+    return isAnak ? 4 : 3;
+  }
+
+  if (isAnak) return 2;
+  if (isDewasa) return 1;
+
+  return null;
+};
+
 export default function FormatRekonChannelReport({
-  reportDate = '2026-11-11',
+  reportDate = '',
   currentReport = {},
   allReports = {},
   categories = [],
@@ -61,115 +129,117 @@ export default function FormatRekonChannelReport({
     return dt.getDay() === 0 || dt.getDay() === 6;
   }, [reportDate]);
 
-  // Ekstrak metadata 3A & IWM
-  const rekon3a = dayData.rekon3aSummary || {
-    GATE: { channelName: 'NEW GATE', transactionQty: 1326, totalTiket: 1326, totalNominal: 5142000 },
-    TVM: { channelName: 'TICKET VENDING MACHINE', transactionQty: 249, totalTiket: 823, totalNominal: 3054500 },
-    MERCHANT_PAGE: { channelName: 'TIKET ONLINE', transactionQty: 342, totalTiket: 1874, totalNominal: 7528500 }
-  };
+  // Hanya gunakan metadata 3A & IWM asli yang sudah ditarik pada tanggal tersebut (tanpa data dummy)
+  const rekon3a = dayData.rekon3aSummary || null;
+  const rekonIwm = dayData.rekonIwmSettlement || null;
 
-  const rekonIwm = dayData.rekonIwmSettlement || {
-    status: 'Total Transaksi Approve',
-    jumlah_transaksi: 1280,
-    pengunjung_anak: 3131,
-    pengunjung_dewasa: 3972,
-    jumlah_kendaraan: 771,
-    nominal: 29444500
-  };
-
-  const rombonganData = dayData.rekonIwmRombongan || [
-    {
-      no: 1, lokasi: 'Pusat Primata', pos: 'POS 2 Utama', kode_rombongan: '2026111203',
-      nama_rombongan: 'Yayasan Al Anshaar Al Islami', tgl_kunjungan: '12-Nov-2026',
-      terdaftar_anak: 91, terdaftar_dewasa: 0, masuk_anak: 90, masuk_dewasa: 0, pendapatan_rp: 405000
-    },
-    {
-      no: 2, lokasi: 'Pintu Utara 3', pos: 'POS 1 Utama', kode_rombongan: '2026110602',
-      nama_rombongan: 'SDIT Darul Abidin', tgl_kunjungan: '11-Nov-2026',
-      terdaftar_anak: 100, terdaftar_dewasa: 0, masuk_anak: 176, masuk_dewasa: 0, pendapatan_rp: 396000
-    },
-    {
-      no: 3, lokasi: 'Pintu Utara 3', pos: 'POS 1 Utama', kode_rombongan: '2026111104',
-      nama_rombongan: 'SMP AL Hikam', tgl_kunjungan: '11-Nov-2026',
-      terdaftar_anak: 0, terdaftar_dewasa: 67, masuk_anak: 0, masuk_dewasa: 67, pendapatan_rp: 201000
-    },
-    {
-      no: 4, lokasi: 'Pintu Utara 3', pos: 'POS 1 Utama', kode_rombongan: '2026111103',
-      nama_rombongan: 'SMK Nusa Bangsa', tgl_kunjungan: '11-Nov-2026',
-      terdaftar_anak: 0, terdaftar_dewasa: 61, masuk_anak: 0, masuk_dewasa: 61, pendapatan_rp: 183000
-    },
-    {
-      no: 5, lokasi: 'Pusat Primata', pos: 'POS 2 Utama', kode_rombongan: '2026110602',
-      nama_rombongan: 'SDIT Darul Abidin (Primata)', tgl_kunjungan: '11-Nov-2026',
-      terdaftar_anak: 100, terdaftar_dewasa: 0, masuk_anak: 176, masuk_dewasa: 0, pendapatan_rp: 792000
+  // Data Rombongan IWM: Ambil dari hasil tarik bot IWM pada tanggal tersebut,
+  // atau dari item Rombongan yang sudah diinput pada kategori Old Gate di tanggal tersebut
+  const rombonganData = useMemo(() => {
+    if (Array.isArray(dayData.rekonIwmRombongan) && dayData.rekonIwmRombongan.length > 0) {
+      return dayData.rekonIwmRombongan;
     }
-  ];
 
-  // Hitung Nilai STSU per Baris sesuai Channel yang dipilih
+    // Cek apakah ada item rombongan diinput pada kategori Old Gate di tanggal ini
+    const fallbackRows = [];
+    const [yr, mo, dy] = (reportDate || '').split('-');
+    const tglStr = dy && mo && yr ? `${dy}-${mo}-${yr}` : reportDate;
+
+    Object.keys(dayData).forEach((tKey) => {
+      const docData = dayData[tKey];
+      if (!docData || !docData.formData || !Array.isArray(docData.activeItems)) return;
+      docData.activeItems.forEach((ai) => {
+        const cat = categories.find((c) => c.id === ai.catId);
+        if (!cat || !isCategoryMatchChannel(cat.name, 'OLD_GATE')) return;
+
+        const catItem = cat.items?.find((i) => i.id === (ai.itemId || ai.id));
+        const itemName = catItem ? catItem.name : (ai.itemName || ai.name || '');
+        if (!/romb/i.test(itemName)) return;
+
+        const itemKey = getActiveItemKey(
+          ai.catId,
+          ai.itemId || ai.id,
+          ai.isSusulan,
+          ai.validDate,
+          ai.itemDate,
+          ai.itemNote
+        );
+        const nominal = Number(docData.formData[itemKey] || docData.formData[`${ai.catId}_${ai.itemId || ai.id}`] || 0);
+        if (nominal <= 0) return;
+
+        const isPrimata = /primata|schmutzer/i.test(itemName);
+        const isAnak = /anak|3-12/i.test(itemName);
+        const rate = isPrimata ? (isWeekend ? 5625 : 4500) : (isAnak ? 2250 : 3000);
+        const qty = Math.round(nominal / rate);
+
+        fallbackRows.push({
+          no: fallbackRows.length + 1,
+          lokasi: isPrimata ? 'Pusat Primata' : 'Pintu Masuk',
+          pos: 'POS Utama',
+          kode_rombongan: '-',
+          nama_rombongan: ai.itemNote || itemName,
+          tgl_kunjungan: tglStr,
+          terdaftar_anak: isAnak ? qty : 0,
+          terdaftar_dewasa: isAnak ? 0 : qty,
+          masuk_anak: isAnak ? qty : 0,
+          masuk_dewasa: isAnak ? 0 : qty,
+          pendapatan_rp: nominal
+        });
+      });
+    });
+
+    return fallbackRows;
+  }, [dayData, categories, reportDate, isWeekend]);
+
+  // Hitung Nilai STSU per Baris sesuai data nyata pada reportDate & selectedChannel
   const channelStsuData = useMemo(() => {
     const stsu = {};
     for (let i = 1; i <= 21; i++) {
       stsu[i] = { qty: 0, nominal: 0 };
     }
 
-    if (selectedChannel === 'GATE') {
-      const ch = rekon3a.GATE || {};
-      const totNom = ch.totalNominal || 5142000;
-      // Proporsi New Gate
-      stsu[1].nominal = 4396000;
-      stsu[1].qty = 1099;
-      stsu[2].nominal = 588000;
-      stsu[2].qty = 196;
-      stsu[21].nominal = 158000;
-      stsu[21].qty = 158;
-    } else if (selectedChannel === 'TVM') {
-      const ch = rekon3a.TVM || {};
-      stsu[1].nominal = 2764000;
-      stsu[1].qty = 691;
-      stsu[2].nominal = 276000;
-      stsu[2].qty = 92;
-      stsu[21].nominal = 14500;
-      stsu[21].qty = 14;
-    } else if (selectedChannel === 'MERCHANT_PAGE') {
-      const ch = rekon3a.MERCHANT_PAGE || {};
-      stsu[1].nominal = 6172000;
-      stsu[1].qty = 1543;
-      stsu[2].nominal = 993000;
-      stsu[2].qty = 331;
-      stsu[21].nominal = 363500;
-      stsu[21].qty = 363;
-    } else if (selectedChannel === 'OLD_GATE') {
-      // Data Old Gate IWM
-      stsu[1].nominal = 5276000;
-      stsu[1].qty = Math.round(5276000 / 4000);
-      stsu[2].nominal = 2022000;
-      stsu[2].qty = Math.round(2022000 / 3000);
-      stsu[4].nominal = 1602000;
-      stsu[4].qty = Math.round(1602000 / 2250);
-      stsu[8].nominal = 455000;
-      stsu[8].qty = Math.round(455000 / 2500);
-      if (isWeekend) {
-        stsu[13].nominal = 8242500;
-        stsu[13].qty = 1099;
-        stsu[14].nominal = 1447500;
-        stsu[14].qty = 193;
-      } else {
-        stsu[9].nominal = 1380000;
-        stsu[9].qty = 230;
-        stsu[10].nominal = 156000;
-        stsu[10].qty = 26;
-        stsu[12].nominal = 472500;
-        stsu[12].qty = 105;
-      }
-      stsu[17].nominal = 600000; stsu[17].qty = 40;
-      stsu[18].nominal = 375000; stsu[18].qty = 30;
-      stsu[19].nominal = 3300000; stsu[19].qty = 550;
-      stsu[20].nominal = 2100000; stsu[20].qty = 700;
-      stsu[21].nominal = 15000; stsu[21].qty = 15;
-    }
+    if (selectedChannel === 'ROMBONGAN') return stsu;
+
+    Object.keys(dayData).forEach((tKey) => {
+      const docData = dayData[tKey];
+      if (!docData || !docData.formData || !Array.isArray(docData.activeItems)) return;
+
+      docData.activeItems.forEach((ai) => {
+        const cat = categories.find((c) => c.id === ai.catId);
+        if (!cat || !isCategoryMatchChannel(cat.name, selectedChannel)) return;
+
+        const catItem = cat.items?.find((i) => i.id === (ai.itemId || ai.id));
+        const itemName = catItem ? catItem.name : (ai.itemName || ai.name || '');
+        const itemNote = ai.itemNote || '';
+
+        const itemKey = getActiveItemKey(
+          ai.catId,
+          ai.itemId || ai.id,
+          ai.isSusulan,
+          ai.validDate,
+          ai.itemDate,
+          ai.itemNote
+        );
+
+        const nominal = Number(
+          docData.formData[itemKey] ||
+          docData.formData[`${ai.catId}_${ai.itemId || ai.id}`] ||
+          docData.formData[ai.catId] ||
+          0
+        );
+        if (nominal <= 0) return;
+
+        const rowNo = matchItemToStsuRowNo(itemName, itemNote, isWeekend);
+        if (rowNo && stsu[rowNo]) {
+          const def = STSU_ITEMS_DEF[rowNo - 1];
+          stsu[rowNo].nominal += nominal;
+          stsu[rowNo].qty = def.rate > 0 ? Math.round(stsu[rowNo].nominal / def.rate) : 0;
+        }
+      });
+    });
 
     return stsu;
-  }, [selectedChannel, rekon3a, rekonIwm, isWeekend]);
+  }, [dayData, categories, selectedChannel, isWeekend]);
 
   const channelTotalNominal = useMemo(() => {
     return Object.values(channelStsuData).reduce((sum, item) => sum + (item.nominal || 0), 0);
@@ -186,15 +256,17 @@ export default function FormatRekonChannelReport({
   }, [selectedChannel]);
 
   const channelSummaryData = useMemo(() => {
-    if (selectedChannel === 'GATE') return rekon3a.GATE;
-    if (selectedChannel === 'TVM') return rekon3a.TVM;
-    if (selectedChannel === 'MERCHANT_PAGE') return rekon3a.MERCHANT_PAGE;
+    if (!rekon3a) return null;
+    if (selectedChannel === 'GATE') return rekon3a.GATE || null;
+    if (selectedChannel === 'TVM') return rekon3a.TVM || null;
+    if (selectedChannel === 'MERCHANT_PAGE') return rekon3a.MERCHANT_PAGE || null;
     return null;
   }, [selectedChannel, rekon3a]);
 
   // Format Nomor STSU
-  const [y, m, d] = (reportDate || '2026-11-11').split('-');
-  const computedStsuNo = `      /${d}/${m}/SU/${y}`;
+  const [y, m, d] = (reportDate || '').split('-');
+  const seqStr = currentReport?.sequence ? `${currentReport.sequence}` : '      ';
+  const computedStsuNo = d && m && y ? `${seqStr}/${d}/${m}/SU/${y}` : '';
 
   // Detail Baris Rekonsiliasi untuk Tabel Lembar 2
   const rekonRows = useMemo(() => {
@@ -224,6 +296,9 @@ export default function FormatRekonChannelReport({
   }, [channelStsuData]);
 
   const totalQtyAll = rekonRows.reduce((s, r) => s + r.qty, 0);
+  const isChannelEmpty = selectedChannel === 'ROMBONGAN'
+    ? rombonganData.length === 0
+    : channelTotalNominal === 0;
 
   return (
     <div className="w-full">
@@ -253,7 +328,7 @@ export default function FormatRekonChannelReport({
       </div>
 
       {/* CHANNEL SELECTOR PILLS (NO-PRINT) */}
-      <div className="flex flex-wrap items-center gap-2 mb-6 no-print">
+      <div className="flex flex-wrap items-center gap-2 mb-4 no-print">
         <button
           type="button"
           onClick={() => setSelectedChannel('GATE')}
@@ -315,6 +390,16 @@ export default function FormatRekonChannelReport({
         </button>
       </div>
 
+      {/* INFO BANNER APABILA BELUM ADA DATA PADA TANGGAL TERSEBUT (NO-PRINT) */}
+      {isChannelEmpty && (
+        <div className="mb-6 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center gap-3 text-xs font-semibold no-print">
+          <Info size={18} className="text-amber-600 shrink-0" />
+          <div>
+            Belum ada data untuk <strong>{channelDisplayName}</strong> pada tanggal <strong>{formatTanggalCetak(reportDate)}</strong>. Silakan tarik data dari Bot {selectedChannel === 'OLD_GATE' || selectedChannel === 'ROMBONGAN' ? 'IWM' : '3A'} atau isi nominal pada menu <strong>Input</strong> terlebih dahulu.
+          </div>
+        </div>
+      )}
+
       {/* =================================================================== */}
       {/* KONDISI 1: JIKA MEMILIH LAPORAN ROMBONGAN IWM (11 KOLOM STANDAR)    */}
       {/* =================================================================== */}
@@ -346,37 +431,45 @@ export default function FormatRekonChannelReport({
                 </tr>
               </thead>
               <tbody>
-                {rombonganData.map((r, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50">
-                    <td className="border border-black p-1.5 text-center">{r.no || (idx + 1)}</td>
-                    <td className="border border-black p-1.5 text-left">{r.lokasi}</td>
-                    <td className="border border-black p-1.5 text-center">{r.pos || 'POS 1 Utama'}</td>
-                    <td className="border border-black p-1.5 text-center font-mono">{r.kode_rombongan || '-'}</td>
-                    <td className="border border-black p-1.5 text-left font-semibold">{r.nama_rombongan}</td>
-                    <td className="border border-black p-1.5 text-center">{r.tgl_kunjungan || `${d}-${m}-${y}`}</td>
-                    <td className="border border-black p-1.5 text-right font-mono">{(r.terdaftar_anak ?? r.masuk_anak).toLocaleString('id-ID')}</td>
-                    <td className="border border-black p-1.5 text-right font-mono">{(r.terdaftar_dewasa ?? r.masuk_dewasa).toLocaleString('id-ID')}</td>
-                    <td className="border border-black p-1.5 text-right font-mono font-bold">{r.masuk_anak.toLocaleString('id-ID')}</td>
-                    <td className="border border-black p-1.5 text-right font-mono font-bold">{r.masuk_dewasa.toLocaleString('id-ID')}</td>
-                    <td className="border border-black p-1.5 text-right font-mono font-bold">
-                      {formatRp(r.pendapatan_rp)}
+                {rombonganData.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="border border-black p-6 text-center text-gray-500 italic">
+                      Belum ada data pengunjung rombongan untuk tanggal {d}-{m}-{y}.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  rombonganData.map((r, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="border border-black p-1.5 text-center">{r.no || (idx + 1)}</td>
+                      <td className="border border-black p-1.5 text-left">{r.lokasi}</td>
+                      <td className="border border-black p-1.5 text-center">{r.pos || 'POS 1 Utama'}</td>
+                      <td className="border border-black p-1.5 text-center font-mono">{r.kode_rombongan || '-'}</td>
+                      <td className="border border-black p-1.5 text-left font-semibold">{r.nama_rombongan}</td>
+                      <td className="border border-black p-1.5 text-center">{r.tgl_kunjungan || `${d}-${m}-${y}`}</td>
+                      <td className="border border-black p-1.5 text-right font-mono">{(r.terdaftar_anak ?? r.masuk_anak ?? 0).toLocaleString('id-ID')}</td>
+                      <td className="border border-black p-1.5 text-right font-mono">{(r.terdaftar_dewasa ?? r.masuk_dewasa ?? 0).toLocaleString('id-ID')}</td>
+                      <td className="border border-black p-1.5 text-right font-mono font-bold">{(r.masuk_anak || 0).toLocaleString('id-ID')}</td>
+                      <td className="border border-black p-1.5 text-right font-mono font-bold">{(r.masuk_dewasa || 0).toLocaleString('id-ID')}</td>
+                      <td className="border border-black p-1.5 text-right font-mono font-bold">
+                        {formatRp(r.pendapatan_rp || 0)}
+                      </td>
+                    </tr>
+                  ))
+                )}
                 {/* Baris Total */}
                 <tr className="bg-gray-200 font-bold border-t-2 border-black text-black">
                   <td colSpan={6} className="border border-black p-2 text-center font-black">TOTAL</td>
                   <td className="border border-black p-2 text-right font-mono">
-                    {rombonganData.reduce((s, r) => s + (r.terdaftar_anak ?? r.masuk_anak), 0).toLocaleString('id-ID')}
+                    {rombonganData.reduce((s, r) => s + (r.terdaftar_anak ?? r.masuk_anak ?? 0), 0).toLocaleString('id-ID')}
                   </td>
                   <td className="border border-black p-2 text-right font-mono">
-                    {rombonganData.reduce((s, r) => s + (r.terdaftar_dewasa ?? r.masuk_dewasa), 0).toLocaleString('id-ID')}
+                    {rombonganData.reduce((s, r) => s + (r.terdaftar_dewasa ?? r.masuk_dewasa ?? 0), 0).toLocaleString('id-ID')}
                   </td>
                   <td className="border border-black p-2 text-right font-mono">
-                    {rombonganData.reduce((s, r) => s + r.masuk_anak, 0).toLocaleString('id-ID')}
+                    {rombonganData.reduce((s, r) => s + (r.masuk_anak || 0), 0).toLocaleString('id-ID')}
                   </td>
                   <td className="border border-black p-2 text-right font-mono">
-                    {rombonganData.reduce((s, r) => s + r.masuk_dewasa, 0).toLocaleString('id-ID')}
+                    {rombonganData.reduce((s, r) => s + (r.masuk_dewasa || 0), 0).toLocaleString('id-ID')}
                   </td>
                   <td className="border border-black p-2 text-right font-mono font-black">
                     Rp {formatRp(rombonganData.reduce((s, r) => s + (r.pendapatan_rp || 0), 0))}
@@ -540,29 +633,37 @@ export default function FormatRekonChannelReport({
                   </tr>
                 </thead>
                 <tbody>
-                  {rekonRows.map((r) => (
-                    <tr key={r.no} className="hover:bg-indigo-50/20">
-                      <td className="border border-gray-300 p-1.5 text-center font-mono">{r.no}</td>
-                      <td className="border border-gray-300 p-1.5 text-left font-medium">{r.area}</td>
-                      <td className="border border-gray-300 p-1.5 text-left">{r.uraian}</td>
-                      <td className="border border-gray-300 p-1.5 text-right font-mono">
-                        {r.qty.toLocaleString('id-ID')}
-                      </td>
-                      <td className="border border-gray-300 p-1.5 text-right font-mono font-bold">
-                        {formatRp(r.nominal)}
+                  {rekonRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="border border-gray-300 p-6 text-center text-gray-500 italic">
+                        Belum ada rincian transaksi untuk channel {channelDisplayName} pada tanggal ini.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    rekonRows.map((r) => (
+                      <tr key={r.no} className="hover:bg-indigo-50/20">
+                        <td className="border border-gray-300 p-1.5 text-center font-mono">{r.no}</td>
+                        <td className="border border-gray-300 p-1.5 text-left font-medium">{r.area}</td>
+                        <td className="border border-gray-300 p-1.5 text-left">{r.uraian}</td>
+                        <td className="border border-gray-300 p-1.5 text-right font-mono">
+                          {r.qty.toLocaleString('id-ID')}
+                        </td>
+                        <td className="border border-gray-300 p-1.5 text-right font-mono font-bold">
+                          {formatRp(r.nominal)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                   {/* Baris Total Tabel 1 */}
                   <tr className="bg-gray-200 font-extrabold text-gray-900 border-t-2 border-gray-400">
                     <td colSpan={3} className="border border-gray-300 p-2 text-center uppercase tracking-wide">
                       TOTAL PENDAPATAN & KARCIS {channelDisplayName}
                     </td>
                     <td className="border border-gray-300 p-2 text-right font-mono">
-                      {totalQtyAll.toLocaleString('id-ID')}
+                      {totalQtyAll > 0 ? totalQtyAll.toLocaleString('id-ID') : '-'}
                     </td>
                     <td className="border border-gray-300 p-2 text-right font-mono font-black text-emerald-800">
-                      Rp {formatRp(channelTotalNominal)}
+                      {channelTotalNominal > 0 ? `Rp ${formatRp(channelTotalNominal)}` : '-'}
                     </td>
                   </tr>
                 </tbody>
@@ -590,19 +691,27 @@ export default function FormatRekonChannelReport({
                     <tbody>
                       <tr>
                         <td className="border border-gray-300 p-2 font-bold text-gray-800">
-                          {rekonIwm.status || 'Total Transaksi Approve'}
+                          {rekonIwm?.status || 'Total Transaksi Approve'}
                         </td>
                         <td className="border border-gray-300 p-2 text-right font-mono font-black text-purple-800">
-                          {(rekonIwm.jumlah_transaksi || 0).toLocaleString('id-ID')} Transaksi
+                          {rekonIwm?.jumlah_transaksi
+                            ? `${rekonIwm.jumlah_transaksi.toLocaleString('id-ID')} Transaksi`
+                            : '-'}
                         </td>
                         <td className="border border-gray-300 p-2 text-right font-mono font-bold text-emerald-800">
-                          {((rekonIwm.pengunjung_anak || 0) + (rekonIwm.pengunjung_dewasa || 0)).toLocaleString('id-ID')} ({rekonIwm.pengunjung_anak} ank / {rekonIwm.pengunjung_dewasa} dws)
+                          {rekonIwm && (rekonIwm.pengunjung_anak || rekonIwm.pengunjung_dewasa)
+                            ? `${((rekonIwm.pengunjung_anak || 0) + (rekonIwm.pengunjung_dewasa || 0)).toLocaleString('id-ID')} (${rekonIwm.pengunjung_anak || 0} ank / ${rekonIwm.pengunjung_dewasa || 0} dws)`
+                            : '-'}
                         </td>
                         <td className="border border-gray-300 p-2 text-right font-mono font-bold text-indigo-800">
-                          {(rekonIwm.jumlah_kendaraan || 0).toLocaleString('id-ID')} Unit
+                          {rekonIwm?.jumlah_kendaraan
+                            ? `${rekonIwm.jumlah_kendaraan.toLocaleString('id-ID')} Unit`
+                            : '-'}
                         </td>
                         <td className="border border-gray-300 p-2 text-right font-mono font-black text-green-700">
-                          Rp {formatRp(rekonIwm.nominal || channelTotalNominal)}
+                          {(rekonIwm?.nominal || channelTotalNominal) > 0
+                            ? `Rp ${formatRp(rekonIwm?.nominal || channelTotalNominal)}`
+                            : '-'}
                         </td>
                       </tr>
                     </tbody>
@@ -628,19 +737,27 @@ export default function FormatRekonChannelReport({
                           {channelSummaryData?.channelName || channelDisplayName}
                         </td>
                         <td className="border border-gray-300 p-2 text-right font-mono font-black text-blue-800">
-                          {(channelSummaryData?.transactionQty || totalQtyAll).toLocaleString('id-ID')} Transaksi
+                          {(channelSummaryData?.transactionQty || totalQtyAll) > 0
+                            ? `${(channelSummaryData?.transactionQty || totalQtyAll).toLocaleString('id-ID')} Transaksi`
+                            : '-'}
                         </td>
                         <td className="border border-gray-300 p-2 text-right font-mono font-black text-emerald-800">
-                          Rp {formatRp(channelSummaryData?.totalNominal || channelTotalNominal)}
+                          {(channelSummaryData?.totalNominal || channelTotalNominal) > 0
+                            ? `Rp ${formatRp(channelSummaryData?.totalNominal || channelTotalNominal)}`
+                            : '-'}
                         </td>
                       </tr>
                       <tr className="bg-gray-100 font-bold">
                         <td className="border border-gray-300 p-2 text-center font-black">TOTAL</td>
                         <td className="border border-gray-300 p-2 text-right font-mono font-black text-blue-900">
-                          {(channelSummaryData?.transactionQty || totalQtyAll).toLocaleString('id-ID')}
+                          {(channelSummaryData?.transactionQty || totalQtyAll) > 0
+                            ? (channelSummaryData?.transactionQty || totalQtyAll).toLocaleString('id-ID')
+                            : '-'}
                         </td>
                         <td className="border border-gray-300 p-2 text-right font-mono font-black text-emerald-900">
-                          Rp {formatRp(channelSummaryData?.totalNominal || channelTotalNominal)}
+                          {(channelSummaryData?.totalNominal || channelTotalNominal) > 0
+                            ? `Rp ${formatRp(channelSummaryData?.totalNominal || channelTotalNominal)}`
+                            : '-'}
                         </td>
                       </tr>
                     </tbody>
@@ -650,7 +767,7 @@ export default function FormatRekonChannelReport({
             </div>
 
             <div className="mt-4 text-[10px] text-gray-500 italic">
-              * Data diekstrak otomatis oleh Bot Rekon pada: {new Date().toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' })} | Sumber: {selectedChannel === 'OLD_GATE' ? 'ragunan_iwm' : '3A Portal'}
+              * Data diekstrak dari sistem rekon untuk tanggal: {formatTanggalCetak(reportDate)} | Sumber: {selectedChannel === 'OLD_GATE' ? 'ragunan_iwm' : '3A Portal'}
             </div>
           </div>
         </div>

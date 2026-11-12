@@ -550,19 +550,30 @@ def buat_pdf_rombongan_iwm(tanggal_target, laporan_diskon, folder_path):
     return full_path_romb
 
 
-def proses_tarik_data_iwm(tanggal_target):
+def buat_driver_chrome_iwm(use_profile=True):
     options = Options()
-    # Hapus tanda "#" pada baris di bawah jika ingin browser berjalan tersembunyi (Background)
-    # options.add_argument("--headless=new") 
+    # Berjalan di background (Headless Mode) tanpa membuka jendela browser
+    options.add_argument("--headless=new")
     options.add_argument("--window-size=1920,1080")
     
     # --- TAMBAHAN ANTI-CRASH CHROME ---
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-extensions")
     options.add_argument("--remote-debugging-port=0")
     # ----------------------------------
     
-    options.add_argument(f"--user-data-dir={CHROME_PROFILE_PATH}")
+    if use_profile:
+        for lock_name in ["SingletonLock", "SingletonCookie", "SingletonSocket"]:
+            lock_file = os.path.join(CHROME_PROFILE_PATH, lock_name)
+            if os.path.exists(lock_file):
+                try:
+                    os.remove(lock_file)
+                except:
+                    pass
+        options.add_argument(f"--user-data-dir={CHROME_PROFILE_PATH}")
+
     options.add_argument("--ignore-certificate-errors")
     options.set_capability("acceptInsecureCerts", True)
     
@@ -571,7 +582,15 @@ def proses_tarik_data_iwm(tanggal_target):
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
 
-    driver = webdriver.Chrome(options=options)
+    return webdriver.Chrome(options=options)
+
+
+def proses_tarik_data_iwm(tanggal_target):
+    try:
+        driver = buat_driver_chrome_iwm(use_profile=True)
+    except Exception:
+        print("⚠️ [IWM] Profil utama sedang digunakan proses lain, membuka sesi Chrome headless baru...")
+        driver = buat_driver_chrome_iwm(use_profile=False)
     
     # Hapus jejak webdriver
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
