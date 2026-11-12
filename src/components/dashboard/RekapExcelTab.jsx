@@ -10,7 +10,8 @@ import {
   Scale,
   FileText,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Send
 } from 'lucide-react';
 import {
   safeString,
@@ -50,6 +51,7 @@ import PengunjungReportTable from './reports/PengunjungReportTable';
 import TicketingReportTable from './reports/TicketingReportTable';
 import FasilitasPromoTable from './reports/FasilitasPromoTable';
 import StsuKasDaerahTable from './reports/StsuKasDaerahTable';
+import PelimpahanBankModal from '../pelimpahan/PelimpahanBankModal';
 
 // Konfigurasi urutan baku baris Excel (Rekapitulasi Master Ragunan)
 const excelStandardRows = [
@@ -159,6 +161,9 @@ export default function RekapExcelTab({
   const safeReportMonth = (excelReportMonth && typeof excelReportMonth === 'string' && excelReportMonth.includes('-'))
     ? excelReportMonth.trim()
     : getLocalYMD().substring(0, 7);
+
+  // State Fitur Pelimpahan ke Pihak Bank (Rekon 1 & 2)
+  const [showPelimpahanModal, setShowPelimpahanModal] = useState(false);
 
   // Active Main Category
   const [activeMainCategory, setActiveMainCategory] = useState(() => {
@@ -1161,6 +1166,17 @@ export default function RekapExcelTab({
                       <span>{rep.name}</span>
                     </button>
                   ))}
+
+                {/* 4. Fitur Pelimpahan Bank (Rekon 1 & 2) */}
+                <button
+                  type="button"
+                  onClick={() => setShowPelimpahanModal(true)}
+                  className="px-3 py-1.5 rounded-lg font-bold text-xs whitespace-nowrap transition-all flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-xs ml-auto"
+                  title="Buat format teks pelimpahan bank resmi (Rekon 1 & 2)"
+                >
+                  <Send size={13} />
+                  <span>📤 Rekon Pelimpahan Bank</span>
+                </button>
               </>
             );
           }
@@ -1221,6 +1237,16 @@ export default function RekapExcelTab({
                 className="bg-transparent border-none text-white font-bold outline-none cursor-pointer focus:ring-0 text-xs pr-2"
               />
             </div>
+
+            {/* Tombol Rekon Pelimpahan Bank (1 & 2) */}
+            <button
+              type="button"
+              onClick={() => setShowPelimpahanModal(true)}
+              className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 active:scale-98 text-white px-3.5 py-2 rounded-xl font-bold shadow-md transition-all flex items-center justify-center gap-2 text-xs w-full sm:w-auto shrink-0 border border-emerald-400"
+              title="Buka Fitur Pelimpahan ke Pihak Bank (Rekon 1 & 2)"
+            >
+              <Send size={15} /> 📤 Rekon Pelimpahan Bank
+            </button>
 
             {/* Tombol Download Excel */}
             <button
@@ -1820,6 +1846,19 @@ export default function RekapExcelTab({
           </div>
         </div>
       </div>
+
+      {/* 5. MODAL FITUR PELIMPAHAN KE PIHAK BANK (REKON 1 & 2) */}
+      <PelimpahanBankModal
+        isOpen={showPelimpahanModal}
+        onClose={() => setShowPelimpahanModal(false)}
+        allReports={allReports}
+        categories={categories}
+        reportCategories={reportCategories}
+        rekonOfficerName={rekonOfficerName}
+        currentReport={currentReport}
+        signatures={signatures}
+        handleUpdateRekonRow={handleUpdateRekonRow}
+      />
     </div>
   );
 }
