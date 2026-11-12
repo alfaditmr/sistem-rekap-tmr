@@ -131,6 +131,7 @@ const REPORT_CATEGORIES = [
     color: 'from-indigo-600 to-purple-800',
     tagColor: 'bg-indigo-100 text-indigo-800',
     reports: [
+      { id: 'rekon_semua_channel', name: 'Rekon: Rekap Semua Channel', subtitle: 'Rekapitulasi Transaksi & Pendapatan Seluruh Channel Mitra (Old Gate, New Gate, TVM, Online)', formatCode: 'REKON SEMUA CHANNEL 2026.xls' },
       { id: 'rekon_ecar', name: 'Rekon: E-Car (Mobil Listrik)', subtitle: 'Format REKON E-CAR 2026.xls', formatCode: 'REKON E-CAR 2026.xls' },
       { id: 'rekon_foto', name: 'Rekon: Jasa Foto Satwa', subtitle: 'Format REKON Foto Satwa 2026.xls', formatCode: 'REKON Foto Satwa 2026.xls' }
     ]
@@ -316,6 +317,12 @@ export default function RekapExcelTab({
       lowerTarget.includes('mobil listrik');
     const isFotoTarget = lowerTarget.includes('foto');
 
+    const isOldGateTarget = lowerTarget.includes('old gate') || lowerTarget.includes('iwm');
+    const isOnlineTarget = lowerTarget.includes('online') || lowerTarget.includes('merchant');
+    const isTvmTarget = lowerTarget.includes('tvm') || lowerTarget.includes('vending') || lowerTarget.includes('vinding');
+    const isNewGateTarget = lowerTarget.includes('new gate') || (lowerTarget.includes('gate') && !isOldGateTarget);
+    const isChannelTarget = isOldGateTarget || isOnlineTarget || isTvmTarget || isNewGateTarget;
+
     // 1. Identifikasi ID kategori yang cocok dari master categories
     const matchingCatIds = new Set();
     categories.forEach((c) => {
@@ -325,16 +332,16 @@ export default function RekapExcelTab({
         match = cName.includes('ecar') || cName.includes('e-car') || cName.includes('mobil listrik');
       } else if (isFotoTarget) {
         match = cName.includes('foto');
-      } else if (lowerTarget.includes('old gate') && cName.includes('old gate')) {
+      } else if (isOldGateTarget && (cName.includes('old gate') || cName.includes('iwm'))) {
         match = true;
-      } else if (lowerTarget.includes('online') && cName.includes('online')) {
+      } else if (isOnlineTarget && (cName.includes('online') || cName.includes('merchant'))) {
         match = true;
       } else if (
-        (lowerTarget.includes('tvm') || lowerTarget.includes('vending') || lowerTarget.includes('vinding')) &&
+        isTvmTarget &&
         (cName.includes('tvm') || cName.includes('vending') || cName.includes('vinding'))
       ) {
         match = true;
-      } else if (lowerTarget.includes('new gate') && cName.includes('new gate')) {
+      } else if (isNewGateTarget && cName.includes('new gate')) {
         match = true;
       } else if (cName === lowerTarget) {
         match = true;
@@ -504,11 +511,26 @@ export default function RekapExcelTab({
     // 4. Susun baris output tabel rekon
     const rows = [];
     let grandTotal = 0;
+    let grandTotalTrx = 0;
     let rowNum = 1;
 
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const slot = dayMap[dateStr];
+      const dayAll = allReports[dateStr] || {};
+      const rekon3a = dayAll.rekon3aSummary || null;
+      const rekonIwm = dayAll.rekonIwmSettlement || null;
+
+      let trxQty = 0;
+      if (isOldGateTarget) {
+        trxQty = Number(rekonIwm?.jumlah_transaksi || 0);
+      } else if (isNewGateTarget) {
+        trxQty = Number(rekon3a?.GATE?.transactionQty || 0);
+      } else if (isTvmTarget) {
+        trxQty = Number(rekon3a?.TVM?.transactionQty || 0);
+      } else if (isOnlineTarget) {
+        trxQty = Number(rekon3a?.MERCHANT_PAGE?.transactionQty || 0);
+      }
 
       let formattedPelimpahan = '';
       let keterangan = '';
@@ -541,6 +563,7 @@ export default function RekapExcelTab({
         docTypeKey: slot.docTypeKey,
         isSusulan: false,
         susulanKeys: null,
+        trxQty: trxQty,
         uraian: slot.uraian,
         nominal: slot.dailyNominal,
         rawPelimpahan: slot.rawPelimpahan,
@@ -549,6 +572,7 @@ export default function RekapExcelTab({
         keterangan: keterangan
       });
       grandTotal += slot.dailyNominal;
+      grandTotalTrx += trxQty;
 
       // Sisipkan baris susulan jika ada
       slot.susulanList.forEach((sus) => {
@@ -574,6 +598,7 @@ export default function RekapExcelTab({
           docTypeKey: slot.docTypeKey,
           isSusulan: true,
           susulanKeys: sus.keys,
+          trxQty: 0,
           uraian: 'Susulan',
           nominal: sus.val,
           rawPelimpahan: sRaw,
@@ -585,7 +610,78 @@ export default function RekapExcelTab({
       });
     }
 
-    return { rows, grandTotal, year, month };
+    return { rows, grandTotal, grandTotalTrx, isChannelTarget, year, month };
+  };
+
+  // 3. Data Generator: Rekapitulasi Keseluruhan Channel Mitra (Old Gate, New Gate, TVM, Online)
+  const generateAllChannelsRekonData = () => {
+    const [yearStr, monthStr] = safeReportMonth.split('-');
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+
+    const channelData = getChannelTransactionRecapData(allReports, categories, safeReportMonth);
+    const cRows = channelData.rows || [];
+    const cTotals = channelData.totals || {};
+
+    const rows = cRows.map((r, idx) => {
+      const dateStr = r.dateStr;
+      const dayAll = allReports[dateStr] || {};
+      const typeData = dayAll.utama || (Object.keys(dayAll).length > 0 ? dayAll[Object.keys(dayAll)[0]] : {});
+      const rawPelimpahan = typeData?.signatureDate || dateStr;
+      const rawOfficer = typeData?.rekonOfficer || rekonOfficerName;
+
+      let formattedPelimpahan = '';
+      let keterangan = '';
+
+      if (r.totalNominal > 0) {
+        const parts = rawPelimpahan.split('-');
+        if (parts.length === 3) {
+          formattedPelimpahan = `${parts[2]}-${parts[1]}-${parts[0]}`;
+          const sigYear = parseInt(parts[0], 10);
+          const sigMonth = parseInt(parts[1], 10);
+          if (sigYear > year || (sigYear === year && sigMonth > month)) {
+            keterangan = 'Dilimpahkan di bulan berikutnya';
+          }
+        }
+      }
+
+      if (r.isMonday && r.totalNominal === 0) {
+        keterangan = 'TMR Tutup ( Libur satwa )';
+      }
+
+      return {
+        no: idx + 1,
+        day: r.day,
+        hari: r.dayName,
+        tanggal: `${String(r.day).padStart(2, '0')}-${String(month).padStart(2, '0')}-${year}`,
+        dateStr: dateStr,
+        docDateStr: dateStr,
+        docTypeKey: 'utama',
+        oldGateTrx: r.oldGateTrx,
+        oldGateNominal: r.oldGateNominal,
+        gateTrx: r.gateTrx,
+        gateNominal: r.gateNominal,
+        tvmTrx: r.tvmTrx,
+        tvmNominal: r.tvmNominal,
+        onlineTrx: r.onlineTrx,
+        onlineNominal: r.onlineNominal,
+        totalTrx: r.totalTrx,
+        totalNominal: r.totalNominal,
+        rawPelimpahan,
+        rawOfficer,
+        pelimpahan: formattedPelimpahan,
+        keterangan
+      };
+    });
+
+    return {
+      rows,
+      totals: cTotals,
+      grandTotalTrx: cTotals.totalTrx || 0,
+      grandTotalNominal: cTotals.grandTotalNominal || 0,
+      year,
+      month
+    };
   };
 
   // Download Handler Master Excel
@@ -678,7 +774,7 @@ export default function RekapExcelTab({
   // Download Handler Rekon Excel
   const handleDownloadRekonExcel = (targetCatName) => {
     const reportCat = targetCatName || selectedReportType;
-    const { rows, grandTotal, year, month } = generateRekonData(reportCat);
+    const { rows, grandTotal, grandTotalTrx, isChannelTarget, year, month } = generateRekonData(reportCat);
     const monthNames = ['', 'JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'];
     const monthName = monthNames[month];
     const signatureDateStr = currentReport.signatureDate || getLocalYMD();
@@ -698,15 +794,16 @@ export default function RekapExcelTab({
     <body>
     <table>`;
 
-    html += `<tr><th colspan="7" class="header-title">REKONSILIASI PENDAPATAN ${reportCat.toUpperCase()}</th></tr>`;
-    html += `<tr><th colspan="7" class="header-sub">UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN</th></tr>`;
-    html += `<tr><th colspan="7" class="header-sub">DINAS PERTAMANAN DAN HUTAN KOTA PROVINSI DKI JAKARTA</th></tr>`;
-    html += `<tr><th colspan="7" class="header-sub">BULAN ${monthName} ${year}</th></tr>`;
-    html += `<tr><th colspan="7" style="border:none;"></th></tr>`;
+    const totalCols = isChannelTarget ? 8 : 7;
+    html += `<tr><th colspan="${totalCols}" class="header-title">REKONSILIASI PENDAPATAN ${reportCat.toUpperCase()}</th></tr>`;
+    html += `<tr><th colspan="${totalCols}" class="header-sub">UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN</th></tr>`;
+    html += `<tr><th colspan="${totalCols}" class="header-sub">DINAS PERTAMANAN DAN HUTAN KOTA PROVINSI DKI JAKARTA</th></tr>`;
+    html += `<tr><th colspan="${totalCols}" class="header-sub">BULAN ${monthName} ${year}</th></tr>`;
+    html += `<tr><th colspan="${totalCols}" style="border:none;"></th></tr>`;
 
     html += `<tr>
         <th rowspan="2" class="table-header">No</th>
-        <th colspan="2" class="table-header">Transaksi</th>
+        <th colspan="${isChannelTarget ? 3 : 2}" class="table-header">Transaksi</th>
         <th rowspan="2" class="table-header">Uraian</th>
         <th colspan="2" class="table-header">Pelimpahan</th>
         <th rowspan="2" class="table-header">Keterangan</th>
@@ -714,6 +811,7 @@ export default function RekapExcelTab({
     html += `<tr>
         <th class="table-header">Hari</th>
         <th class="table-header">Tanggal</th>
+        ${isChannelTarget ? '<th class="table-header">Jumlah Transaksi (Trx)</th>' : ''}
         <th class="table-header">Nominal ( RP )</th>
         <th class="table-header">Tanggal</th>
     </tr>`;
@@ -723,6 +821,7 @@ export default function RekapExcelTab({
           <td style="text-align:center;">${r.no}</td>
           <td style="text-align:center;">${safeString(r.hari)}</td>
           <td style="text-align:center;">${safeString(r.tanggal)}</td>
+          ${isChannelTarget ? `<td class="num">${r.trxQty > 0 ? r.trxQty.toLocaleString('id-ID') : '-'}</td>` : ''}
           <td style="text-align:center;">${safeString(r.uraian)}</td>
           <td class="num">${r.nominal > 0 ? formatRp(r.nominal) : ''}</td>
           <td style="text-align:center;">${r.nominal > 0 || r.uraian === 'Susulan' ? safeString(r.pelimpahan) : ''}</td>
@@ -731,27 +830,29 @@ export default function RekapExcelTab({
     });
 
     html += `<tr>
-        <td colspan="4" style="text-align:right; font-weight:bold;">TOTAL</td>
+        <td colspan="3" style="text-align:center; font-weight:bold;">TOTAL</td>
+        ${isChannelTarget ? `<td class="num" style="font-weight:bold;">${grandTotalTrx > 0 ? grandTotalTrx.toLocaleString('id-ID') : '-'}</td>` : ''}
+        <td style="border:none;"></td>
         <td class="num" style="font-weight:bold;">${formatRp(grandTotal)}</td>
         <td colspan="2"></td>
     </tr>`;
 
-    html += `<tr><td colspan="7" style="border:none; height: 20px;"></td></tr>`;
+    html += `<tr><td colspan="${totalCols}" style="border:none; height: 20px;"></td></tr>`;
     html += `<tr>
-        <td colspan="4" style="border:none;"></td>
+        <td colspan="${totalCols - 3}" style="border:none;"></td>
         <td colspan="3" style="text-align:center; border:none; font-size: 12px;">Jakarta, ${formatTanggalTtd(signatureDateStr)}</td>
     </tr>`;
     html += `<tr>
-        <td colspan="4" style="border:none;"></td>
+        <td colspan="${totalCols - 3}" style="border:none;"></td>
         <td colspan="3" style="text-align:center; border:none; font-weight:bold; font-size: 12px;">${safeString(signatures.leftRole)}</td>
     </tr>`;
-    html += `<tr><td colspan="7" style="border:none; height: 60px;"></td></tr>`;
+    html += `<tr><td colspan="${totalCols}" style="border:none; height: 60px;"></td></tr>`;
     html += `<tr>
-        <td colspan="4" style="border:none;"></td>
+        <td colspan="${totalCols - 3}" style="border:none;"></td>
         <td colspan="3" style="text-align:center; border:none; font-weight:bold; font-size: 12px; text-decoration:underline;">${safeString(signatures.leftName)}</td>
     </tr>`;
     html += `<tr>
-        <td colspan="4" style="border:none;"></td>
+        <td colspan="${totalCols - 3}" style="border:none;"></td>
         <td colspan="3" style="text-align:center; border:none; font-size: 12px;">NIP. ${safeString(signatures.leftNip)}</td>
     </tr>`;
 
@@ -762,6 +863,131 @@ export default function RekapExcelTab({
     const link = document.createElement('a');
     link.setAttribute('href', url);
     link.setAttribute('download', `REKON ${reportCat.toUpperCase()} - ${monthName} ${year.toString().slice(-2)}.xls`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Download Handler Rekap Semua Channel Excel
+  const handleDownloadRekonSemuaChannelExcel = () => {
+    const { rows, totals, year, month } = generateAllChannelsRekonData();
+    const monthNames = ['', 'JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'];
+    const monthName = monthNames[month];
+    const signatureDateStr = currentReport.signatureDate || getLocalYMD();
+
+    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+    <meta charset="utf-8">
+    <style>
+      table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 11px; }
+      th, td { border: 1px solid #000000; padding: 4px; vertical-align: middle; }
+      .header-title { font-weight: bold; font-size: 14px; text-align: left; border: none; }
+      .header-sub { font-weight: bold; text-align: left; border: none; }
+      .table-header { font-weight: bold; background-color: #f3f4f6; text-align: center; }
+      .table-header-purple { font-weight: bold; background-color: #f3e8ff; text-align: center; }
+      .table-header-blue { font-weight: bold; background-color: #dbeafe; text-align: center; }
+      .table-header-indigo { font-weight: bold; background-color: #e0e7ff; text-align: center; }
+      .table-header-cyan { font-weight: bold; background-color: #cffafe; text-align: center; }
+      .table-header-green { font-weight: bold; background-color: #d1fae5; text-align: center; }
+      .num { text-align: right; }
+    </style>
+    </head>
+    <body>
+    <table>`;
+
+    html += `<tr><th colspan="15" class="header-title">REKONSILIASI PENDAPATAN REKAP SEMUA CHANNEL MITRA</th></tr>`;
+    html += `<tr><th colspan="15" class="header-sub">UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN</th></tr>`;
+    html += `<tr><th colspan="15" class="header-sub">DINAS PERTAMANAN DAN HUTAN KOTA PROVINSI DKI JAKARTA</th></tr>`;
+    html += `<tr><th colspan="15" class="header-sub">BULAN ${monthName} ${year}</th></tr>`;
+    html += `<tr><th colspan="15" style="border:none;"></th></tr>`;
+
+    html += `<tr>
+        <th rowspan="2" class="table-header">No</th>
+        <th colspan="2" class="table-header">Transaksi</th>
+        <th colspan="2" class="table-header-purple">Old Gate (IWM)</th>
+        <th colspan="2" class="table-header-blue">New Gate (3A)</th>
+        <th colspan="2" class="table-header-indigo">Vending TVM (3A)</th>
+        <th colspan="2" class="table-header-cyan">Ticket Online (3A)</th>
+        <th colspan="2" class="table-header-green">Total Semua Channel</th>
+        <th rowspan="2" class="table-header">Tgl Pelimpahan</th>
+        <th rowspan="2" class="table-header">Keterangan</th>
+    </tr>`;
+    html += `<tr>
+        <th class="table-header">Hari</th>
+        <th class="table-header">Tanggal</th>
+        <th class="table-header-purple">Trx</th>
+        <th class="table-header-purple">Nominal (Rp)</th>
+        <th class="table-header-blue">Trx</th>
+        <th class="table-header-blue">Nominal (Rp)</th>
+        <th class="table-header-indigo">Trx</th>
+        <th class="table-header-indigo">Nominal (Rp)</th>
+        <th class="table-header-cyan">Trx</th>
+        <th class="table-header-cyan">Nominal (Rp)</th>
+        <th class="table-header-green">Trx</th>
+        <th class="table-header-green">Nominal (Rp)</th>
+    </tr>`;
+
+    rows.forEach((r) => {
+      html += `<tr>
+          <td style="text-align:center;">${r.no}</td>
+          <td style="text-align:center;">${safeString(r.hari)}</td>
+          <td style="text-align:center;">${safeString(r.tanggal)}</td>
+          <td class="num">${r.oldGateTrx > 0 ? r.oldGateTrx.toLocaleString('id-ID') : '-'}</td>
+          <td class="num">${r.oldGateNominal > 0 ? formatRp(r.oldGateNominal) : '-'}</td>
+          <td class="num">${r.gateTrx > 0 ? r.gateTrx.toLocaleString('id-ID') : '-'}</td>
+          <td class="num">${r.gateNominal > 0 ? formatRp(r.gateNominal) : '-'}</td>
+          <td class="num">${r.tvmTrx > 0 ? r.tvmTrx.toLocaleString('id-ID') : '-'}</td>
+          <td class="num">${r.tvmNominal > 0 ? formatRp(r.tvmNominal) : '-'}</td>
+          <td class="num">${r.onlineTrx > 0 ? r.onlineTrx.toLocaleString('id-ID') : '-'}</td>
+          <td class="num">${r.onlineNominal > 0 ? formatRp(r.onlineNominal) : '-'}</td>
+          <td class="num" style="font-weight:bold;">${r.totalTrx > 0 ? r.totalTrx.toLocaleString('id-ID') : '-'}</td>
+          <td class="num" style="font-weight:bold;">${r.totalNominal > 0 ? formatRp(r.totalNominal) : '-'}</td>
+          <td style="text-align:center;">${safeString(r.pelimpahan)}</td>
+          <td>${safeString(r.keterangan)}</td>
+      </tr>`;
+    });
+
+    html += `<tr style="font-weight:bold; background-color:#d1fae5;">
+        <td colspan="3" style="text-align:center;">TOTAL</td>
+        <td class="num">${totals.oldGateTrx > 0 ? totals.oldGateTrx.toLocaleString('id-ID') : '-'}</td>
+        <td class="num">${totals.oldGateNominal > 0 ? formatRp(totals.oldGateNominal) : '-'}</td>
+        <td class="num">${totals.gateTrx > 0 ? totals.gateTrx.toLocaleString('id-ID') : '-'}</td>
+        <td class="num">${totals.gateNominal > 0 ? formatRp(totals.gateNominal) : '-'}</td>
+        <td class="num">${totals.tvmTrx > 0 ? totals.tvmTrx.toLocaleString('id-ID') : '-'}</td>
+        <td class="num">${totals.tvmNominal > 0 ? formatRp(totals.tvmNominal) : '-'}</td>
+        <td class="num">${totals.onlineTrx > 0 ? totals.onlineTrx.toLocaleString('id-ID') : '-'}</td>
+        <td class="num">${totals.onlineNominal > 0 ? formatRp(totals.onlineNominal) : '-'}</td>
+        <td class="num">${totals.totalTrx > 0 ? totals.totalTrx.toLocaleString('id-ID') : '-'}</td>
+        <td class="num">${formatRp(totals.grandTotalNominal || 0)}</td>
+        <td colspan="2"></td>
+    </tr>`;
+
+    html += `<tr><td colspan="15" style="border:none; height: 20px;"></td></tr>`;
+    html += `<tr>
+        <td colspan="10" style="border:none;"></td>
+        <td colspan="5" style="text-align:center; border:none; font-size: 11px;">Jakarta, ${formatTanggalTtd(signatureDateStr)}</td>
+    </tr>`;
+    html += `<tr>
+        <td colspan="10" style="border:none;"></td>
+        <td colspan="5" style="text-align:center; border:none; font-weight:bold; font-size: 11px;">${safeString(signatures.leftRole)}</td>
+    </tr>`;
+    html += `<tr><td colspan="15" style="border:none; height: 60px;"></td></tr>`;
+    html += `<tr>
+        <td colspan="10" style="border:none;"></td>
+        <td colspan="5" style="text-align:center; border:none; font-weight:bold; font-size: 11px; text-decoration:underline;">${safeString(signatures.leftName)}</td>
+    </tr>`;
+    html += `<tr>
+        <td colspan="10" style="border:none;"></td>
+        <td colspan="5" style="text-align:center; border:none; font-size: 11px;">NIP. ${safeString(signatures.leftNip)}</td>
+    </tr>`;
+
+    html += `</table></body></html>`;
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `REKON REKAP SEMUA CHANNEL - ${monthName} ${year.toString().slice(-2)}.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -799,6 +1025,9 @@ export default function RekapExcelTab({
         break;
       case 'rekap_promo':
         exportPromoMediaExcel(getPromoMediaData(allReports, categories, safeReportMonth, bankRows, apiData), signatures);
+        break;
+      case 'rekon_semua_channel':
+        handleDownloadRekonSemuaChannelExcel();
         break;
       case 'rekon_ecar':
         handleDownloadRekonExcel('E-Car');
@@ -864,7 +1093,7 @@ export default function RekapExcelTab({
                     isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'
                   }`}
                 >
-                  {cat.reports.length} Format
+                  {cat.id === 'rekon_mitra' ? cat.reports.length + reportCategories.length : cat.reports.length} Format
                 </span>
               </div>
               <div>
@@ -885,6 +1114,57 @@ export default function RekapExcelTab({
         </span>
         {(() => {
           const currentCat = REPORT_CATEGORIES.find((c) => c.id === activeMainCategory) || REPORT_CATEGORIES[0];
+          
+          if (activeMainCategory === 'rekon_mitra') {
+            return (
+              <>
+                {/* 1. Rekap Semua Channel */}
+                <button
+                  onClick={() => setSelectedReportType('rekon_semua_channel')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                    selectedReportType === 'rekon_semua_channel'
+                      ? 'bg-indigo-600 text-white shadow-xs scale-102'
+                      : 'text-gray-600 hover:text-indigo-600 hover:bg-indigo-50'
+                  }`}
+                >
+                  <span>📊 Rekon: Rekap Semua Channel</span>
+                </button>
+
+                {/* 2. Channel Rekon Dinamis (Old Gate, Online, TVM, New Gate) */}
+                {reportCategories.map((catName) => (
+                  <button
+                    key={catName}
+                    onClick={() => setSelectedReportType(catName)}
+                    className={`px-3 py-1.5 rounded-lg font-bold text-xs whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                      selectedReportType === catName
+                        ? 'bg-indigo-600 text-white shadow-xs scale-102'
+                        : 'text-gray-600 hover:text-indigo-600 hover:bg-indigo-50'
+                    }`}
+                  >
+                    <span>Rekon: {catName}</span>
+                  </button>
+                ))}
+
+                {/* 3. Mitra Non-Channel (E-Car, Foto Satwa) */}
+                {currentCat.reports
+                  .filter((r) => r.id !== 'rekon_semua_channel')
+                  .map((rep) => (
+                    <button
+                      key={rep.id}
+                      onClick={() => setSelectedReportType(rep.id)}
+                      className={`px-3 py-1.5 rounded-lg font-bold text-xs whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                        selectedReportType === rep.id
+                          ? 'bg-indigo-600 text-white shadow-xs scale-102'
+                          : 'text-gray-600 hover:text-indigo-600 hover:bg-indigo-50'
+                      }`}
+                    >
+                      <span>{rep.name}</span>
+                    </button>
+                  ))}
+              </>
+            );
+          }
+
           return (
             <>
               {currentCat.reports.map((rep) => (
@@ -900,22 +1180,6 @@ export default function RekapExcelTab({
                   <span>{rep.name}</span>
                 </button>
               ))}
-
-              {/* Tambahan Tombol Kategori Rekon Dinamis jika berada di Kategori Rekonsiliasi */}
-              {activeMainCategory === 'rekon_mitra' &&
-                reportCategories.map((catName) => (
-                  <button
-                    key={catName}
-                    onClick={() => setSelectedReportType(catName)}
-                    className={`px-3 py-1.5 rounded-lg font-bold text-xs whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                      selectedReportType === catName
-                        ? 'bg-indigo-600 text-white shadow-xs scale-102'
-                        : 'text-gray-600 hover:text-indigo-600 hover:bg-indigo-50'
-                    }`}
-                  >
-                    <span>Rekon: {catName}</span>
-                  </button>
-                ))}
             </>
           );
         })()}
@@ -1176,7 +1440,240 @@ export default function RekapExcelTab({
               );
             }
 
-            // F. Laporan Rekonsiliasi (E-Car, Foto Satwa, & Kategori Lain)
+            // F. Laporan Rekapitulasi Keseluruhan Channel Mitra
+            if (selectedReportType === 'rekon_semua_channel') {
+              const { rows, totals } = generateAllChannelsRekonData();
+              return (
+                <div className="w-full relative overflow-x-auto">
+                  {/* KPI Cards Ringkasan Semua Channel */}
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 bg-gray-50 border-b border-gray-200">
+                    <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-2xs">
+                      <div className="text-[10px] font-semibold text-gray-500 uppercase">Old Gate IWM</div>
+                      <div className="text-sm font-black text-purple-700 mt-0.5">
+                        {(totals.oldGateTrx || 0).toLocaleString('id-ID')} Trx
+                      </div>
+                      <div className="text-xs font-bold text-gray-700">{formatRp(totals.oldGateNominal || 0)}</div>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-2xs">
+                      <div className="text-[10px] font-semibold text-gray-500 uppercase">New Gate 3A</div>
+                      <div className="text-sm font-black text-blue-700 mt-0.5">
+                        {(totals.gateTrx || 0).toLocaleString('id-ID')} Trx
+                      </div>
+                      <div className="text-xs font-bold text-gray-700">{formatRp(totals.gateNominal || 0)}</div>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-2xs">
+                      <div className="text-[10px] font-semibold text-gray-500 uppercase">Vending TVM 3A</div>
+                      <div className="text-sm font-black text-indigo-700 mt-0.5">
+                        {(totals.tvmTrx || 0).toLocaleString('id-ID')} Trx
+                      </div>
+                      <div className="text-xs font-bold text-gray-700">{formatRp(totals.tvmNominal || 0)}</div>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-2xs">
+                      <div className="text-[10px] font-semibold text-gray-500 uppercase">Tiket Online 3A</div>
+                      <div className="text-sm font-black text-cyan-700 mt-0.5">
+                        {(totals.onlineTrx || 0).toLocaleString('id-ID')} Trx
+                      </div>
+                      <div className="text-xs font-bold text-gray-700">{formatRp(totals.onlineNominal || 0)}</div>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-emerald-300 bg-emerald-50/50 shadow-2xs">
+                      <div className="text-[10px] font-semibold text-emerald-800 uppercase">Grand Total Semua Channel</div>
+                      <div className="text-sm font-black text-emerald-800 mt-0.5">
+                        {(totals.totalTrx || 0).toLocaleString('id-ID')} Trx
+                      </div>
+                      <div className="text-xs font-black text-emerald-700">{formatRp(totals.grandTotalNominal || 0)}</div>
+                    </div>
+                  </div>
+
+                  {/* Tabel Rekap Semua Channel */}
+                  <table className="w-full border-collapse text-[11px] whitespace-nowrap">
+                    <thead>
+                      <tr>
+                        <th
+                          rowSpan={2}
+                          className="sticky-col px-3 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700 z-20 top-0"
+                        >
+                          No
+                        </th>
+                        <th colSpan={2} className="px-3 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700">
+                          Transaksi
+                        </th>
+                        <th colSpan={2} className="px-3 py-2 border border-gray-300 bg-purple-100 text-center font-bold text-purple-900">
+                          Old Gate (IWM)
+                        </th>
+                        <th colSpan={2} className="px-3 py-2 border border-gray-300 bg-blue-100 text-center font-bold text-blue-900">
+                          New Gate (3A)
+                        </th>
+                        <th colSpan={2} className="px-3 py-2 border border-gray-300 bg-indigo-100 text-center font-bold text-indigo-900">
+                          Vending TVM (3A)
+                        </th>
+                        <th colSpan={2} className="px-3 py-2 border border-gray-300 bg-cyan-100 text-center font-bold text-cyan-900">
+                          Ticket Online (3A)
+                        </th>
+                        <th colSpan={2} className="px-3 py-2 border border-gray-300 bg-emerald-100 text-center font-black text-emerald-950">
+                          Total Semua Channel
+                        </th>
+                        <th rowSpan={2} className="px-3 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700">
+                          Tgl Pelimpahan
+                        </th>
+                        <th rowSpan={2} className="px-3 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700 min-w-[140px]">
+                          Keterangan
+                        </th>
+                      </tr>
+                      <tr>
+                        <th className="px-2 py-1.5 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Hari</th>
+                        <th className="px-2 py-1.5 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Tanggal</th>
+                        <th className="px-2 py-1.5 border border-gray-300 bg-purple-50 text-right font-bold text-purple-900">Trx</th>
+                        <th className="px-3 py-1.5 border border-gray-300 bg-purple-50 text-right font-bold text-purple-900">Nominal (Rp)</th>
+                        <th className="px-2 py-1.5 border border-gray-300 bg-blue-50 text-right font-bold text-blue-900">Trx</th>
+                        <th className="px-3 py-1.5 border border-gray-300 bg-blue-50 text-right font-bold text-blue-900">Nominal (Rp)</th>
+                        <th className="px-2 py-1.5 border border-gray-300 bg-indigo-50 text-right font-bold text-indigo-900">Trx</th>
+                        <th className="px-3 py-1.5 border border-gray-300 bg-indigo-50 text-right font-bold text-indigo-900">Nominal (Rp)</th>
+                        <th className="px-2 py-1.5 border border-gray-300 bg-cyan-50 text-right font-bold text-cyan-900">Trx</th>
+                        <th className="px-3 py-1.5 border border-gray-300 bg-cyan-50 text-right font-bold text-cyan-900">Nominal (Rp)</th>
+                        <th className="px-2 py-1.5 border border-gray-300 bg-emerald-100 text-right font-black text-emerald-950">Trx</th>
+                        <th className="px-3 py-1.5 border border-gray-300 bg-emerald-100 text-right font-black text-emerald-950">Nominal (Rp)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r, i) => (
+                        <tr key={i} className="hover:bg-indigo-50/40 transition-colors">
+                          <td className="sticky-col px-3 py-1.5 border border-gray-300 text-center font-medium text-gray-800 z-10 bg-white">
+                            {r.no}
+                          </td>
+                          <td className="px-2 py-1.5 border border-gray-300 text-center text-gray-600">{r.hari}</td>
+                          <td className="px-2 py-1.5 border border-gray-300 text-center text-gray-700 font-mono">{r.tanggal}</td>
+                          
+                          {/* Old Gate */}
+                          <td className="px-2 py-1.5 border border-gray-300 text-right font-mono text-purple-900 bg-purple-50/20">
+                            {r.oldGateTrx > 0 ? r.oldGateTrx.toLocaleString('id-ID') : '-'}
+                          </td>
+                          <td className="px-3 py-1.5 border border-gray-300 text-right font-mono text-purple-950 bg-purple-50/20">
+                            {r.oldGateNominal > 0 ? formatRp(r.oldGateNominal) : '-'}
+                          </td>
+
+                          {/* New Gate */}
+                          <td className="px-2 py-1.5 border border-gray-300 text-right font-mono text-blue-900 bg-blue-50/20">
+                            {r.gateTrx > 0 ? r.gateTrx.toLocaleString('id-ID') : '-'}
+                          </td>
+                          <td className="px-3 py-1.5 border border-gray-300 text-right font-mono text-blue-950 bg-blue-50/20">
+                            {r.gateNominal > 0 ? formatRp(r.gateNominal) : '-'}
+                          </td>
+
+                          {/* TVM */}
+                          <td className="px-2 py-1.5 border border-gray-300 text-right font-mono text-indigo-900 bg-indigo-50/20">
+                            {r.tvmTrx > 0 ? r.tvmTrx.toLocaleString('id-ID') : '-'}
+                          </td>
+                          <td className="px-3 py-1.5 border border-gray-300 text-right font-mono text-indigo-950 bg-indigo-50/20">
+                            {r.tvmNominal > 0 ? formatRp(r.tvmNominal) : '-'}
+                          </td>
+
+                          {/* Online */}
+                          <td className="px-2 py-1.5 border border-gray-300 text-right font-mono text-cyan-900 bg-cyan-50/20">
+                            {r.onlineTrx > 0 ? r.onlineTrx.toLocaleString('id-ID') : '-'}
+                          </td>
+                          <td className="px-3 py-1.5 border border-gray-300 text-right font-mono text-cyan-950 bg-cyan-50/20">
+                            {r.onlineNominal > 0 ? formatRp(r.onlineNominal) : '-'}
+                          </td>
+
+                          {/* Total Semua Channel */}
+                          <td className="px-2 py-1.5 border border-gray-300 text-right font-mono font-black text-emerald-950 bg-emerald-100/50">
+                            {r.totalTrx > 0 ? r.totalTrx.toLocaleString('id-ID') : '-'}
+                          </td>
+                          <td className="px-3 py-1.5 border border-gray-300 text-right font-mono font-black text-emerald-950 bg-emerald-100/50">
+                            {r.totalNominal > 0 ? formatRp(r.totalNominal) : '-'}
+                          </td>
+
+                          {/* Pelimpahan */}
+                          <td className="px-2 py-1 border border-gray-300 text-center font-mono align-middle">
+                            {r.totalNominal > 0 ? (
+                              <div className="flex flex-col items-center justify-center gap-0.5">
+                                <span className="hidden print:block">{r.pelimpahan}</span>
+                                <div className="print:hidden flex flex-col items-center">
+                                  <input
+                                    type="date"
+                                    value={r.rawPelimpahan}
+                                    onChange={(e) =>
+                                      handleUpdateRekonRow(r.docDateStr || r.dateStr, false, null, 'signatureDate', e.target.value, r.docTypeKey)
+                                    }
+                                    className="bg-transparent border border-transparent hover:border-gray-200 text-center outline-none cursor-pointer focus:ring-1 focus:ring-indigo-500 rounded px-1 py-0.5 text-xs text-gray-800 font-mono w-[115px] m-0"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={r.rawOfficer}
+                                    onChange={(e) =>
+                                      handleUpdateRekonRow(r.docDateStr || r.dateStr, false, null, 'rekonOfficer', e.target.value, r.docTypeKey)
+                                    }
+                                    placeholder="Petugas Rekon"
+                                    className="bg-transparent border-b-2 border-yellow-400 outline-none focus:border-indigo-500 rounded-none px-1 text-[10px] font-bold text-indigo-700 text-center w-[100px] placeholder-indigo-300 m-0"
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td className="px-3 py-1.5 border border-gray-300 text-left text-gray-600 italic">{r.keterangan}</td>
+                        </tr>
+                      ))}
+
+                      {/* TOTAL ROW */}
+                      <tr className="bg-emerald-100 font-black text-gray-900 border-t-2 border-emerald-400">
+                        <td colSpan={3} className="sticky-col px-3 py-2 border border-gray-300 text-center font-bold z-10 bg-emerald-100">
+                          TOTAL
+                        </td>
+                        <td className="px-2 py-2 border border-gray-300 text-right font-mono text-purple-950 bg-purple-200/50">
+                          {totals.oldGateTrx > 0 ? totals.oldGateTrx.toLocaleString('id-ID') : '-'}
+                        </td>
+                        <td className="px-3 py-2 border border-gray-300 text-right font-mono text-purple-950 bg-purple-200/50">
+                          {totals.oldGateNominal > 0 ? formatRp(totals.oldGateNominal) : '-'}
+                        </td>
+                        <td className="px-2 py-2 border border-gray-300 text-right font-mono text-blue-950 bg-blue-200/50">
+                          {totals.gateTrx > 0 ? totals.gateTrx.toLocaleString('id-ID') : '-'}
+                        </td>
+                        <td className="px-3 py-2 border border-gray-300 text-right font-mono text-blue-950 bg-blue-200/50">
+                          {totals.gateNominal > 0 ? formatRp(totals.gateNominal) : '-'}
+                        </td>
+                        <td className="px-2 py-2 border border-gray-300 text-right font-mono text-indigo-950 bg-indigo-200/50">
+                          {totals.tvmTrx > 0 ? totals.tvmTrx.toLocaleString('id-ID') : '-'}
+                        </td>
+                        <td className="px-3 py-2 border border-gray-300 text-right font-mono text-indigo-950 bg-indigo-200/50">
+                          {totals.tvmNominal > 0 ? formatRp(totals.tvmNominal) : '-'}
+                        </td>
+                        <td className="px-2 py-2 border border-gray-300 text-right font-mono text-cyan-950 bg-cyan-200/50">
+                          {totals.onlineTrx > 0 ? totals.onlineTrx.toLocaleString('id-ID') : '-'}
+                        </td>
+                        <td className="px-3 py-2 border border-gray-300 text-right font-mono text-cyan-950 bg-cyan-200/50">
+                          {totals.onlineNominal > 0 ? formatRp(totals.onlineNominal) : '-'}
+                        </td>
+                        <td className="px-2 py-2 border border-gray-300 text-right font-mono text-emerald-950 bg-emerald-200">
+                          {totals.totalTrx > 0 ? totals.totalTrx.toLocaleString('id-ID') : '-'}
+                        </td>
+                        <td className="px-3 py-2 border border-gray-300 text-right font-mono text-emerald-950 bg-emerald-200 font-black">
+                          {formatRp(totals.grandTotalNominal || 0)}
+                        </td>
+                        <td colSpan={2} className="border border-gray-300"></td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {/* Tanda Tangan */}
+                  <div className="mt-8 flex justify-end px-8 pb-8 text-sm text-gray-800">
+                    <div className="text-center flex flex-col justify-between min-w-[250px]">
+                      <div>
+                        <p className="mb-1">Jakarta, {formatTanggalTtd(currentReport.signatureDate)}</p>
+                        <p className="font-bold mt-2">{safeString(signatures.leftRole)}</p>
+                      </div>
+                      <div className="mt-20">
+                        <p className="font-bold underline">{safeString(signatures.leftName)}</p>
+                        <p>NIP. {safeString(signatures.leftNip)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // G. Laporan Rekonsiliasi (Old Gate, New Gate, TVM, Online, E-Car, Foto Satwa, & Kategori Lain)
             const targetCat =
               selectedReportType === 'rekon_ecar'
                 ? 'E-Car'
@@ -1184,7 +1681,7 @@ export default function RekapExcelTab({
                 ? 'Foto Satwa'
                 : selectedReportType;
 
-            const { rows, grandTotal } = generateRekonData(targetCat);
+            const { rows, grandTotal, grandTotalTrx, isChannelTarget } = generateRekonData(targetCat);
 
             return (
               <div className="w-full relative overflow-x-auto">
@@ -1197,7 +1694,7 @@ export default function RekapExcelTab({
                       >
                         No
                       </th>
-                      <th colSpan={2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700">
+                      <th colSpan={isChannelTarget ? 3 : 2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700">
                         Transaksi
                       </th>
                       <th rowSpan={2} className="px-4 py-2 border border-gray-300 bg-gray-200 text-center font-bold text-gray-700">
@@ -1216,6 +1713,9 @@ export default function RekapExcelTab({
                     <tr>
                       <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Hari</th>
                       <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Tanggal</th>
+                      {isChannelTarget && (
+                        <th className="px-4 py-2 border border-gray-300 bg-indigo-50 text-right font-bold text-indigo-900">Jumlah Transaksi (Trx)</th>
+                      )}
                       <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Nominal ( RP )</th>
                       <th className="px-4 py-2 border border-gray-300 bg-gray-100 text-center font-bold text-gray-600">Tanggal</th>
                     </tr>
@@ -1228,6 +1728,11 @@ export default function RekapExcelTab({
                         </td>
                         <td className="px-4 py-2 border border-gray-300 text-center text-gray-700">{r.hari}</td>
                         <td className="px-4 py-2 border border-gray-300 text-center text-gray-700 font-mono">{r.tanggal}</td>
+                        {isChannelTarget && (
+                          <td className="px-4 py-2 border border-gray-300 text-right font-mono font-bold text-indigo-800 bg-indigo-50/20">
+                            {r.trxQty > 0 ? r.trxQty.toLocaleString('id-ID') : '-'}
+                          </td>
+                        )}
                         <td className="px-4 py-2 border border-gray-300 text-center text-gray-700">{r.uraian}</td>
                         <td className="px-4 py-2 border border-gray-300 text-right font-medium text-gray-800">
                           {r.nominal > 0 ? formatRp(r.nominal) : ''}
@@ -1266,12 +1771,18 @@ export default function RekapExcelTab({
                     ))}
                     <tr className="bg-indigo-100">
                       <td
-                        colSpan={4}
+                        colSpan={3}
                         className="sticky-col px-4 py-3 border border-indigo-300 text-right font-black text-indigo-900 bg-indigo-100 z-10 shadow-[inset_-1px_0_0_#a5b4fc]"
                       >
                         TOTAL
                       </td>
-                      <td className="px-4 py-3 border border-indigo-300 text-right font-black text-indigo-900">
+                      {isChannelTarget && (
+                        <td className="px-4 py-3 border border-indigo-300 text-right font-mono font-black text-indigo-950 bg-indigo-200/50">
+                          {grandTotalTrx > 0 ? `${grandTotalTrx.toLocaleString('id-ID')} Trx` : '-'}
+                        </td>
+                      )}
+                      <td className="border border-indigo-300"></td>
+                      <td className="px-4 py-3 border border-indigo-300 text-right font-black text-indigo-900 font-mono">
                         {formatRp(grandTotal)}
                       </td>
                       <td colSpan={2} className="border border-indigo-300"></td>
