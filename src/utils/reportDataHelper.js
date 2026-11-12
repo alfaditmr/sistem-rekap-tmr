@@ -593,8 +593,65 @@ export const getGateRevenueData = (allReports, categories, monthStr) => {
 };
 
 /**
+ * Helper internal: Menghitung jumlah fisik tiket/unit dari nominal sub-item berdasarkan tarif resmi STSU
+ */
+const computeExactTicketQtyFromItem = (itemName = '', fKey = '', val = 0, isWeekend = false) => {
+  const nominal = Number(val) || 0;
+  if (nominal <= 0) return { qty: 0, kind: 'other' };
+
+  const norm = `${itemName} ${fKey}`
+    .toLowerCase()
+    .replace(/sepededa/g, 'sepeda')
+    .replace(/gol iii/g, 'gol 3')
+    .replace(/gol ii\b/g, 'gol 2')
+    .replace(/gol i\b/g, 'gol 1');
+
+  if (/kuda/i.test(norm)) return { qty: Math.round(nominal / 5000), kind: 'wahana' };
+  if (/unta/i.test(norm)) return { qty: Math.round(nominal / 7500), kind: 'wahana' };
+  if (/gajah/i.test(norm)) return { qty: Math.round(nominal / 10000), kind: 'wahana' };
+  if (/taman\s*satwa|satwa\s*anak|\btsa\b|children/i.test(norm)) {
+    return { qty: Math.round(nominal / 2500), kind: 'wahana' };
+  }
+  if (/motor/i.test(norm)) return { qty: Math.round(nominal / 3000), kind: 'kendaraan' };
+  if (/sepeda/i.test(norm)) return { qty: Math.round(nominal / 1000), kind: 'kendaraan' };
+  if (/gol\s*3|golongan\s*3|golongan\s*iii|mobil/i.test(norm)) {
+    return { qty: Math.round(nominal / 6000), kind: 'kendaraan' };
+  }
+  if (/gol\s*2|golongan\s*2|golongan\s*ii\b|bus\s*kecil/i.test(norm)) {
+    return { qty: Math.round(nominal / 12500), kind: 'kendaraan' };
+  }
+  if (/gol\s*1|golongan\s*1|golongan\s*i\b|bus\s*besar/i.test(norm)) {
+    return { qty: Math.round(nominal / 15000), kind: 'kendaraan' };
+  }
+
+  const isPrimata = /primata|schmutzer/i.test(norm);
+  const isRomb = /romb/i.test(norm);
+  const isAnak = /anak|3-12/i.test(norm);
+
+  if (isPrimata) {
+    const isExplicitLibur = /we|weekend|holiday|libur|besar|sabtu|minggu/i.test(norm);
+    const isExplicitBiasa = /wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at/i.test(norm);
+    const libur = isExplicitLibur ? true : isExplicitBiasa ? false : isWeekend;
+    const rate = isRomb ? (libur ? 5625 : 4500) : (libur ? 7500 : 6000);
+    return { qty: Math.round(nominal / rate), kind: 'primata' };
+  }
+
+  if (isRomb) {
+    const rate = isAnak ? 2250 : 3000;
+    return { qty: Math.round(nominal / rate), kind: isAnak ? 'anak' : 'dewasa' };
+  }
+
+  if (isAnak) return { qty: Math.round(nominal / 3000), kind: 'anak' };
+  return { qty: Math.round(nominal / 4000), kind: 'dewasa' };
+};
+
+/**
  * 5B. Data Rekapitulasi Transaksi Setiap Channel & Fisik Tiket (Lembar K-2 & Settlement)
  * Mengagregasi data bot 3A (New Gate, TVM, Tiket Online) dan bot IWM (Old Gate Taping).
+ * Catatan Penting:
+ * - Jumlah Transaksi (Trx / TRANSACTION QTY) berbeda dengan Jumlah Tiket (TOTAL TICKET / Fisik Karcis).
+ * - Jumlah Transaksi hanya berasal dari Lembar K-2 (3A Summary By Channel Order) & Settlement Berjalan IWM.
+ * - Jumlah Tiket berasal dari TOTAL TICKET rincian item tarif (Nominal per item dibagi tarif resmi item).
  */
 export const getChannelTransactionRecapData = (allReports, categories, monthStr) => {
   const { year, month, monthName, daysInMonth, days } = getMonthDaysMetadata(monthStr);
@@ -606,112 +663,78 @@ export const getChannelTransactionRecapData = (allReports, categories, monthStr)
   const rows = days.map(dInfo => {
     const dayAll = allReports[dInfo.dateStr] || {};
     
-    // Hanya gunakan metadata rekon 3A dan IWM yang benar-benar sudah ditarik & disimpan pada tanggal tersebut
+    // Metadata rekon 3A (Lembar K-2) dan IWM (Settlement Berjalan) yang tersimpan pada tanggal tersebut
     const rekon3a = dayAll.rekon3aSummary || null;
     const rekonIwm = dayAll.rekonIwmSettlement || null;
 
-    let gateTrx = 0, tvmTrx = 0, onlineTrx = 0;
-    let gateTiket = 0, tvmTiket = 0, onlineTiket = 0;
-    let gateNom = 0, tvmNom = 0, onlineNom = 0;
+    // Hitung akumulasi eksak Tiket & Nominal dari formData berdasarkan tarif resmi per sub-item
+    let formGateTiket = 0, formTvmTiket = 0, formOnlineTiket = 0;
+    let formGateNom = 0, formTvmNom = 0, formOnlineNom = 0;
+    let formOldGateAnak = 0, formOldGateDewasa = 0, formOldGateKendaraan = 0, formOldGateNom = 0;
 
-    if (rekon3a) {
-      gateTrx = Number(rekon3a.GATE?.transactionQty || 0);
-      gateTiket = Number(rekon3a.GATE?.totalTiket || 0);
-      gateNom = Number(rekon3a.GATE?.totalNominal || 0);
+    Object.keys(dayAll).forEach(tKey => {
+      const typeData = dayAll[tKey];
+      if (typeData?.formData) {
+        Object.keys(typeData.formData).forEach(fKey => {
+          const val = Number(typeData.formData[fKey]) || 0;
+          if (val <= 0) return;
 
-      tvmTrx = Number(rekon3a.TVM?.transactionQty || 0);
-      tvmTiket = Number(rekon3a.TVM?.totalTiket || 0);
-      tvmNom = Number(rekon3a.TVM?.totalNominal || 0);
+          let catName = '';
+          let itemName = '';
+          const parts = fKey.split('_');
+          if (parts.length >= 2 && parts[0] === 'cat') {
+            const catId = `${parts[0]}_${parts[1]}`;
+            const itemId = parts[2] === 'item' && parts[3] ? `${parts[2]}_${parts[3]}` : parts[2];
+            const cat = categories.find(c => c.id === catId);
+            catName = (cat?.name || '').toLowerCase();
+            const subItem = cat?.items?.find(i => i.id === itemId);
+            itemName = subItem?.name || '';
+          }
 
-      onlineTrx = Number(rekon3a.MERCHANT_PAGE?.transactionQty || 0);
-      onlineTiket = Number(rekon3a.MERCHANT_PAGE?.totalTiket || 0);
-      onlineNom = Number(rekon3a.MERCHANT_PAGE?.totalNominal || 0);
-    } else {
-      // Hitung dari formData jika ada kategori tiket yang sudah diinput pada tanggal tersebut
-      let dUtama = 0, dOnline = 0, dTvm = 0;
-      Object.keys(dayAll).forEach(tKey => {
-        const typeData = dayAll[tKey];
-        if (typeData?.formData) {
-          Object.keys(typeData.formData).forEach(fKey => {
-            const val = Number(typeData.formData[fKey]) || 0;
-            if (val > 0) {
-              let catName = '';
-              const parts = fKey.split('_');
-              if (parts.length >= 2 && parts[0] === 'cat') {
-                const catId = `${parts[0]}_${parts[1]}`;
-                const cat = categories.find(c => c.id === catId);
-                catName = (cat?.name || '').toLowerCase();
-              }
-              if (/online|merchant/i.test(catName)) dOnline += val;
-              else if (/tvm|vending|vinding/i.test(catName)) dTvm += val;
-              else if (/new\s*gate/i.test(catName)) dUtama += val;
-            }
-          });
-        }
-      });
-      if (dUtama > 0) {
-        gateNom = dUtama;
-        gateTiket = Math.round(dUtama / 4000);
-        gateTrx = gateTiket;
+          const { qty, kind } = computeExactTicketQtyFromItem(itemName, fKey, val, dInfo.isWeekend);
+
+          if (/online|merchant/i.test(catName)) {
+            formOnlineNom += val;
+            formOnlineTiket += qty;
+          } else if (/tvm|vending|vinding/i.test(catName)) {
+            formTvmNom += val;
+            formTvmTiket += qty;
+          } else if (/new\s*gate/i.test(catName)) {
+            formGateNom += val;
+            formGateTiket += qty;
+          } else if (/old\s*gate|iwm/i.test(catName)) {
+            formOldGateNom += val;
+            if (kind === 'anak') formOldGateAnak += qty;
+            else if (kind === 'dewasa') formOldGateDewasa += qty;
+            else if (kind === 'kendaraan') formOldGateKendaraan += qty;
+          }
+        });
       }
-      if (dTvm > 0) {
-        tvmNom = dTvm;
-        tvmTiket = Math.round(dTvm / 3700);
-        tvmTrx = Math.round(tvmTiket / 3.3);
-      }
-      if (dOnline > 0) {
-        onlineNom = dOnline;
-        onlineTiket = Math.round(dOnline / 4000);
-        onlineTrx = Math.round(onlineTiket / 5.5);
-      }
-    }
+    });
+
+    // 1. JUMLAH TRANSAKSI (TRANSACTION QTY / TAPING) -> Murni dari Lembar K-2 3A & Settlement IWM (tidak pernah disamakan/ditebak dari jumlah tiket)
+    const gateTrx = Number(rekon3a?.GATE?.transactionQty || 0);
+    const tvmTrx = Number(rekon3a?.TVM?.transactionQty || 0);
+    const onlineTrx = Number(rekon3a?.MERCHANT_PAGE?.transactionQty || 0);
+    const oldGateTrx = Number(rekonIwm?.jumlah_transaksi || 0);
+
+    // 2. JUMLAH TIKET FISIK (TOTAL TICKET) & NOMINAL -> Dari metadata rekon atau kalkulasi tarif eksak per item di formData
+    const gateTiket = Number(rekon3a?.GATE?.totalTiket || 0) || formGateTiket;
+    const tvmTiket = Number(rekon3a?.TVM?.totalTiket || 0) || formTvmTiket;
+    const onlineTiket = Number(rekon3a?.MERCHANT_PAGE?.totalTiket || 0) || formOnlineTiket;
+
+    const gateNom = Number(rekon3a?.GATE?.totalNominal || 0) || formGateNom;
+    const tvmNom = Number(rekon3a?.TVM?.totalNominal || 0) || formTvmNom;
+    const onlineNom = Number(rekon3a?.MERCHANT_PAGE?.totalNominal || 0) || formOnlineNom;
 
     const subtotal3aTrx = gateTrx + tvmTrx + onlineTrx;
     const subtotal3aTiket = gateTiket + tvmTiket + onlineTiket;
     const subtotal3aNom = gateNom + tvmNom + onlineNom;
 
-    let oldGateTrx = 0;
-    let oldGateAnak = 0;
-    let oldGateDewasa = 0;
-    let oldGateKendaraan = 0;
-    let oldGateNom = 0;
-
-    if (rekonIwm) {
-      oldGateTrx = Number(rekonIwm.jumlah_transaksi || 0);
-      oldGateAnak = Number(rekonIwm.pengunjung_anak || 0);
-      oldGateDewasa = Number(rekonIwm.pengunjung_dewasa || 0);
-      oldGateKendaraan = Number(rekonIwm.jumlah_kendaraan || 0);
-      oldGateNom = Number(rekonIwm.nominal || 0);
-    } else {
-      // Hitung dari formData jika kategori Old Gate / IWM sudah diinput pada tanggal tersebut
-      let dIwm = 0;
-      Object.keys(dayAll).forEach(tKey => {
-        const typeData = dayAll[tKey];
-        if (typeData?.formData) {
-          Object.keys(typeData.formData).forEach(fKey => {
-            const val = Number(typeData.formData[fKey]) || 0;
-            if (val > 0) {
-              let catName = '';
-              const parts = fKey.split('_');
-              if (parts.length >= 2 && parts[0] === 'cat') {
-                const catId = `${parts[0]}_${parts[1]}`;
-                const cat = categories.find(c => c.id === catId);
-                catName = (cat?.name || '').toLowerCase();
-              }
-              if (/old\s*gate|iwm/i.test(catName)) dIwm += val;
-            }
-          });
-        }
-      });
-      if (dIwm > 0) {
-        oldGateNom = dIwm;
-        const totalOrang = Math.round(dIwm / 4000);
-        oldGateDewasa = Math.round(totalOrang * 0.55);
-        oldGateAnak = totalOrang - oldGateDewasa;
-        oldGateKendaraan = Math.round(totalOrang * 0.1);
-        oldGateTrx = Math.round(totalOrang / 5.5);
-      }
-    }
+    const oldGateAnak = Number(rekonIwm?.pengunjung_anak || 0) || formOldGateAnak;
+    const oldGateDewasa = Number(rekonIwm?.pengunjung_dewasa || 0) || formOldGateDewasa;
+    const oldGateKendaraan = Number(rekonIwm?.jumlah_kendaraan || 0) || formOldGateKendaraan;
+    const oldGateNom = Number(rekonIwm?.nominal || 0) || formOldGateNom;
 
     const oldGatePengunjung = oldGateAnak + oldGateDewasa;
     const totalTrx = subtotal3aTrx + oldGateTrx;

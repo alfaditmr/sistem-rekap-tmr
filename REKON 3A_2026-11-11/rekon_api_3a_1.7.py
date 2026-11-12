@@ -297,7 +297,6 @@ def proses_tarik_data(tanggal_rekon_str):
                 
                 let thead = Array.from(targetTable.querySelectorAll('thead th')).map(th => th.textContent.trim());
                 let tbody = Array.from(targetTable.querySelectorAll('tbody tr'))
-                    .filter(tr => window.getComputedStyle(tr).display !== 'none')
                     .map(tr => Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim()));
                 let tfoot = Array.from(targetTable.querySelectorAll('tfoot th, tfoot td')).map(td => td.textContent.trim());
                 
@@ -334,24 +333,38 @@ def proses_tarik_data(tanggal_rekon_str):
             all_channels_data[channel] = stsu_channel
 
             # Hitung Transaction Qty & Total Nominal dari Summary By Channel Order (Lembar K-2)
+            ch_thead = [h.upper() for h in channel_summary_data.get('thead', [])]
+            idx_trx_col = -2
+            idx_nom_col = -1
+            for i_h, h_txt in enumerate(ch_thead):
+                if "TRANSACTION" in h_txt or "QTY" in h_txt:
+                    idx_trx_col = i_h
+                elif "NOMINAL" in h_txt or "TOTAL" in h_txt:
+                    idx_nom_col = i_h
+
             trx_qty = 0
             nom_summary = 0
             for row in channel_summary_data.get('tbody', []):
-                if not row or len(row) < 3:
+                if not row or len(row) < 2:
                     continue
                 if any("tidak ada data" in c.lower() for c in row):
                     continue
                 if "total" in row[0].lower():
                     continue
-                trx_qty += clean_number(row[-2])
-                nom_summary += clean_number(row[-1])
+                col_trx = row[idx_trx_col] if abs(idx_trx_col) <= len(row) else row[-2]
+                col_nom = row[idx_nom_col] if abs(idx_nom_col) <= len(row) else row[-1]
+                trx_qty += clean_number(col_trx)
+                nom_summary += clean_number(col_nom)
 
             ch_tfoot = channel_summary_data.get('tfoot', [])
             if trx_qty == 0 and len(ch_tfoot) >= 2:
                 trx_qty = clean_number(ch_tfoot[-2])
                 nom_summary = clean_number(ch_tfoot[-1])
 
-            total_tiket = sum(item["qty"] for item in stsu_channel.values())
+            # Total Tiket Fisik dari Tabel 1 (#summary-ticket-table)
+            total_tiket = sum(item["qty"] for item in data_channel)
+            if total_tiket == 0:
+                total_tiket = sum(item["qty"] for item in stsu_channel.values())
             total_nominal_stsu = sum(item["nominal"] for item in stsu_channel.values())
             final_nominal = total_nominal_stsu if total_nominal_stsu > 0 else nom_summary
 

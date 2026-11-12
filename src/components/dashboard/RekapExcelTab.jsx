@@ -1131,15 +1131,17 @@ export default function RekapExcelTab({
             // D. Laporan Ticketing & Gate
             if (selectedReportType === 'eticketing') {
               const data = getEticketingData(allReports, categories, safeReportMonth);
-              return <TicketingReportTable reportType="eticketing" data={data} />;
+              const channelData = getChannelTransactionRecapData(allReports, categories, safeReportMonth);
+              return <TicketingReportTable reportType="eticketing" data={data} channelData={channelData} />;
             }
             if (selectedReportType === 'gate_report') {
               const data = getGateRevenueData(allReports, categories, safeReportMonth);
-              return <TicketingReportTable reportType="gate_report" data={data} />;
+              const channelData = getChannelTransactionRecapData(allReports, categories, safeReportMonth);
+              return <TicketingReportTable reportType="gate_report" data={data} channelData={channelData} />;
             }
             if (selectedReportType === 'rekap_transaksi_channel') {
               const data = getChannelTransactionRecapData(allReports, categories, safeReportMonth);
-              return <TicketingReportTable reportType="rekap_transaksi_channel" data={data} />;
+              return <TicketingReportTable reportType="rekap_transaksi_channel" data={data} channelData={data} />;
             }
 
             // E. Laporan Sewa Tempat & Promosi

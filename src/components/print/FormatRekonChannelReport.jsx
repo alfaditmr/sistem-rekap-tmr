@@ -734,12 +734,12 @@ export default function FormatRekonChannelReport({
                     <tbody>
                       <tr>
                         <td className="border border-gray-300 p-2 font-bold text-gray-800">
-                          {channelSummaryData?.channelName || channelDisplayName}
+                          {selectedChannel}
                         </td>
                         <td className="border border-gray-300 p-2 text-right font-mono font-black text-blue-800">
-                          {(channelSummaryData?.transactionQty || totalQtyAll) > 0
-                            ? `${(channelSummaryData?.transactionQty || totalQtyAll).toLocaleString('id-ID')} Transaksi`
-                            : '-'}
+                          {Number(channelSummaryData?.transactionQty || 0) > 0
+                            ? `${Number(channelSummaryData.transactionQty).toLocaleString('id-ID')} Transaksi`
+                            : 'Belum ditarik dari K-2'}
                         </td>
                         <td className="border border-gray-300 p-2 text-right font-mono font-black text-emerald-800">
                           {(channelSummaryData?.totalNominal || channelTotalNominal) > 0
@@ -750,8 +750,8 @@ export default function FormatRekonChannelReport({
                       <tr className="bg-gray-100 font-bold">
                         <td className="border border-gray-300 p-2 text-center font-black">TOTAL</td>
                         <td className="border border-gray-300 p-2 text-right font-mono font-black text-blue-900">
-                          {(channelSummaryData?.transactionQty || totalQtyAll) > 0
-                            ? (channelSummaryData?.transactionQty || totalQtyAll).toLocaleString('id-ID')
+                          {Number(channelSummaryData?.transactionQty || 0) > 0
+                            ? Number(channelSummaryData.transactionQty).toLocaleString('id-ID')
                             : '-'}
                         </td>
                         <td className="border border-gray-300 p-2 text-right font-mono font-black text-emerald-900">

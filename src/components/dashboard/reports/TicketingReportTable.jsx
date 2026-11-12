@@ -2,9 +2,12 @@ import React, { useState } from 'react';
 import { CreditCard, ShieldCheck, DollarSign, Building, Layers, Users, BarChart3, Ticket } from 'lucide-react';
 import { formatRp } from '../../../utils/formatters';
 
-export default function TicketingReportTable({ reportType, data }) {
+export default function TicketingReportTable({ reportType, data, channelData }) {
   if (!data) return null;
   const { rows, totals } = data;
+  const cData = channelData || data;
+  const cRows = cData?.rows || rows;
+  const cTotals = cData?.totals || totals;
 
   const isChannelReport = reportType === 'rekap_transaksi_channel';
   const [viewMode, setViewMode] = useState(isChannelReport ? 'transactions' : 'nominal');
@@ -60,7 +63,7 @@ export default function TicketingReportTable({ reportType, data }) {
             <div>
               <div className="text-[11px] font-semibold text-gray-500 uppercase">Grand Total Transaksi</div>
               <div className="text-sm font-black text-gray-800">
-                {(totals.totalTrx || totals.grandTotal || 0).toLocaleString('id-ID')} Trx
+                {(cTotals.totalTrx || 0).toLocaleString('id-ID')} Trx
               </div>
             </div>
           </div>
@@ -72,7 +75,7 @@ export default function TicketingReportTable({ reportType, data }) {
             <div>
               <div className="text-[11px] font-semibold text-gray-500 uppercase">Transaksi Bot 3A (Gate+TVM+Online)</div>
               <div className="text-sm font-black text-blue-700">
-                {(totals.subtotal3aTrx || 0).toLocaleString('id-ID')} Trx
+                {(cTotals.subtotal3aTrx || 0).toLocaleString('id-ID')} Trx
               </div>
             </div>
           </div>
@@ -84,7 +87,7 @@ export default function TicketingReportTable({ reportType, data }) {
             <div>
               <div className="text-[11px] font-semibold text-gray-500 uppercase">Old Gate IWM (Taping POS)</div>
               <div className="text-sm font-black text-purple-700">
-                {(totals.oldGateTrx || 0).toLocaleString('id-ID')} Trx
+                {(cTotals.oldGateTrx || 0).toLocaleString('id-ID')} Trx
               </div>
             </div>
           </div>
@@ -96,7 +99,7 @@ export default function TicketingReportTable({ reportType, data }) {
             <div>
               <div className="text-[11px] font-semibold text-gray-500 uppercase">Total Omset Nominal</div>
               <div className="text-sm font-black text-emerald-700">
-                {formatRp(totals.grandTotalNominal || totals.grandTotal || 0)}
+                {formatRp(cTotals.grandTotalNominal || totals.grandTotal || 0)}
               </div>
             </div>
           </div>
@@ -120,7 +123,7 @@ export default function TicketingReportTable({ reportType, data }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
+              {cRows.map((r, i) => (
                 <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
                   <td className="px-2 py-1.5 border border-gray-300 text-center font-semibold">{r.day}</td>
                   <td className="px-3 py-1.5 border border-gray-300 text-center text-gray-600">{r.dayName}</td>
@@ -153,28 +156,28 @@ export default function TicketingReportTable({ reportType, data }) {
               <tr className="bg-emerald-100 font-black text-gray-900 border-t-2 border-emerald-400">
                 <td colSpan={2} className="px-3 py-2 border border-gray-300 text-center font-bold">TOTAL</td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
-                  {totals.gateTrx > 0 ? totals.gateTrx.toLocaleString('id-ID') : '-'}
+                  {cTotals.gateTrx > 0 ? cTotals.gateTrx.toLocaleString('id-ID') : '-'}
                 </td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
-                  {totals.tvmTrx > 0 ? totals.tvmTrx.toLocaleString('id-ID') : '-'}
+                  {cTotals.tvmTrx > 0 ? cTotals.tvmTrx.toLocaleString('id-ID') : '-'}
                 </td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
-                  {totals.onlineTrx > 0 ? totals.onlineTrx.toLocaleString('id-ID') : '-'}
+                  {cTotals.onlineTrx > 0 ? cTotals.onlineTrx.toLocaleString('id-ID') : '-'}
                 </td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono font-black text-blue-950 bg-blue-200/60">
-                  {totals.subtotal3aTrx > 0 ? totals.subtotal3aTrx.toLocaleString('id-ID') : '-'}
+                  {cTotals.subtotal3aTrx > 0 ? cTotals.subtotal3aTrx.toLocaleString('id-ID') : '-'}
                 </td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono font-black text-purple-950 bg-purple-200/60">
-                  {totals.oldGateTrx > 0 ? totals.oldGateTrx.toLocaleString('id-ID') : '-'}
+                  {cTotals.oldGateTrx > 0 ? cTotals.oldGateTrx.toLocaleString('id-ID') : '-'}
                 </td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono font-black text-indigo-950 bg-indigo-200/70">
-                  {totals.totalTrx > 0 ? totals.totalTrx.toLocaleString('id-ID') : '-'}
+                  {cTotals.totalTrx > 0 ? cTotals.totalTrx.toLocaleString('id-ID') : '-'}
                 </td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-gray-800">
-                  {totals.totalTiket > 0 ? totals.totalTiket.toLocaleString('id-ID') : '-'}
+                  {cTotals.totalTiket > 0 ? cTotals.totalTiket.toLocaleString('id-ID') : '-'}
                 </td>
                 <td className="px-4 py-2 border border-gray-300 text-right text-emerald-950 font-mono font-black text-xs bg-emerald-300/60">
-                  {formatRp(totals.grandTotalNominal || totals.grandTotal || 0)}
+                  {formatRp(cTotals.grandTotalNominal || totals.grandTotal || 0)}
                 </td>
               </tr>
             </tbody>
@@ -235,7 +238,7 @@ export default function TicketingReportTable({ reportType, data }) {
             <div>
               <div className="text-[11px] font-semibold text-gray-500 uppercase">Total Tiket & Pengunjung</div>
               <div className="text-sm font-black text-gray-800">
-                {(totals.totalTiket || totals.asuransiLembar || 0).toLocaleString('id-ID')} Lembar/Orang
+                {(cTotals.totalTiket || 0).toLocaleString('id-ID')} Lembar/Orang
               </div>
             </div>
           </div>
@@ -247,7 +250,7 @@ export default function TicketingReportTable({ reportType, data }) {
             <div>
               <div className="text-[11px] font-semibold text-gray-500 uppercase">Tiket Bot 3A (Gate+TVM+Online)</div>
               <div className="text-sm font-black text-blue-700">
-                {(totals.subtotal3aTiket || 0).toLocaleString('id-ID')} Tiket
+                {(cTotals.subtotal3aTiket || 0).toLocaleString('id-ID')} Tiket
               </div>
             </div>
           </div>
@@ -259,7 +262,7 @@ export default function TicketingReportTable({ reportType, data }) {
             <div>
               <div className="text-[11px] font-semibold text-gray-500 uppercase">Pengunjung Old Gate (IWM)</div>
               <div className="text-sm font-black text-emerald-700">
-                {(totals.oldGatePengunjung || 0).toLocaleString('id-ID')} Orang
+                {(cTotals.oldGatePengunjung || 0).toLocaleString('id-ID')} Orang
               </div>
             </div>
           </div>
@@ -271,7 +274,7 @@ export default function TicketingReportTable({ reportType, data }) {
             <div>
               <div className="text-[11px] font-semibold text-gray-500 uppercase">Kendaraan Masuk (IWM)</div>
               <div className="text-sm font-black text-purple-700">
-                {(totals.oldGateKendaraan || 0).toLocaleString('id-ID')} Unit
+                {(cTotals.oldGateKendaraan || 0).toLocaleString('id-ID')} Unit
               </div>
             </div>
           </div>
@@ -295,7 +298,7 @@ export default function TicketingReportTable({ reportType, data }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
+              {cRows.map((r, i) => (
                 <tr key={i} className="hover:bg-teal-50/30 transition-colors">
                   <td className="px-2 py-1.5 border border-gray-300 text-center font-semibold">{r.day}</td>
                   <td className="px-3 py-1.5 border border-gray-300 text-center text-gray-600">{r.dayName}</td>
@@ -328,28 +331,130 @@ export default function TicketingReportTable({ reportType, data }) {
               <tr className="bg-emerald-100 font-black text-gray-900 border-t-2 border-emerald-400">
                 <td colSpan={2} className="px-3 py-2 border border-gray-300 text-center font-bold">TOTAL</td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
-                  {totals.gateTiket > 0 ? totals.gateTiket.toLocaleString('id-ID') : '-'}
+                  {cTotals.gateTiket > 0 ? cTotals.gateTiket.toLocaleString('id-ID') : '-'}
                 </td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
-                  {totals.tvmTiket > 0 ? totals.tvmTiket.toLocaleString('id-ID') : '-'}
+                  {cTotals.tvmTiket > 0 ? cTotals.tvmTiket.toLocaleString('id-ID') : '-'}
                 </td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
-                  {totals.onlineTiket > 0 ? totals.onlineTiket.toLocaleString('id-ID') : '-'}
+                  {cTotals.onlineTiket > 0 ? cTotals.onlineTiket.toLocaleString('id-ID') : '-'}
                 </td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono font-black text-blue-950 bg-blue-200/60">
-                  {totals.subtotal3aTiket > 0 ? totals.subtotal3aTiket.toLocaleString('id-ID') : '-'}
+                  {cTotals.subtotal3aTiket > 0 ? cTotals.subtotal3aTiket.toLocaleString('id-ID') : '-'}
                 </td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-emerald-900 bg-emerald-200/40">
-                  {rows.reduce((s, r) => s + (r.oldGateAnak || 0), 0).toLocaleString('id-ID')}
+                  {cRows.reduce((s, r) => s + (r.oldGateAnak || 0), 0).toLocaleString('id-ID')}
                 </td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-emerald-900 bg-emerald-200/40">
-                  {rows.reduce((s, r) => s + (r.oldGateDewasa || 0), 0).toLocaleString('id-ID')}
+                  {cRows.reduce((s, r) => s + (r.oldGateDewasa || 0), 0).toLocaleString('id-ID')}
                 </td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-purple-900 bg-purple-200/40">
-                  {totals.oldGateKendaraan > 0 ? totals.oldGateKendaraan.toLocaleString('id-ID') : '-'}
+                  {cTotals.oldGateKendaraan > 0 ? cTotals.oldGateKendaraan.toLocaleString('id-ID') : '-'}
                 </td>
                 <td className="px-4 py-2 border border-gray-300 text-right text-teal-950 font-mono font-black text-xs bg-teal-300/60">
-                  {totals.totalTiket > 0 ? totals.totalTiket.toLocaleString('id-ID') : '-'}
+                  {cTotals.totalTiket > 0 ? cTotals.totalTiket.toLocaleString('id-ID') : '-'}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // VIEW MODE B2: REKAP NOMINAL RUPIAH PER CHANNEL (KHUSUS REKAP_TRANSAKSI_CHANNEL)
+  // =========================================================================
+  if (isChannelReport && viewMode === 'nominal') {
+    return (
+      <div className="w-full">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-3 bg-emerald-50/70 border-b border-emerald-200">
+          <div className="flex items-center gap-2">
+            <DollarSign size={18} className="text-emerald-700" />
+            <span className="font-extrabold text-xs text-emerald-950 uppercase tracking-wider">
+              Rekapitulasi Nilai Rupiah (Omset) Setiap Channel (3A & Old Gate IWM)
+            </span>
+          </div>
+          <div className="inline-flex rounded-lg border border-emerald-200 bg-white p-0.5 shadow-2xs text-xs font-bold">
+            <button
+              onClick={() => setViewMode('transactions')}
+              className="px-3 py-1 rounded-md transition-all text-gray-600 hover:text-indigo-600"
+            >
+              📊 Jumlah Transaksi (Trx)
+            </button>
+            <button
+              onClick={() => setViewMode('tickets')}
+              className="px-3 py-1 rounded-md transition-all text-gray-600 hover:text-teal-600"
+            >
+              🎫 Fisik Karcis / Pengunjung
+            </button>
+            <button
+              onClick={() => setViewMode('nominal')}
+              className="px-3 py-1 rounded-md transition-all bg-emerald-600 text-white shadow-xs"
+            >
+              💰 Nilai Rupiah (Rp)
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[11px] whitespace-nowrap">
+            <thead>
+              <tr className="bg-gray-100 text-gray-700">
+                <th className="px-2 py-2 border border-gray-300 text-center font-bold">Tgl</th>
+                <th className="px-3 py-2 border border-gray-300 text-center font-bold">Hari</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold bg-blue-50 text-blue-900">New Gate 3A (Rp)</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold bg-blue-50 text-blue-900">Vending TVM (Rp)</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold bg-blue-50 text-blue-900">Tiket Online (Rp)</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-black bg-blue-100 text-blue-950">Subtotal 3A (Rp)</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold bg-purple-50 text-purple-900">Old Gate IWM (Rp)</th>
+                <th className="px-4 py-2 border border-gray-300 text-right font-black bg-emerald-100 text-emerald-950">Total Omset (Rp)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cRows.map((r, i) => (
+                <tr key={i} className="hover:bg-emerald-50/30 transition-colors">
+                  <td className="px-2 py-1.5 border border-gray-300 text-center font-semibold">{r.day}</td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-center text-gray-600">{r.dayName}</td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono bg-blue-50/20">
+                    {r.gateNominal > 0 ? formatRp(r.gateNominal) : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono bg-blue-50/20">
+                    {r.tvmNominal > 0 ? formatRp(r.tvmNominal) : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono bg-blue-50/20">
+                    {r.onlineNominal > 0 ? formatRp(r.onlineNominal) : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono font-bold bg-blue-100/50 text-blue-900">
+                    {r.subtotal3aNominal > 0 ? formatRp(r.subtotal3aNominal) : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono font-bold bg-purple-50/40 text-purple-900">
+                    {r.oldGateNominal > 0 ? formatRp(r.oldGateNominal) : '-'}
+                  </td>
+                  <td className="px-4 py-1.5 border border-gray-300 text-right font-black bg-emerald-100/50 text-emerald-950 font-mono">
+                    {r.totalNominal > 0 ? formatRp(r.totalNominal) : '-'}
+                  </td>
+                </tr>
+              ))}
+              <tr className="bg-emerald-100 font-black text-gray-900 border-t-2 border-emerald-400">
+                <td colSpan={2} className="px-3 py-2 border border-gray-300 text-center font-bold">TOTAL</td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
+                  {cTotals.gateNominal > 0 ? formatRp(cTotals.gateNominal) : '-'}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
+                  {cTotals.tvmNominal > 0 ? formatRp(cTotals.tvmNominal) : '-'}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
+                  {cTotals.onlineNominal > 0 ? formatRp(cTotals.onlineNominal) : '-'}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-black text-blue-950 bg-blue-200/60">
+                  {cTotals.subtotal3aNominal > 0 ? formatRp(cTotals.subtotal3aNominal) : '-'}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-purple-900 bg-purple-200/40">
+                  {cTotals.oldGateNominal > 0 ? formatRp(cTotals.oldGateNominal) : '-'}
+                </td>
+                <td className="px-4 py-2 border border-gray-300 text-right text-emerald-950 font-mono font-black text-xs bg-emerald-300/60">
+                  {formatRp(cTotals.grandTotalNominal || 0)}
                 </td>
               </tr>
             </tbody>
