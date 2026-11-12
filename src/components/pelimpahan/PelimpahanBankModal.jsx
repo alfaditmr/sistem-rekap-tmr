@@ -74,6 +74,8 @@ export const extractChannelData = (dateStr, allReports = {}, categories = []) =>
     const docData = dayAll[tKey];
     if (!docData || typeof docData !== 'object') return;
 
+    const processedKeys = new Set();
+
     // A. Periksa activeItems
     if (Array.isArray(docData.activeItems)) {
       docData.activeItems.forEach((ai) => {
@@ -94,6 +96,10 @@ export const extractChannelData = (dateStr, allReports = {}, categories = []) =>
           ai.itemNote
         );
 
+        processedKeys.add(inputKey);
+        processedKeys.add(`${ai.catId}_${ai.itemId || ai.id}`);
+        processedKeys.add(ai.catId);
+
         const val = Number(
           docData.formData?.[inputKey] ||
           docData.formData?.[`${ai.catId}_${ai.itemId || ai.id}`] ||
@@ -101,8 +107,6 @@ export const extractChannelData = (dateStr, allReports = {}, categories = []) =>
           0
         );
         if (val <= 0) return;
-
-        const qty = Number(ai.qty || 0);
 
         if (/old\s*gate|iwm/i.test(catName)) {
           oldGateNom += val;
@@ -114,10 +118,8 @@ export const extractChannelData = (dateStr, allReports = {}, categories = []) =>
           tvmNom += val;
         } else if (/golf\s*car|golfcar|e-car|ecar|mobil\s*listrik/i.test(combined)) {
           golfCarNom += val;
-          golfCarTrx += qty > 0 ? qty : 1;
         } else if (/foto\s*satwa|satwa\s*jinak|berfoto\s*satwa|jasa\s*foto/i.test(combined)) {
           fotoSatwaNom += val;
-          fotoSatwaTrx += qty > 0 ? qty : 1;
         }
       });
     }
@@ -125,6 +127,7 @@ export const extractChannelData = (dateStr, allReports = {}, categories = []) =>
     // B. Periksa sisa formData langsung jika activeItems belum terdaftar
     if (docData.formData) {
       Object.keys(docData.formData).forEach((fKey) => {
+        if (processedKeys.has(fKey)) return;
         const val = Number(docData.formData[fKey]) || 0;
         if (val <= 0) return;
 
@@ -141,21 +144,18 @@ export const extractChannelData = (dateStr, allReports = {}, categories = []) =>
         }
 
         const combined = `${catName} ${itemName}`;
-        // Hanya tambahkan jika nominal belum terisi dari activeItems
-        if (oldGateNom === 0 && /old\s*gate|iwm/i.test(catName)) {
+        if (/old\s*gate|iwm/i.test(catName)) {
           oldGateNom += val;
-        } else if (newGateNom === 0 && /new\s*gate/i.test(catName)) {
+        } else if (/new\s*gate/i.test(catName)) {
           newGateNom += val;
-        } else if (onlineNom === 0 && /online|merchant/i.test(catName)) {
+        } else if (/online|merchant/i.test(catName)) {
           onlineNom += val;
-        } else if (tvmNom === 0 && /tvm|vending|vinding/i.test(catName)) {
+        } else if (/tvm|vending|vinding/i.test(catName)) {
           tvmNom += val;
-        } else if (golfCarNom === 0 && /golf\s*car|golfcar|e-car|ecar|mobil\s*listrik/i.test(combined)) {
+        } else if (/golf\s*car|golfcar|e-car|ecar|mobil\s*listrik/i.test(combined)) {
           golfCarNom += val;
-          if (golfCarTrx === 0) golfCarTrx = 1;
-        } else if (fotoSatwaNom === 0 && /foto\s*satwa|satwa\s*jinak|berfoto\s*satwa|jasa\s*foto/i.test(combined)) {
+        } else if (/foto\s*satwa|satwa\s*jinak|berfoto\s*satwa|jasa\s*foto/i.test(combined)) {
           fotoSatwaNom += val;
-          if (fotoSatwaTrx === 0) fotoSatwaTrx = 1;
         }
       });
     }
