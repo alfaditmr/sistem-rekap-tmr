@@ -1056,7 +1056,7 @@ export default function App() {
 
   const hasDayReportContent = (dayData) => {
     if (!dayData || typeof dayData !== 'object') return false;
-    if (dayData.rekon3aSummary || dayData.rekonIwmSettlement || (Array.isArray(dayData.rekonIwmRombongan) && dayData.rekonIwmRombongan.length > 0)) {
+    if (dayData.rekon3aSummary || dayData.rekonIwmSettlement || (Array.isArray(dayData.rekonIwmRombongan) && dayData.rekonIwmRombongan.length > 0) || (Array.isArray(dayData.rekonIwmPerlokasi) && dayData.rekonIwmPerlokasi.length > 0)) {
       return true;
     }
     return Object.keys(dayData).some(k => {
@@ -1103,6 +1103,10 @@ export default function App() {
         }
         if (Array.isArray(localDay.rekonIwmRombongan) && localDay.rekonIwmRombongan.length > 0 && !nextDay.rekonIwmRombongan) {
           nextDay.rekonIwmRombongan = localDay.rekonIwmRombongan;
+          metaMerged = true;
+        }
+        if (Array.isArray(localDay.rekonIwmPerlokasi) && localDay.rekonIwmPerlokasi.length > 0 && !nextDay.rekonIwmPerlokasi) {
+          nextDay.rekonIwmPerlokasi = localDay.rekonIwmPerlokasi;
           metaMerged = true;
         }
         if (metaMerged) {
@@ -2914,6 +2918,7 @@ export default function App() {
       let diskonData = [];
       let channelSummaries = null;
       let settlement = null;
+      let iwmPerlokasi = [];
       const targetDate = transitModal.targetDate;
       const source = transitModal.source;
 
@@ -2927,6 +2932,7 @@ export default function App() {
         fetchedData = result.fetchedData;
         diskonData = result.diskonData;
         settlement = result.settlement || null;
+        iwmPerlokasi = Array.isArray(result.perlokasi) ? result.perlokasi : [];
       }
 
       // MAP DATA dengan targetDate dan categories saat ini
@@ -2941,7 +2947,8 @@ export default function App() {
         data: mappedData,
         iwmDiskon: diskonData,
         channelSummaries,
-        settlement
+        settlement,
+        iwmPerlokasi
       }));
 
     } catch (err) {
@@ -3025,13 +3032,14 @@ export default function App() {
     typeData.activeItems = newItems;
     typeData.formData = newFormData;
 
-    // Simpan ringkasan channel (3A) atau settlement & rombongan (IWM) untuk kebutuhan rekap & cetak
+    // Simpan ringkasan channel (3A) atau settlement, rombongan & perlokasi (IWM) untuk kebutuhan rekap & cetak
     const updatedDayData = {
       ...dayData,
       [activeTypeKey]: typeData,
       ...(transitModal.channelSummaries ? { rekon3aSummary: transitModal.channelSummaries } : {}),
       ...(transitModal.settlement ? { rekonIwmSettlement: transitModal.settlement } : {}),
-      ...(transitModal.iwmDiskon && transitModal.iwmDiskon.length > 0 ? { rekonIwmRombongan: transitModal.iwmDiskon } : {})
+      ...(transitModal.iwmDiskon && transitModal.iwmDiskon.length > 0 ? { rekonIwmRombongan: transitModal.iwmDiskon } : {}),
+      ...(transitModal.iwmPerlokasi && transitModal.iwmPerlokasi.length > 0 ? { rekonIwmPerlokasi: transitModal.iwmPerlokasi } : {})
     };
     newReports[targetDate] = updatedDayData;
 

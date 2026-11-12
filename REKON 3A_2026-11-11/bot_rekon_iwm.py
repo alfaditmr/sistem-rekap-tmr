@@ -102,6 +102,8 @@ def proses_tarik_data_iwm(tanggal_target):
             "motor": 0, "sepeda": 0
         },
         "laporan_diskon": [],
+        # Rincian asli 'Rekap Pendapatan Perlokasi' per baris lokasi (format DATA PENGUNJUNG IWM)
+        "rekap_perlokasi": [],
         "settlement": {
             "status": "Total Transaksi Approve",
             "jumlah_transaksi": 0,
@@ -206,6 +208,20 @@ def proses_tarik_data_iwm(tanggal_target):
             g3_rp = clean_number(cells[6])
             motor_rp = clean_number(cells[7])
             sepeda_rp = clean_number(cells[8])
+
+            # Simpan rincian asli per lokasi (termasuk baris bernilai 0) untuk bukti cetak Old Gate
+            hasil_scraping["rekap_perlokasi"].append({
+                "no": cells[0],
+                "lokasi": cells[1],
+                "anak": anak_rp,
+                "dewasa": dewasa_rp,
+                "gol_i": g1_rp,
+                "gol_ii": g2_rp,
+                "gol_iii": g3_rp,
+                "motor": motor_rp,
+                "sepeda": sepeda_rp,
+                "total": clean_number(cells[9]) if len(cells) > 9 else (anak_rp + dewasa_rp + g1_rp + g2_rp + g3_rp + motor_rp + sepeda_rp)
+            })
 
             if "primata" in lokasi or "schmutzer" in lokasi:
                 hasil_scraping["pusat_primata"]["anak"] += anak_rp

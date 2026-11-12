@@ -381,6 +381,8 @@ export const fetchBotIwmData = async (ipAddress, targetDate) => {
   const iData = responseJson.data;
   diskonData = iData.laporan_diskon || [];
   const settlement = iData.settlement || null;
+  // Rincian asli Rekap Pendapatan Perlokasi IWM (untuk bukti cetak format DATA PENGUNJUNG Old Gate)
+  const perlokasi = Array.isArray(iData.rekap_perlokasi) ? iData.rekap_perlokasi : [];
   
   let deductAlAnak = 0;
   let deductAlDewasa = 0;
@@ -474,5 +476,5 @@ export const fetchBotIwmData = async (ipAddress, targetDate) => {
     }
   });
 
-  return { fetchedData, diskonData, settlement };
+  return { fetchedData, diskonData, settlement, perlokasi };
 };
