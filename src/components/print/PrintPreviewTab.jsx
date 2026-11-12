@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileText, Printer, RefreshCw, Download, FileSpreadsheet } from 'lucide-react';
 import DraggableElement from './DraggableElement';
 import FormatPemasaranReport from './FormatPemasaranReport';
@@ -46,7 +46,17 @@ export default function PrintPreviewTab({
   handleSignatureDateChange,
   isMonthClosed = false
 }) {
-  const [reportFormat, setReportFormat] = useState('pemasaran');
+  const [reportFormat, setReportFormat] = useState(() => (printMode === 'ncr' ? 'ncr' : 'pemasaran'));
+
+  // Sinkronisasi reportFormat saat printMode berubah dari luar
+  useEffect(() => {
+    if (printMode === 'ncr') {
+      setReportFormat('ncr');
+      if (!selectedNcrGroup && activeGroups.length > 0) {
+        setSelectedNcrGroup(activeGroups[0]);
+      }
+    }
+  }, [printMode, activeGroups, selectedNcrGroup, setSelectedNcrGroup]);
 
   if (activeTab !== 'print') return null;
 
@@ -80,7 +90,7 @@ export default function PrintPreviewTab({
             ) : (
               <>
                 <Printer size={20} className="text-purple-600" />
-                Mode Cetak NCR: {safeString(selectedNcrGroup?.name)}
+                Mode Cetak NCR: {safeString(selectedNcrGroup?.name || 'Pilih Kategori')}
               </>
             )}
           </h2>
@@ -128,13 +138,10 @@ export default function PrintPreviewTab({
           ) : (
             <>
               <button
-                onClick={() => {
-                  setPrintMode('pdf');
-                  setSelectedNcrGroup(null);
-                }}
+                onClick={() => setActiveTab('input')}
                 className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex-1 sm:flex-none hover:bg-gray-200 transition-colors text-sm"
               >
-                Kembali ke PDF
+                Kembali Edit
               </button>
               <button
                 onClick={handlePrint}
@@ -147,18 +154,22 @@ export default function PrintPreviewTab({
         </div>
       </div>
 
-      {/* PILIHAN FORMAT CETAK PDF: FORMAT BARU PEMASARAN VS FORMAT STANDAR */}
-      {printMode === 'pdf' && (
-        <div className="flex flex-wrap items-center gap-2 mb-6 no-print">
+      {/* BARISAN PILIHAN FORMAT LAPORAN (TERMASUK CETAK NCR RANGKAP 3) */}
+      <div className="space-y-3 mb-6 no-print">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-gray-500 uppercase tracking-wider mr-1">
             Pilihan Format Laporan:
           </span>
-          <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-xs">
+          <div className="inline-flex flex-wrap rounded-xl border border-gray-200 bg-white p-1 shadow-xs gap-1">
             <button
               type="button"
-              onClick={() => setReportFormat('pemasaran')}
+              onClick={() => {
+                setReportFormat('pemasaran');
+                setPrintMode('pdf');
+                setSelectedNcrGroup(null);
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all ${
-                reportFormat === 'pemasaran'
+                printMode === 'pdf' && reportFormat === 'pemasaran'
                   ? 'bg-blue-600 text-white shadow-xs scale-102'
                   : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
               }`}
@@ -167,9 +178,13 @@ export default function PrintPreviewTab({
             </button>
             <button
               type="button"
-              onClick={() => setReportFormat('standar')}
+              onClick={() => {
+                setReportFormat('standar');
+                setPrintMode('pdf');
+                setSelectedNcrGroup(null);
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all ${
-                reportFormat === 'standar'
+                printMode === 'pdf' && reportFormat === 'standar'
                   ? 'bg-green-600 text-white shadow-xs scale-102'
                   : 'text-gray-600 hover:text-green-600 hover:bg-green-50'
               }`}
@@ -178,9 +193,13 @@ export default function PrintPreviewTab({
             </button>
             <button
               type="button"
-              onClick={() => setReportFormat('dinas')}
+              onClick={() => {
+                setReportFormat('dinas');
+                setPrintMode('pdf');
+                setSelectedNcrGroup(null);
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all ${
-                reportFormat === 'dinas'
+                printMode === 'pdf' && reportFormat === 'dinas'
                   ? 'bg-amber-600 text-white shadow-xs scale-102'
                   : 'text-gray-600 hover:text-amber-600 hover:bg-amber-50'
               }`}
@@ -189,40 +208,77 @@ export default function PrintPreviewTab({
             </button>
             <button
               type="button"
-              onClick={() => setReportFormat('rekon_channel')}
+              onClick={() => {
+                setReportFormat('rekon_channel');
+                setPrintMode('pdf');
+                setSelectedNcrGroup(null);
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all ${
-                reportFormat === 'rekon_channel'
+                printMode === 'pdf' && reportFormat === 'rekon_channel'
                   ? 'bg-purple-600 text-white shadow-xs scale-102'
                   : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
               }`}
             >
               <FileSpreadsheet size={15} /> Format STSU & Rekon Channel (2 Lembar)
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setReportFormat('ncr');
+                setPrintMode('ncr');
+                if (!selectedNcrGroup && activeGroups.length > 0) {
+                  setSelectedNcrGroup(activeGroups[0]);
+                }
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all ${
+                printMode === 'ncr' || reportFormat === 'ncr'
+                  ? 'bg-purple-700 text-white shadow-xs scale-102'
+                  : 'text-gray-600 hover:text-purple-700 hover:bg-purple-50'
+              }`}
+            >
+              <Printer size={15} /> Cetak NCR Kertas Rangkap 3
+            </button>
           </div>
         </div>
-      )}
 
-      {printMode === 'pdf' && activeGroups.length > 0 && (
-        <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 mb-6 no-print">
-          <h3 className="font-bold text-purple-900 mb-2 flex items-center gap-2 text-sm">
-            <Printer size={16} /> Cetak NCR Kertas Rangkap 3 (Per Kategori)
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {activeGroups.map((group) => (
-              <button
-                key={group.groupId}
-                onClick={() => {
-                  setSelectedNcrGroup(group);
-                  setPrintMode('ncr');
-                }}
-                className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-2 transition-transform hover:scale-105"
-              >
-                🖨️ Kategori: {safeString(group.name)}
-              </button>
-            ))}
+        {/* SUB-MENU PILIHAN KATEGORI KETIKA MODE CETAK NCR AKTIF */}
+        {(printMode === 'ncr' || reportFormat === 'ncr') && (
+          <div className="bg-purple-50/90 p-3.5 rounded-xl border border-purple-200 shadow-2xs animate-in fade-in">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-purple-900 flex items-center gap-1.5 mr-1">
+                <Printer size={14} /> Pilih Kategori NCR:
+              </span>
+              {activeGroups.length > 0 ? (
+                activeGroups.map((group) => {
+                  const isSelected = selectedNcrGroup?.groupId === group.groupId;
+                  return (
+                    <button
+                      key={group.groupId}
+                      type="button"
+                      onClick={() => {
+                        setSelectedNcrGroup(group);
+                        setPrintMode('ncr');
+                        setReportFormat('ncr');
+                      }}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-2xs ${
+                        isSelected
+                          ? 'bg-purple-700 text-white ring-2 ring-purple-300 scale-102'
+                          : 'bg-white text-purple-900 border border-purple-200 hover:bg-purple-100'
+                      }`}
+                    >
+                      <span>🖨️ Kategori: {safeString(group.name)}</span>
+                    </button>
+                  );
+                })
+              ) : (
+                <span className="text-xs text-purple-700 italic">
+                  Tidak ada kategori transaksi aktif pada tanggal ini.
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {printMode === 'pdf' ? (
         reportFormat === 'pemasaran' ? (
