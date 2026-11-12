@@ -293,7 +293,22 @@ export const fetchBot3aData = async (ipAddress, targetDate) => {
   if (responseJson.status !== 'success') throw new Error(responseJson.message);
   
   if (responseJson.rekon_data) {
-    const channelSummaries = responseJson.channel_summaries || responseJson.summary || null;
+    const rawSummaries = responseJson.channel_summaries || responseJson.summary || null;
+    let channelSummaries = null;
+    if (rawSummaries && typeof rawSummaries === 'object') {
+      channelSummaries = {};
+      Object.keys(rawSummaries).forEach(chKey => {
+        const s = rawSummaries[chKey];
+        if (s && typeof s === 'object') {
+          channelSummaries[chKey] = {
+            channelName: s.channelName || chKey,
+            transactionQty: Number(s.transactionQty) || 0,
+            totalTiket: Number(s.totalTiket) || 0,
+            totalNominal: Number(s.totalNominal) || 0
+          };
+        }
+      });
+    }
     return { fetchedData: process3aData(responseJson.rekon_data, targetDate), diskonData: [], channelSummaries };
   }
   return { fetchedData: [], diskonData: [], channelSummaries: null };

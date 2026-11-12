@@ -1052,6 +1052,74 @@ export default function App() {
   const bankPartitionsCacheRef = useRef({});
   const reportPartitionsCacheRef = useRef({});
   const masterBackupTimerRef = useRef(null);
+  const dirtyReportMonthsRef = useRef(getInitialState('tmr_v19_dirtyReportMonths', {}));
+
+  const hasDayReportContent = (dayData) => {
+    if (!dayData || typeof dayData !== 'object') return false;
+    if (dayData.rekon3aSummary || dayData.rekonIwmSettlement || (Array.isArray(dayData.rekonIwmRombongan) && dayData.rekonIwmRombongan.length > 0)) {
+      return true;
+    }
+    return Object.keys(dayData).some(k => {
+      const docData = dayData[k];
+      if (!docData || typeof docData !== 'object') return false;
+      if (Array.isArray(docData.activeItems) && docData.activeItems.length > 0) return true;
+      if (docData.formData && Object.values(docData.formData).some(v => Number(v) > 0)) return true;
+      return false;
+    });
+  };
+
+  // Gabungkan laporan lokal yang tersimpan saat offline agar tidak pernah tertimpa data Cloud lama
+  const mergeOfflineReportsWithCloud = (localReports = {}, cloudReports = {}) => {
+    const merged = { ...(cloudReports || {}) };
+    let hasUnsyncedLocal = false;
+    const dirtyMonths = { ...(dirtyReportMonthsRef.current || {}) };
+
+    Object.keys(localReports || {}).forEach(dateKey => {
+      const localDay = localReports[dateKey];
+      if (!hasDayReportContent(localDay)) return;
+
+      const cloudDay = merged[dateKey];
+      const monthKey = getPartitionMonth(dateKey);
+      const isDirtyMonth = Boolean(dirtyMonths[monthKey]);
+
+      if (!hasDayReportContent(cloudDay) || isDirtyMonth) {
+        merged[dateKey] = {
+          ...(cloudDay || {}),
+          ...localDay
+        };
+        dirtyMonths[monthKey] = true;
+        hasUnsyncedLocal = true;
+      } else if (cloudDay && typeof cloudDay === 'object') {
+        // Pertahankan metadata bot 3A / IWM lokal jika di Cloud belum ada
+        let metaMerged = false;
+        const nextDay = { ...cloudDay };
+        if (localDay.rekon3aSummary && !nextDay.rekon3aSummary) {
+          nextDay.rekon3aSummary = localDay.rekon3aSummary;
+          metaMerged = true;
+        }
+        if (localDay.rekonIwmSettlement && !nextDay.rekonIwmSettlement) {
+          nextDay.rekonIwmSettlement = localDay.rekonIwmSettlement;
+          metaMerged = true;
+        }
+        if (Array.isArray(localDay.rekonIwmRombongan) && localDay.rekonIwmRombongan.length > 0 && !nextDay.rekonIwmRombongan) {
+          nextDay.rekonIwmRombongan = localDay.rekonIwmRombongan;
+          metaMerged = true;
+        }
+        if (metaMerged) {
+          merged[dateKey] = nextDay;
+          dirtyMonths[monthKey] = true;
+          hasUnsyncedLocal = true;
+        }
+      }
+    });
+
+    if (hasUnsyncedLocal) {
+      dirtyReportMonthsRef.current = dirtyMonths;
+      safeSetLocalStorage('tmr_v19_dirtyReportMonths', dirtyMonths);
+    }
+
+    return { mergedReports: merged, hasUnsyncedLocal };
+  };
 
   // Cadangan master cold-storage berjalan di latar belakang saat idle (60 detik)
   // Menjaga agar jaringan HP/PC tetap 100% bebas hambatan (< 0.5s) saat interaksi
@@ -1107,9 +1175,25 @@ export default function App() {
     lastLocalUpdatedRef.current = nowIso;
     lastLocalSaveTimeRef.current = Date.now();
 
-    // 3. Simpan ke LocalStorage seketika hanya sebagai cache tampilan / cadangan offline
-    if (updates.allReports !== undefined) safeSetLocalStorage('tmr_v19_allReports', nextReports);
-    if (updates.bankRows !== undefined) safeSetLocalStorage('tmr_v19_bankRows', nextBankRows);
+    // 3. Simpan ke LocalStorage seketika & update cache partisi lokal SEBELUM push ke Cloud
+    // agar jika jaringan tiba-tiba offline, data lokal tetap 100% aman dan tidak tertimpa listener Cloud
+    if (updates.allReports !== undefined) {
+      safeSetLocalStorage('tmr_v19_allReports', nextReports);
+      const immediateRepPartitions = partitionReportsByMonth(nextReports);
+      reportPartitionsCacheRef.current = immediateRepPartitions;
+      const nextDirty = { ...(dirtyReportMonthsRef.current || {}) };
+      Object.keys(immediateRepPartitions).forEach(m => {
+        if (JSON.stringify(immediateRepPartitions[m]) !== previousReportMonthsRef.current[m]) {
+          nextDirty[m] = true;
+        }
+      });
+      dirtyReportMonthsRef.current = nextDirty;
+      safeSetLocalStorage('tmr_v19_dirtyReportMonths', nextDirty);
+    }
+    if (updates.bankRows !== undefined) {
+      safeSetLocalStorage('tmr_v19_bankRows', nextBankRows);
+      bankPartitionsCacheRef.current = partitionBankRowsByMonth(nextBankRows);
+    }
     if (updates.signatures !== undefined) safeSetLocalStorage('tmr_v19_signatures', nextSigs);
     if (updates.categories !== undefined) safeSetLocalStorage('tmr_v19_categories', nextCats);
     if (updates.targets !== undefined) safeSetLocalStorage('tmr_v19_targets', nextTargets);
@@ -1158,19 +1242,20 @@ export default function App() {
           });
         }
 
-        // Deteksi bulan laporan STSU yang mengalami perubahan
+        // Deteksi bulan laporan STSU yang mengalami perubahan (termasuk yang tertunda saat offline)
         const changedReportMonths = forceAll
           ? Object.keys(newReportPartitions)
           : [];
         if (!forceAll) {
           const allReportMonthKeys = new Set([
             ...Object.keys(newReportPartitions),
-            ...Object.keys(previousReportMonthsRef.current)
+            ...Object.keys(previousReportMonthsRef.current),
+            ...Object.keys(dirtyReportMonthsRef.current || {})
           ]);
           allReportMonthKeys.forEach(m => {
             const rep = newReportPartitions[m] || {};
             const hash = JSON.stringify(rep);
-            if (hash !== previousReportMonthsRef.current[m]) {
+            if (hash !== previousReportMonthsRef.current[m] || dirtyReportMonthsRef.current?.[m]) {
               changedReportMonths.push(m);
             }
           });
@@ -1236,9 +1321,13 @@ export default function App() {
           changedBankMonths.forEach(m => {
             previousBankMonthsRef.current[m] = JSON.stringify(newBankPartitions[m] || []);
           });
+          const remainingDirty = { ...(dirtyReportMonthsRef.current || {}) };
           changedReportMonths.forEach(m => {
             previousReportMonthsRef.current[m] = JSON.stringify(newReportPartitions[m] || {});
+            delete remainingDirty[m];
           });
+          dirtyReportMonthsRef.current = remainingDirty;
+          safeSetLocalStorage('tmr_v19_dirtyReportMonths', remainingDirty);
           if (configChanged) {
             previousConfigRef.current = configHash;
           }
@@ -1257,7 +1346,7 @@ export default function App() {
       } catch (err) {
         console.error("Firestore partitioned push error:", err);
         setSyncStatus('offline');
-        showToast("Peringatan: Gagal sinkron ke Cloud: " + (err.message || err));
+        showToast("Data tersimpan aman di perangkat lokal (Offline). Akan disinkronkan saat koneksi pulih.");
       } finally {
         isSavingRef.current = false;
       }
@@ -1660,9 +1749,12 @@ export default function App() {
           } catch (e) { }
         }
 
-        // 4. Fallback ke state lokal jika database cloud benar-benar baru
+        // 4. Fallback & Merge data lokal yang tersimpan saat offline agar tidak pernah hilang
         if (Object.keys(loadedReports).length === 0) {
           loadedReports = stateRef.current.allReports || {};
+        } else {
+          const { mergedReports } = mergeOfflineReportsWithCloud(stateRef.current.allReports || {}, loadedReports);
+          loadedReports = mergedReports;
         }
         if (loadedBankRows.length === 0) {
           loadedBankRows = stateRef.current.bankRows || [];
@@ -1773,20 +1865,28 @@ export default function App() {
           );
 
           await Promise.all(seedPromises);
+          dirtyReportMonthsRef.current = {};
+          safeSetLocalStorage('tmr_v19_dirtyReportMonths', {});
           console.log(`Auto-migration complete! Sharded ${Object.keys(bankPartitions).length} bank months and ${Object.keys(repPartitions).length} report months.`);
-        } else if (wasReconciled) {
-          // Simpan partisi yang baru saja dipulihkan oleh auto-heal ke Firestore
+        } else if (wasReconciled || Object.keys(dirtyReportMonthsRef.current || {}).length > 0) {
+          // Simpan partisi yang baru saja dipulihkan oleh auto-heal atau dari antrean offline ke Firestore
           const healPromises = [];
           const nowIso = new Date().toISOString();
+          const syncedDirty = { ...(dirtyReportMonthsRef.current || {}) };
           Object.keys(repPartitions).forEach(m => {
-            if (JSON.stringify(repPartitions[m]) !== JSON.stringify(rawRepPartitionsBeforeHeal[m] || {})) {
+            if (
+              syncedDirty[m] ||
+              JSON.stringify(repPartitions[m]) !== JSON.stringify(rawRepPartitionsBeforeHeal[m] || {})
+            ) {
               healPromises.push(
                 setDoc(doc(db, 'tmr_report_months', m), sanitizeForFirestore({
                   month: m,
                   reports: repPartitions[m],
                   lastWriterId: CLIENT_ID,
                   lastUpdated: nowIso
-                }))
+                })).then(() => {
+                  delete syncedDirty[m];
+                })
               );
             }
           });
@@ -1803,7 +1903,12 @@ export default function App() {
             }
           });
           if (healPromises.length > 0) {
-            Promise.all(healPromises).catch(e => console.warn("Auto-heal sync warning:", e));
+            Promise.all(healPromises)
+              .then(() => {
+                dirtyReportMonthsRef.current = syncedDirty;
+                safeSetLocalStorage('tmr_v19_dirtyReportMonths', syncedDirty);
+              })
+              .catch(e => console.warn("Auto-heal / offline sync warning:", e));
           }
         }
 
@@ -1858,10 +1963,20 @@ export default function App() {
 
             const monthKey = change.doc.id;
             if (change.type === 'removed') {
-              delete reportPartitionsCacheRef.current[monthKey];
-              hasExternalChange = true;
+              if (!dirtyReportMonthsRef.current?.[monthKey]) {
+                delete reportPartitionsCacheRef.current[monthKey];
+                hasExternalChange = true;
+              }
             } else if (change.type === 'added' || change.type === 'modified') {
-              reportPartitionsCacheRef.current[monthKey] = data.reports || {};
+              const incomingReports = data.reports || {};
+              if (dirtyReportMonthsRef.current?.[monthKey]) {
+                // Jangan timpa laporan lokal di bulan ini yang sedang menunggu sinkronisasi offline
+                const localMonthReports = reportPartitionsCacheRef.current[monthKey] || {};
+                const { mergedReports: safeMonth } = mergeOfflineReportsWithCloud(localMonthReports, incomingReports);
+                reportPartitionsCacheRef.current[monthKey] = safeMonth;
+              } else {
+                reportPartitionsCacheRef.current[monthKey] = incomingReports;
+              }
               hasExternalChange = true;
             }
           });
@@ -1875,7 +1990,10 @@ export default function App() {
             setAllReports(mergedReports);
             safeSetLocalStorage('tmr_v19_allReports', mergedReports);
             snapshot.docChanges().forEach(change => {
-              previousReportMonthsRef.current[change.doc.id] = JSON.stringify(change.doc.data().reports || {});
+              const mKey = change.doc.id;
+              if (!dirtyReportMonthsRef.current?.[mKey]) {
+                previousReportMonthsRef.current[mKey] = JSON.stringify(change.doc.data().reports || {});
+              }
             });
             setSyncStatus('synced');
           }
@@ -1990,6 +2108,13 @@ export default function App() {
         }
       }
 
+      // Gabungkan laporan lokal yang tersimpan saat offline agar tidak terhapus saat pull Cloud
+      const { mergedReports: mergedWithOffline, hasUnsyncedLocal } = mergeOfflineReportsWithCloud(
+        stateRef.current.allReports || {},
+        loadedReports
+      );
+      loadedReports = mergedWithOffline;
+
       loadedBankRows = ensureBankRowIds(loadedBankRows);
       const rawBankPartitionsBeforeHeal = partitionBankRowsByMonth(loadedBankRows);
       const rawRepPartitionsBeforeHeal = partitionReportsByMonth(loadedReports);
@@ -2035,18 +2160,24 @@ export default function App() {
         closedMonths: loadedClosedMonths
       });
 
-      if (cloudMod) {
+      if (cloudMod || hasUnsyncedLocal) {
         const healPromises = [];
         const nowIso = new Date().toISOString();
+        const syncedDirty = { ...(dirtyReportMonthsRef.current || {}) };
         Object.keys(repPartitions).forEach(m => {
-          if (JSON.stringify(repPartitions[m]) !== JSON.stringify(rawRepPartitionsBeforeHeal[m] || {})) {
+          if (
+            syncedDirty[m] ||
+            JSON.stringify(repPartitions[m]) !== JSON.stringify(rawRepPartitionsBeforeHeal[m] || {})
+          ) {
             healPromises.push(
               setDoc(doc(db, 'tmr_report_months', m), sanitizeForFirestore({
                 month: m,
                 reports: repPartitions[m],
                 lastWriterId: CLIENT_ID,
                 lastUpdated: nowIso
-              }))
+              })).then(() => {
+                delete syncedDirty[m];
+              })
             );
           }
         });
@@ -2063,7 +2194,12 @@ export default function App() {
           }
         });
         if (healPromises.length > 0) {
-          Promise.all(healPromises).catch(e => console.warn("Cloud pull auto-heal sync warning:", e));
+          Promise.all(healPromises)
+            .then(() => {
+              dirtyReportMonthsRef.current = syncedDirty;
+              safeSetLocalStorage('tmr_v19_dirtyReportMonths', syncedDirty);
+            })
+            .catch(e => console.warn("Cloud pull auto-heal sync warning:", e));
         }
       }
 
@@ -2095,16 +2231,26 @@ export default function App() {
       // Saat tab kembali dibuka setelah lama tidak aktif (> 60 detik), sinkronkan data terbaru dari server
       const now = Date.now();
       if (document.visibilityState === 'visible' && user && db && !isSavingRef.current) {
-        if (now - lastWakeupSyncRef.current > 60000) {
+        if (Object.keys(dirtyReportMonthsRef.current || {}).length > 0) {
+          saveState({}, { immediate: true });
+        } else if (now - lastWakeupSyncRef.current > 60000) {
           lastWakeupSyncRef.current = now;
           pullLatestFromCloud();
         }
       }
     };
+    const handleOnlineReconnect = () => {
+      if (user && db && !isSavingRef.current) {
+        saveState({}, { immediate: true });
+      }
+    };
     document.addEventListener('visibilitychange', handleWakeup);
+    window.addEventListener('online', handleOnlineReconnect);
     return () => {
       document.removeEventListener('visibilitychange', handleWakeup);
+      window.removeEventListener('online', handleOnlineReconnect);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
 
@@ -2814,14 +2960,15 @@ export default function App() {
   // 🔴 FUNGSI INJEKSI & AGREGASI PENGGABUNGAN TIKET SAMA
   // ==========================================
   const confirmTransitInjection = () => {
-    if (isMonthClosed(reportDate)) {
+    const targetDate = transitModal.targetDate || reportDate;
+    if (isMonthClosed(targetDate)) {
       showToast('Periode bulan ini telah TUTUP BUKU. Data tidak dapat disuntikkan.');
       return;
     }
     const baseReports = stateRef.current.allReports;
     const newReports = JSON.parse(JSON.stringify(baseReports));
-    const dayData = newReports[reportDate] || {};
-    const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: reportDate, activeItems: [], formData: {} };
+    const dayData = newReports[targetDate] || {};
+    const typeData = dayData[activeTypeKey] || { sequence: '', signatureDate: targetDate, activeItems: [], formData: {} };
 
     const baseBankRows = stateRef.current.bankRows;
     let newBankRows = baseBankRows;
@@ -2886,8 +3033,11 @@ export default function App() {
       ...(transitModal.settlement ? { rekonIwmSettlement: transitModal.settlement } : {}),
       ...(transitModal.iwmDiskon && transitModal.iwmDiskon.length > 0 ? { rekonIwmRombongan: transitModal.iwmDiskon } : {})
     };
-    newReports[reportDate] = updatedDayData;
+    newReports[targetDate] = updatedDayData;
 
+    if (targetDate !== reportDate) {
+      setReportDate(targetDate);
+    }
     setAllReports(newReports);
     saveToFirebaseDirectly(newReports, newBankRows);
 

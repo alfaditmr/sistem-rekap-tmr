@@ -14,15 +14,28 @@ export const safeString = (val) => {
 };
 
 /**
- * Sanitasi payload untuk Firestore (mencegah error value 'undefined')
+ * Sanitasi payload untuk Firestore (mencegah error value 'undefined' & 'Nested arrays are not supported')
  */
 export const sanitizeForFirestore = (data) => {
   if (data === undefined) return null;
   
-  // 1. Bersihkan undefined, string data: URI, blob:, dan sampah base64 gambar raksasa (> 500 karakter non-URL atau > 3000 karakter).
+  // 1. Bersihkan undefined, raw tabel 2D (nested arrays), string data: URI, blob:, dan sampah base64 gambar raksasa.
   // Menjaga agar link bukti transfer valid (Google Drive, Cloud Storage, dll) tetap aman dan tidak terpotong.
   let sanitized = JSON.parse(JSON.stringify(data, (key, value) => {
     if (value === undefined) return null;
+    // Hapus tabel mentah 2D dari bot 3A jika sempat tersimpan agar tidak memicu error Nested Arrays di Firestore
+    if (key === 'rawSummaryTable' || key === 'rawTicketTable') {
+      return undefined;
+    }
+    // Firestore melarang keras Array di dalam Array (Nested Arrays): ubah sub-array menjadi objek atau string
+    if (Array.isArray(value)) {
+      return value.map(item => {
+        if (Array.isArray(item)) {
+          return item.join(' | ');
+        }
+        return item;
+      });
+    }
     if (typeof value === 'string') {
       const trimmed = value.trim();
       const isHttpUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://');

@@ -18,3 +18,5 @@ format laporan/
 
 .antigravityignore
 .geminiignore
+*.exe
+build_tmp*/

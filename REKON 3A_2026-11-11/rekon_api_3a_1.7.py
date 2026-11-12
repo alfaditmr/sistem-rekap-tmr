@@ -359,9 +359,7 @@ def proses_tarik_data(tanggal_rekon_str):
                 "channelName": disp,
                 "transactionQty": trx_qty,
                 "totalTiket": total_tiket,
-                "totalNominal": final_nominal,
-                "rawSummaryTable": channel_summary_data,
-                "rawTicketTable": raw_table_data
+                "totalNominal": final_nominal
             }
             print(f"   ✅ [{disp}] Transaction Qty: {trx_qty} | Total Tiket: {total_tiket} | Nominal: Rp {final_nominal:,.0f}")
 
