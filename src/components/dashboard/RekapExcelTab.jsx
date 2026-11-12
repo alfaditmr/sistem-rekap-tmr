@@ -319,6 +319,8 @@ export default function RekapExcelTab({
     const isEcarTarget =
       lowerTarget.includes('ecar') ||
       lowerTarget.includes('e-car') ||
+      lowerTarget.includes('golf car') ||
+      lowerTarget.includes('golfcar') ||
       lowerTarget.includes('mobil listrik');
     const isFotoTarget = lowerTarget.includes('foto');
 
@@ -326,7 +328,7 @@ export default function RekapExcelTab({
     const isOnlineTarget = lowerTarget.includes('online') || lowerTarget.includes('merchant');
     const isTvmTarget = lowerTarget.includes('tvm') || lowerTarget.includes('vending') || lowerTarget.includes('vinding');
     const isNewGateTarget = lowerTarget.includes('new gate') || (lowerTarget.includes('gate') && !isOldGateTarget);
-    const isChannelTarget = isOldGateTarget || isOnlineTarget || isTvmTarget || isNewGateTarget;
+    const isChannelTarget = isOldGateTarget || isOnlineTarget || isTvmTarget || isNewGateTarget || isEcarTarget || isFotoTarget;
 
     // 1. Identifikasi ID kategori yang cocok dari master categories
     const matchingCatIds = new Set();
@@ -535,6 +537,12 @@ export default function RekapExcelTab({
         trxQty = Number(rekon3a?.TVM?.transactionQty || 0);
       } else if (isOnlineTarget) {
         trxQty = Number(rekon3a?.MERCHANT_PAGE?.transactionQty || 0);
+      } else if (isEcarTarget) {
+        // E-Car (Golf Car): 1 kali transaksi = Rp 250.000 (misal Rp 1.000.000 = 4 Trx)
+        trxQty = slot.dailyNominal > 0 ? Math.round(slot.dailyNominal / 250000) : 0;
+      } else if (isFotoTarget) {
+        // Foto Satwa: 1 kali transaksi = Rp 5.000 (misal Rp 500.000 = 100 Trx)
+        trxQty = slot.dailyNominal > 0 ? Math.round(slot.dailyNominal / 5000) : 0;
       }
 
       let formattedPelimpahan = '';

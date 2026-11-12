@@ -167,6 +167,17 @@ export const extractChannelData = (dateStr, allReports = {}, categories = []) =>
   if (onlineNom === 0 && rekon3a?.MERCHANT_PAGE?.totalNominal) onlineNom = Number(rekon3a.MERCHANT_PAGE.totalNominal);
   if (tvmNom === 0 && rekon3a?.TVM?.totalNominal) tvmNom = Number(rekon3a.TVM.totalNominal);
 
+  // Logic Khusus Ketentuan Transaksi TMR:
+  // 1. E-Car (Golf Car): 1 kali transaksi = Rp 250.000 (contoh: Rp 500.000 = 2 Trx, Rp 1.000.000 = 4 Trx)
+  if (golfCarNom > 0) {
+    golfCarTrx = Math.round(golfCarNom / 250000);
+  }
+
+  // 2. Foto Satwa: 1 kali transaksi = Rp 5.000 (contoh: Rp 500.000 = 100 Trx, Rp 425.000 = 85 Trx)
+  if (fotoSatwaNom > 0) {
+    fotoSatwaTrx = Math.round(fotoSatwaNom / 5000);
+  }
+
   return {
     dateStr,
     oldGate: { trx: oldGateTrx, nominal: oldGateNom },
@@ -272,14 +283,25 @@ export default function PelimpahanBankModal({
     setCustomData((prev) => {
       const dayData = prev[dateStr] || {};
       const channelData = dayData[channelKey] || {};
+      const nextChannel = {
+        ...channelData,
+        [field]: isNaN(num) ? 0 : num
+      };
+
+      // Auto update Trx jika nominal E-Car (250rb) atau Foto Satwa (5rb) diubah
+      if (field === 'nominal') {
+        if (channelKey === 'golfCar') {
+          nextChannel.trx = Math.round((isNaN(num) ? 0 : num) / 250000);
+        } else if (channelKey === 'fotoSatwa') {
+          nextChannel.trx = Math.round((isNaN(num) ? 0 : num) / 5000);
+        }
+      }
+
       return {
         ...prev,
         [dateStr]: {
           ...dayData,
-          [channelKey]: {
-            ...channelData,
-            [field]: isNaN(num) ? 0 : num
-          }
+          [channelKey]: nextChannel
         }
       };
     });
@@ -380,12 +402,15 @@ export default function PelimpahanBankModal({
       // -------------------------------------------------------------
       // FORMAT REKON PELIMPAHAN 1:
       // Grouping per channel: TMR OLD GATE, TMR NEW GATE, Golf Car, Foto Satwa
+      // (Format langsung tanpa 'rekon pelimpahan 1 >>' dan kosong tidak ditulis)
       // -------------------------------------------------------------
       const formatTrxRp = (trx, rp) => {
         const trxFormatted = Number(trx || 0).toLocaleString('id-ID');
         const rpFormatted = Number(rp || 0).toLocaleString('id-ID');
         return `( ${trxFormatted} Trx / Rp. ${rpFormatted} )`;
       };
+
+      const sections = [];
 
       // 1. TMR OLD GATE
       const linesOldGate = sortedDates
@@ -397,6 +422,9 @@ export default function PelimpahanBankModal({
           const row = aggregatedData[d].oldGate;
           return `${formatDateIndo(d)} ${formatTrxRp(row.trx, row.nominal)}`;
         });
+      if (linesOldGate.length > 0) {
+        sections.push(`TMR OLD GATE\n${linesOldGate.join('\n')}`);
+      }
 
       // 2. TMR NEW GATE
       const linesNewGate = sortedDates
@@ -408,8 +436,11 @@ export default function PelimpahanBankModal({
           const row = aggregatedData[d].newGate;
           return `${formatDateIndo(d)} ${formatTrxRp(row.trx, row.nominal)}`;
         });
+      if (linesNewGate.length > 0) {
+        sections.push(`TMR NEW GATE\n${linesNewGate.join('\n')}`);
+      }
 
-      // 3. Golf Car
+      // 3. Golf Car (E-Car: 250rb / Trx)
       const linesGolfCar = sortedDates
         .filter((d) => {
           const row = aggregatedData[d]?.golfCar;
@@ -419,8 +450,11 @@ export default function PelimpahanBankModal({
           const row = aggregatedData[d].golfCar;
           return `${formatDateIndo(d)} ${formatTrxRp(row.trx, row.nominal)}`;
         });
+      if (linesGolfCar.length > 0) {
+        sections.push(`Golf Car\n${linesGolfCar.join('\n')}`);
+      }
 
-      // 4. Foto Satwa
+      // 4. Foto Satwa (5rb / Trx)
       const linesFotoSatwa = sortedDates
         .filter((d) => {
           const row = aggregatedData[d]?.fotoSatwa;
@@ -430,29 +464,21 @@ export default function PelimpahanBankModal({
           const row = aggregatedData[d].fotoSatwa;
           return `${formatDateIndo(d)} ${formatTrxRp(row.trx, row.nominal)}`;
         });
+      if (linesFotoSatwa.length > 0) {
+        sections.push(`Foto Satwa\n${linesFotoSatwa.join('\n')}`);
+      }
 
-      let out = `rekon pelimpahan 1 >> TMR OLD GATE\n`;
-      out += linesOldGate.length > 0 ? linesOldGate.join('\n') : 'Tidak ada transaksi';
+      if (sections.length === 0) {
+        return 'Tidak ada transaksi pada tanggal yang dipilih.';
+      }
 
-      out += `\n\nTMR NEW GATE\n`;
-      out += linesNewGate.length > 0 ? linesNewGate.join('\n') : 'Tidak ada transaksi';
-
-      out += `\n\nGolf Car\n`;
-      out += linesGolfCar.length > 0 ? linesGolfCar.join('\n') : 'Tidak ada transaksi';
-
-      out += `\n\nFoto Satwa\n`;
-      out += linesFotoSatwa.length > 0 ? linesFotoSatwa.join('\n') : 'Tidak ada transaksi';
-
-      out += `\n\nSilahkan dilimpahkan\nTerima kasih 🙏`;
-
-      return out;
+      return `${sections.join('\n\n')}\n\nSilahkan dilimpahkan\nTerima kasih 🙏`;
     } else {
       // -------------------------------------------------------------
       // FORMAT REKON PELIMPAHAN 2:
       // Grouping per tanggal: Website Online ( Merchant_Page ) & TVM
+      // (Kosong tidak dituliskan)
       // -------------------------------------------------------------
-      let out = `rekon pelimpahan 2 >> Selamat Siang\n`;
-
       const dateBlocks = [];
       sortedDates.forEach((d) => {
         const online = aggregatedData[d]?.online || { trx: 0, nominal: 0 };
@@ -468,24 +494,26 @@ export default function PelimpahanBankModal({
           return;
         }
 
-        let block = `${formatDateIndo(d)}\n`;
-        block += `Website Online ( Merchant_Page )\n`;
-        block += `${trxOnline.toLocaleString('id-ID')} Trx Rp.${nomOnline.toLocaleString('id-ID')}\n`;
-        block += `Tiket Vending Machine ( TVM )\n`;
-        block += `${trxTvm.toLocaleString('id-ID')} Trx Rp.${nomTvm.toLocaleString('id-ID')}`;
+        const lines = [`${formatDateIndo(d)}`];
 
-        dateBlocks.push(block);
+        if (trxOnline > 0 || nomOnline > 0) {
+          lines.push(`Website Online ( Merchant_Page )`);
+          lines.push(`${trxOnline.toLocaleString('id-ID')} Trx Rp.${nomOnline.toLocaleString('id-ID')}`);
+        }
+
+        if (trxTvm > 0 || nomTvm > 0) {
+          lines.push(`Tiket Vending Machine ( TVM )`);
+          lines.push(`${trxTvm.toLocaleString('id-ID')} Trx Rp.${nomTvm.toLocaleString('id-ID')}`);
+        }
+
+        dateBlocks.push(lines.join('\n'));
       });
 
-      if (dateBlocks.length > 0) {
-        out += `\n` + dateBlocks.join('\n\n');
-      } else {
-        out += `\nTidak ada transaksi pada tanggal yang dipilih.`;
+      if (dateBlocks.length === 0) {
+        return 'Tidak ada transaksi pada tanggal yang dipilih.';
       }
 
-      out += `\n\nSilahkan dilimpahkan\nTerima kasih 🙏`;
-
-      return out;
+      return `Selamat Siang\n\n${dateBlocks.join('\n\n')}\n\nSilahkan dilimpahkan\nTerima kasih 🙏`;
     }
   }, [activeType, sortedDates, aggregatedData]);
 
@@ -1197,3 +1225,4 @@ export default function PelimpahanBankModal({
     </div>
   );
 }
+
