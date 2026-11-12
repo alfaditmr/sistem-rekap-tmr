@@ -369,6 +369,65 @@ export const exportGateRevenueExcel = (data, signatures) => {
 };
 
 // =========================================================================
+// 5B. Ekspor Rekap Transaksi Setiap Channel (Lembar K-2 & Settlement)
+// =========================================================================
+export const exportChannelTransactionRecapExcel = (data, signatures) => {
+  const { year, monthName, rows, totals } = data;
+  let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+  <head>${getHeaderStyles()}</head>
+  <body>
+    <table>
+      <tr><th colspan="10" class="title-main">UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN</th></tr>
+      <tr><th colspan="10" class="title-sub">REKAPITULASI JUMLAH TRANSAKSI & PENJUALAN TIKET SETIAP CHANNEL (LEMBAR K-2)</th></tr>
+      <tr><th colspan="10" class="title-sub">BULAN ${monthName.toUpperCase()} ${year}</th></tr>
+      <tr><th colspan="10" style="border:none; height:10px;"></th></tr>
+      <tr>
+        <th class="th-green">Tgl</th>
+        <th class="th-green">Hari</th>
+        <th class="th-green">New Gate 3A (Trx)</th>
+        <th class="th-green">Vending TVM 3A (Trx)</th>
+        <th class="th-green">Tiket Online 3A (Trx)</th>
+        <th class="th-blue">Subtotal 3A (Trx)</th>
+        <th class="th-blue">Old Gate IWM (Taping)</th>
+        <th class="th-amber">Total Transaksi (Trx)</th>
+        <th class="th-green">Total Tiket/Fisik</th>
+        <th class="th-amber">Total Pendapatan (Rp)</th>
+      </tr>`;
+
+  rows.forEach(r => {
+    html += `<tr>
+      <td class="center">${r.day}</td>
+      <td class="center">${r.dayName}</td>
+      <td class="num">${r.gateTrx > 0 ? r.gateTrx : ''}</td>
+      <td class="num">${r.tvmTrx > 0 ? r.tvmTrx : ''}</td>
+      <td class="num">${r.onlineTrx > 0 ? r.onlineTrx : ''}</td>
+      <td class="num font-bold">${r.subtotal3aTrx > 0 ? r.subtotal3aTrx : ''}</td>
+      <td class="num font-bold">${r.oldGateTrx > 0 ? r.oldGateTrx : ''}</td>
+      <td class="num font-bold">${r.totalTrx > 0 ? r.totalTrx : ''}</td>
+      <td class="num">${r.totalTiket > 0 ? r.totalTiket : ''}</td>
+      <td class="num font-bold">${r.totalNominal > 0 ? formatRp(r.totalNominal) : ''}</td>
+    </tr>`;
+  });
+
+  html += `<tr class="total-row">
+    <td colspan="2" class="center font-bold">TOTAL</td>
+    <td class="num font-bold">${totals.gateTrx}</td>
+    <td class="num font-bold">${totals.tvmTrx}</td>
+    <td class="num font-bold">${totals.onlineTrx}</td>
+    <td class="num font-bold">${totals.subtotal3aTrx}</td>
+    <td class="num font-bold">${totals.oldGateTrx}</td>
+    <td class="num font-bold">${totals.totalTrx}</td>
+    <td class="num font-bold">${totals.totalTiket}</td>
+    <td class="num font-bold">${formatRp(totals.grandTotalNominal)}</td>
+  </tr></table>`;
+
+  html += renderSignatures(signatures);
+  html += `</body></html>`;
+
+  triggerDownload(html, `REKAP TRANSAKSI SETIAP CHANNEL ${year} - ${monthName.toUpperCase()}.xls`);
+};
+
+// =========================================================================
 // 6. Ekspor Rekap STSU Kas Daerah / Jagir (REKAP STSU PENDAPATAN 2026.xls)
 // =========================================================================
 export const exportStsuKasDaerahExcel = (data, signatures) => {

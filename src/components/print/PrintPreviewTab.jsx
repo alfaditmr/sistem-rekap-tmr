@@ -3,6 +3,7 @@ import { FileText, Printer, RefreshCw, Download, FileSpreadsheet } from 'lucide-
 import DraggableElement from './DraggableElement';
 import FormatPemasaranReport from './FormatPemasaranReport';
 import FormatDinasStsuReport from './FormatDinasStsuReport';
+import FormatRekonChannelReport from './FormatRekonChannelReport';
 import {
   safeString,
   terbilang,
@@ -65,6 +66,11 @@ export default function PrintPreviewTab({
                   <FileText size={20} className="text-amber-600" />
                   Format Dinas STSU (Per Kategori)
                 </>
+              ) : reportFormat === 'rekon_channel' ? (
+                <>
+                  <FileSpreadsheet size={20} className="text-purple-600" />
+                  Format STSU & Bukti Rekon Per Channel (2 Lembar)
+                </>
               ) : (
                 <>
                   <FileText size={20} className={activeType === 'utama' ? 'text-green-600' : 'text-purple-600'} />
@@ -95,6 +101,8 @@ export default function PrintPreviewTab({
                       ? `Laporan_STSU_Hasil_Retribusi_Pemasaran_${reportDate}.pdf`
                       : reportFormat === 'dinas'
                       ? `STSU_Format_Dinas_${reportDate}.pdf`
+                      : reportFormat === 'rekon_channel'
+                      ? `STSU_Bukti_Rekon_Channel_${reportDate}.pdf`
                       : undefined
                   )
                 }
@@ -179,6 +187,17 @@ export default function PrintPreviewTab({
             >
               <FileText size={15} /> Format Dinas STSU (Per Kategori)
             </button>
+            <button
+              type="button"
+              onClick={() => setReportFormat('rekon_channel')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all ${
+                reportFormat === 'rekon_channel'
+                  ? 'bg-purple-600 text-white shadow-xs scale-102'
+                  : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
+              }`}
+            >
+              <FileSpreadsheet size={15} /> Format STSU & Rekon Channel (2 Lembar)
+            </button>
           </div>
         </div>
       )}
@@ -231,6 +250,14 @@ export default function PrintPreviewTab({
             onUpdateSequence={handleSequenceChange}
             onUpdateSignatureDate={handleSignatureDateChange}
             isMonthClosed={isMonthClosed}
+          />
+        ) : reportFormat === 'rekon_channel' ? (
+          <FormatRekonChannelReport
+            reportDate={reportDate}
+            currentReport={currentReport}
+            allReports={allReports}
+            categories={categories}
+            signatures={signatures}
           />
         ) : (
           <div

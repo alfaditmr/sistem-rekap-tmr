@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Trash, Database, AlertCircle, RefreshCw, Tag, Save, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Trash, Database, AlertCircle, RefreshCw, Tag, Save, CheckCircle2, AlertTriangle, ShieldCheck, Layers, BarChart3, Users, Ticket } from 'lucide-react';
 import { checkTransitItemTarif, validateIwmDiskonRow } from '../../utils/transitValidation';
 
 /**
@@ -246,39 +246,142 @@ export default function TransitModal({
 
                 {transitModal.data.length === 0 && <div className="p-6 text-center text-gray-500 font-medium">Semua data telah dihapus/dibatalkan dari daftar import.</div>}
 
+                {/* 📊 SUMMARY TRANSAKSI PER CHANNEL DARI BOT 3A (LEMBAR K-2) */}
+                {transitModal.source === '3a' && transitModal.channelSummaries && (
+                  <div className="mt-4 border border-blue-200 rounded-xl overflow-hidden shadow-xs bg-white">
+                    <div className="bg-blue-50 px-3.5 py-2.5 border-b border-blue-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <BarChart3 size={16} className="text-blue-700" />
+                        <span className="font-extrabold text-xs text-blue-900 uppercase">
+                          Rekap Jumlah Transaksi Per Channel (Bot 3A - Lembar K-2)
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-bold text-blue-800 bg-blue-100 border border-blue-300 px-2.5 py-0.5 rounded-full">
+                        Summary by Channel Order
+                      </span>
+                    </div>
+                    <div className="p-3 grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-gray-50/60">
+                      {Object.keys(transitModal.channelSummaries).map(chKey => {
+                        const ch = transitModal.channelSummaries[chKey];
+                        return (
+                          <div key={chKey} className="bg-white p-3 rounded-xl border border-gray-200 shadow-2xs">
+                            <div className="text-[11px] font-black text-gray-700 uppercase tracking-wide truncate">
+                              {ch.channelName || chKey}
+                            </div>
+                            <div className="mt-1 flex items-baseline justify-between">
+                              <span className="text-xs font-bold text-blue-700">
+                                {(ch.transactionQty || 0).toLocaleString('id-ID')} Transaksi
+                              </span>
+                              <span className="text-[11px] text-gray-500 font-medium">
+                                {(ch.totalTiket || 0).toLocaleString('id-ID')} Tiket
+                              </span>
+                            </div>
+                            <div className="mt-1 text-xs font-extrabold text-emerald-700">
+                              Rp {formatRp(ch.totalNominal || 0)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 🛡️ RINGKASAN SETTLEMENT TRANSAKSI BERJALAN DARI BOT IWM */}
+                {transitModal.source === 'iwm' && transitModal.settlement && (
+                  <div className="mt-4 border border-purple-200 rounded-xl overflow-hidden shadow-xs bg-white">
+                    <div className="bg-purple-50 px-3.5 py-2.5 border-b border-purple-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Layers size={16} className="text-purple-700" />
+                        <span className="font-extrabold text-xs text-purple-900 uppercase">
+                          Ringkasan Settlement Berjalan (Old Gate Taping POS Bank DKI)
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-bold text-purple-800 bg-purple-100 border border-purple-300 px-2.5 py-0.5 rounded-full">
+                        {transitModal.settlement.status || 'Total Transaksi Approve'}
+                      </span>
+                    </div>
+                    <div className="p-3 grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-gray-50/60 text-xs">
+                      <div className="bg-white p-2.5 rounded-xl border border-gray-200 shadow-2xs">
+                        <div className="text-[10px] font-semibold text-gray-500 uppercase">Jumlah Transaksi</div>
+                        <div className="text-sm font-black text-purple-800 mt-0.5">
+                          {(transitModal.settlement.jumlah_transaksi || 0).toLocaleString('id-ID')} Taping
+                        </div>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-gray-200 shadow-2xs">
+                        <div className="text-[10px] font-semibold text-gray-500 uppercase">Pengunjung Masuk</div>
+                        <div className="text-xs font-black text-emerald-800 mt-0.5">
+                          {((transitModal.settlement.pengunjung_anak || 0) + (transitModal.settlement.pengunjung_dewasa || 0)).toLocaleString('id-ID')} Org
+                        </div>
+                        <div className="text-[10px] text-gray-400">
+                          {transitModal.settlement.pengunjung_anak} anak / {transitModal.settlement.pengunjung_dewasa} dws
+                        </div>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-gray-200 shadow-2xs">
+                        <div className="text-[10px] font-semibold text-gray-500 uppercase">Kendaraan Masuk</div>
+                        <div className="text-sm font-black text-indigo-800 mt-0.5">
+                          {(transitModal.settlement.jumlah_kendaraan || 0).toLocaleString('id-ID')} Unit
+                        </div>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-gray-200 shadow-2xs">
+                        <div className="text-[10px] font-semibold text-gray-500 uppercase">Total Settlement</div>
+                        <div className="text-sm font-black text-green-700 mt-0.5">
+                          Rp {formatRp(transitModal.settlement.nominal || 0)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 👥 DAFTAR LENGKAP PENGUNJUNG ROMBONGAN IWM (11 KOLOM STANDAR RESMI) */}
                 {transitModal.source === 'iwm' && transitModal.iwmDiskon && transitModal.iwmDiskon.length > 0 && (
                   <div className="mt-4 border border-yellow-200 rounded-xl overflow-hidden shadow-sm bg-white">
-                    <div className="bg-yellow-50 px-3 py-2 border-b border-yellow-200 flex items-center justify-between gap-2">
+                    <div className="bg-yellow-50 px-3.5 py-2.5 border-b border-yellow-200 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <Tag size={16} className="text-yellow-700" />
-                        <span className="font-bold text-xs text-yellow-800 uppercase">Daftar Mentah Rombongan IWM</span>
+                        <span className="font-extrabold text-xs text-yellow-900 uppercase">
+                          Daftar Data Pengunjung Rombongan IWM (11 Kolom Standar)
+                        </span>
                       </div>
-                      <span className="text-[11px] font-semibold text-yellow-800 bg-yellow-100/70 border border-yellow-300 px-2 py-0.5 rounded-full">
+                      <span className="text-[11px] font-bold text-yellow-800 bg-yellow-100 border border-yellow-300 px-2.5 py-0.5 rounded-full">
                         Diskon Rombongan Resmi: 25%
                       </span>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs whitespace-nowrap">
-                        <thead className="bg-gray-50 text-gray-500 font-bold border-b">
+                        <thead className="bg-gray-50 text-gray-600 font-bold border-b text-[11px]">
                           <tr>
-                            <th className="p-2 pl-3">Lokasi</th>
+                            <th className="p-2 pl-3 text-center">No</th>
+                            <th className="p-2">Lokasi</th>
+                            <th className="p-2">POS</th>
+                            <th className="p-2">Kode Romb.</th>
                             <th className="p-2">Nama Rombongan</th>
-                            <th className="p-2 text-right">Anak</th>
-                            <th className="p-2 text-right">Dewasa</th>
-                            <th className="p-2 text-right">Total Nominal (Rp)</th>
-                            <th className="p-2 text-center pr-3">Pengecekan Diskon 25%</th>
+                            <th className="p-2 text-center">Tgl Kunjungan</th>
+                            <th className="p-2 text-right">Terdaftar Ank</th>
+                            <th className="p-2 text-right">Terdaftar Dws</th>
+                            <th className="p-2 text-right">Masuk Ank</th>
+                            <th className="p-2 text-right">Masuk Dws</th>
+                            <th className="p-2 text-right">Pendapatan (Rp)</th>
+                            <th className="p-2 text-center pr-3">Pengecekan 25%</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-gray-100 text-[11px]">
                           {transitModal.iwmDiskon.map((d, i) => {
                             const diskonCheck = validateIwmDiskonRow(d, transitModal.targetDate);
                             return (
-                              <tr key={i} className={`hover:bg-gray-50 ${!diskonCheck.isValid ? 'bg-red-50/30' : ''}`}>
-                                <td className="p-2 pl-3 font-medium text-gray-800">{safeString(d.lokasi)}</td>
-                                <td className="p-2 text-gray-600 truncate max-w-[150px]" title={safeString(d.nama_rombongan)}>{safeString(d.nama_rombongan)}</td>
-                                <td className="p-2 text-right text-gray-600">{d.masuk_anak}</td>
-                                <td className="p-2 text-right text-gray-600">{d.masuk_dewasa}</td>
-                                <td className="p-2 text-right font-bold text-green-600">Rp {formatRp(d.pendapatan_rp)}</td>
+                              <tr key={i} className={`hover:bg-yellow-50/40 transition-colors ${!diskonCheck.isValid ? 'bg-red-50/30' : ''}`}>
+                                <td className="p-2 pl-3 text-center text-gray-500 font-medium">{d.no || (i + 1)}</td>
+                                <td className="p-2 font-medium text-gray-800">{safeString(d.lokasi)}</td>
+                                <td className="p-2 text-gray-600">{safeString(d.pos || 'POS 1 Utama')}</td>
+                                <td className="p-2 font-mono text-gray-600">{safeString(d.kode_rombongan || '-')}</td>
+                                <td className="p-2 text-gray-800 font-semibold truncate max-w-[170px]" title={safeString(d.nama_rombongan)}>
+                                  {safeString(d.nama_rombongan)}
+                                </td>
+                                <td className="p-2 text-center text-gray-600">{safeString(d.tgl_kunjungan || transitModal.targetDate)}</td>
+                                <td className="p-2 text-right text-gray-600 font-mono">{d.terdaftar_anak ?? d.masuk_anak}</td>
+                                <td className="p-2 text-right text-gray-600 font-mono">{d.terdaftar_dewasa ?? d.masuk_dewasa}</td>
+                                <td className="p-2 text-right text-gray-800 font-mono font-bold">{d.masuk_anak}</td>
+                                <td className="p-2 text-right text-gray-800 font-mono font-bold">{d.masuk_dewasa}</td>
+                                <td className="p-2 text-right font-black text-emerald-700 font-mono">Rp {formatRp(d.pendapatan_rp)}</td>
                                 <td className="p-2 text-center pr-3">
                                   {diskonCheck.isValid ? (
                                     <span 

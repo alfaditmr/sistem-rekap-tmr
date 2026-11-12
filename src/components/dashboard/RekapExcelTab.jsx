@@ -27,6 +27,7 @@ import {
   getTamanSatwaAnakData,
   getEticketingData,
   getGateRevenueData,
+  getChannelTransactionRecapData,
   getStsuKasDaerahData,
   getPemakaianTempatData,
   getPromoMediaData,
@@ -39,6 +40,7 @@ import {
   exportTamanSatwaAnakExcel,
   exportEticketingExcel,
   exportGateRevenueExcel,
+  exportChannelTransactionRecapExcel,
   exportStsuKasDaerahExcel,
   exportPemakaianTempatExcel,
   exportPromoMediaExcel
@@ -107,7 +109,8 @@ const REPORT_CATEGORIES = [
     tagColor: 'bg-cyan-100 text-cyan-800',
     reports: [
       { id: 'eticketing', name: 'Rekap E-Ticketing & Asuransi', subtitle: 'Format INPUT E-TICKETING 2026.xls', formatCode: 'INPUT E-TICKETING 2026.xls' },
-      { id: 'gate_report', name: 'Pendapatan per Pintu / Gate', subtitle: 'Format INPUT NEW GATE 2026.xlsx', formatCode: 'INPUT NEW GATE 2026.xlsx' }
+      { id: 'gate_report', name: 'Pendapatan per Pintu / Gate', subtitle: 'Format INPUT NEW GATE 2026.xlsx', formatCode: 'INPUT NEW GATE 2026.xlsx' },
+      { id: 'rekap_transaksi_channel', name: 'Rekap Transaksi Setiap Channel (Lembar K-2)', subtitle: 'Rekap Jumlah Transaksi & Fisik 3A (Gate, TVM, Online) & IWM Taping', formatCode: 'LEMBAR K-2 REKON.xlsx' }
     ]
   },
   {
@@ -160,7 +163,7 @@ export default function RekapExcelTab({
   const [activeMainCategory, setActiveMainCategory] = useState(() => {
     if (selectedReportType === 'rekapitulasi' || selectedReportType === 'rekap_stsu') return 'stsu_rekap';
     if (['pengunjung_tmr', 'pengunjung_pps', 'pengunjung_tsa'].includes(selectedReportType)) return 'pengunjung_wahana';
-    if (['eticketing', 'gate_report'].includes(selectedReportType)) return 'ticketing_gate';
+    if (['eticketing', 'gate_report', 'rekap_transaksi_channel'].includes(selectedReportType)) return 'ticketing_gate';
     if (['pemakaian_tempat', 'rekap_promo'].includes(selectedReportType)) return 'fasilitas_promo';
     return 'rekon_mitra';
   });
@@ -171,7 +174,7 @@ export default function RekapExcelTab({
       setActiveMainCategory('stsu_rekap');
     } else if (['pengunjung_tmr', 'pengunjung_pps', 'pengunjung_tsa'].includes(selectedReportType)) {
       setActiveMainCategory('pengunjung_wahana');
-    } else if (['eticketing', 'gate_report'].includes(selectedReportType)) {
+    } else if (['eticketing', 'gate_report', 'rekap_transaksi_channel'].includes(selectedReportType)) {
       setActiveMainCategory('ticketing_gate');
     } else if (['pemakaian_tempat', 'rekap_promo'].includes(selectedReportType)) {
       setActiveMainCategory('fasilitas_promo');
@@ -788,6 +791,9 @@ export default function RekapExcelTab({
       case 'gate_report':
         exportGateRevenueExcel(getGateRevenueData(allReports, categories, safeReportMonth), signatures);
         break;
+      case 'rekap_transaksi_channel':
+        exportChannelTransactionRecapExcel(getChannelTransactionRecapData(allReports, categories, safeReportMonth), signatures);
+        break;
       case 'pemakaian_tempat':
         exportPemakaianTempatExcel(getPemakaianTempatData(allReports, categories, safeReportMonth, bankRows, apiData), signatures);
         break;
@@ -1130,6 +1136,10 @@ export default function RekapExcelTab({
             if (selectedReportType === 'gate_report') {
               const data = getGateRevenueData(allReports, categories, safeReportMonth);
               return <TicketingReportTable reportType="gate_report" data={data} />;
+            }
+            if (selectedReportType === 'rekap_transaksi_channel') {
+              const data = getChannelTransactionRecapData(allReports, categories, safeReportMonth);
+              return <TicketingReportTable reportType="rekap_transaksi_channel" data={data} />;
             }
 
             // E. Laporan Sewa Tempat & Promosi

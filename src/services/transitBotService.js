@@ -277,7 +277,12 @@ export const fetchBot3aData = async (ipAddress, targetDate) => {
         "21": {"nama": "Sepeda", "qty": 3, "nominal": 3000}
       }
     };
-    return { fetchedData: process3aData(mockRawData, targetDate), diskonData: [] };
+    const mockChannelSummaries = {
+      GATE: { channelName: 'NEW GATE', transactionQty: 1326, totalTiket: 1326, totalNominal: 5142000 },
+      TVM: { channelName: 'TICKET VENDING MACHINE', transactionQty: 249, totalTiket: 823, totalNominal: 3054500 },
+      MERCHANT_PAGE: { channelName: 'TIKET ONLINE', transactionQty: 342, totalTiket: 1874, totalNominal: 7528500 }
+    };
+    return { fetchedData: process3aData(mockRawData, targetDate), diskonData: [], channelSummaries: mockChannelSummaries };
   }
 
   const baseUrl = ip.startsWith('http') ? ip : `http://${ip}:5000`;
@@ -288,9 +293,10 @@ export const fetchBot3aData = async (ipAddress, targetDate) => {
   if (responseJson.status !== 'success') throw new Error(responseJson.message);
   
   if (responseJson.rekon_data) {
-    return { fetchedData: process3aData(responseJson.rekon_data, targetDate), diskonData: [] };
+    const channelSummaries = responseJson.channel_summaries || responseJson.summary || null;
+    return { fetchedData: process3aData(responseJson.rekon_data, targetDate), diskonData: [], channelSummaries };
   }
-  return { fetchedData: [], diskonData: [] };
+  return { fetchedData: [], diskonData: [], channelSummaries: null };
 };
 
 /**
@@ -304,8 +310,31 @@ export const fetchBotIwmData = async (ipAddress, targetDate) => {
   if (ip === 'demo') {
     await new Promise(r => setTimeout(r, 1200)); 
     diskonData = [
-      { lokasi: 'Pintu Utara 3', nama_rombongan: 'SD SWASTA MARSUDIRINI', masuk_anak: 65, masuk_dewasa: 0, pendapatan_rp: 146250 },
-      { lokasi: 'Pintu Masuk', nama_rombongan: 'GURU PENDAKIAN', masuk_anak: 0, masuk_dewasa: 10, pendapatan_rp: 30000 },
+      {
+        no: 1, lokasi: 'Pusat Primata', pos: 'POS 2 Utama', kode_rombongan: '2026111203',
+        nama_rombongan: 'Yayasan Al Anshaar Al Islami', tgl_kunjungan: '12-Nov-2026',
+        terdaftar_anak: 91, terdaftar_dewasa: 0, masuk_anak: 90, masuk_dewasa: 0, pendapatan_rp: 405000
+      },
+      {
+        no: 2, lokasi: 'Pintu Utara 3', pos: 'POS 1 Utama', kode_rombongan: '2026110602',
+        nama_rombongan: 'SDIT Darul Abidin', tgl_kunjungan: '11-Nov-2026',
+        terdaftar_anak: 100, terdaftar_dewasa: 0, masuk_anak: 176, masuk_dewasa: 0, pendapatan_rp: 396000
+      },
+      {
+        no: 3, lokasi: 'Pintu Utara 3', pos: 'POS 1 Utama', kode_rombongan: '2026111104',
+        nama_rombongan: 'SMP AL Hikam', tgl_kunjungan: '11-Nov-2026',
+        terdaftar_anak: 0, terdaftar_dewasa: 67, masuk_anak: 0, masuk_dewasa: 67, pendapatan_rp: 201000
+      },
+      {
+        no: 4, lokasi: 'Pintu Utara 3', pos: 'POS 1 Utama', kode_rombongan: '2026111103',
+        nama_rombongan: 'SMK Nusa Bangsa', tgl_kunjungan: '11-Nov-2026',
+        terdaftar_anak: 0, terdaftar_dewasa: 61, masuk_anak: 0, masuk_dewasa: 61, pendapatan_rp: 183000
+      },
+      {
+        no: 5, lokasi: 'Pusat Primata', pos: 'POS 2 Utama', kode_rombongan: '2026110602',
+        nama_rombongan: 'SDIT Darul Abidin (Primata)', tgl_kunjungan: '11-Nov-2026',
+        terdaftar_anak: 100, terdaftar_dewasa: 0, masuk_anak: 176, masuk_dewasa: 0, pendapatan_rp: 792000
+      }
     ];
     fetchedData = [
       { id: 'i1', nameAPI: '[IWM] Pusat Primata - Dewasa (Reguler) (Hari Biasa)', amount: 582000 },
@@ -313,10 +342,18 @@ export const fetchBotIwmData = async (ipAddress, targetDate) => {
       { id: 'i3', nameAPI: '[IWM] Pintu Masuk - Dewasa (Reguler)', amount: 2528000 },
       { id: 'i4', nameAPI: '[IWM] Kendaraan Gol III', amount: 35000 }, 
       { id: 'i5', nameAPI: '[IWM] Kendaraan - Sepeda', amount: 15000 },
-      { id: 'i6_ank', nameAPI: '[IWM] Rombongan Anak - SD SWASTA MARSUDIRINI', amount: 146250, itemNote: 'SD SWASTA MARSUDIRINI' },
-      { id: 'i7_dws', nameAPI: '[IWM] Rombongan Dewasa - GURU PENDAKIAN', amount: 30000, itemNote: 'GURU PENDAKIAN' }
+      { id: 'i6_ank', nameAPI: '[IWM] Rombongan Anak - SDIT Darul Abidin', amount: 396000, itemNote: 'SDIT Darul Abidin' },
+      { id: 'i7_dws', nameAPI: '[IWM] Rombongan Dewasa - SMP AL Hikam', amount: 201000, itemNote: 'SMP AL Hikam' }
     ];
-    return { fetchedData, diskonData };
+    const mockSettlement = {
+      status: 'Total Transaksi Approve',
+      jumlah_transaksi: 1280,
+      pengunjung_anak: 3131,
+      pengunjung_dewasa: 3972,
+      jumlah_kendaraan: 771,
+      nominal: 29444500
+    };
+    return { fetchedData, diskonData, settlement: mockSettlement };
   }
 
   const baseUrl = ip.startsWith('http') ? ip : `http://${ip}:5001`;
@@ -328,6 +365,7 @@ export const fetchBotIwmData = async (ipAddress, targetDate) => {
   
   const iData = responseJson.data;
   diskonData = iData.laporan_diskon || [];
+  const settlement = iData.settlement || null;
   
   let deductAlAnak = 0;
   let deductAlDewasa = 0;
@@ -421,5 +459,5 @@ export const fetchBotIwmData = async (ipAddress, targetDate) => {
     }
   });
 
-  return { fetchedData, diskonData };
+  return { fetchedData, diskonData, settlement };
 };

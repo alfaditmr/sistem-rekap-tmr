@@ -1,14 +1,401 @@
-import React from 'react';
-import { CreditCard, ShieldCheck, DollarSign, Building } from 'lucide-react';
+import React, { useState } from 'react';
+import { CreditCard, ShieldCheck, DollarSign, Building, Layers, Users, BarChart3, Ticket } from 'lucide-react';
 import { formatRp } from '../../../utils/formatters';
 
 export default function TicketingReportTable({ reportType, data }) {
   if (!data) return null;
   const { rows, totals } = data;
 
+  const isChannelReport = reportType === 'rekap_transaksi_channel';
+  const [viewMode, setViewMode] = useState(isChannelReport ? 'transactions' : 'nominal');
+
+  // =========================================================================
+  // VIEW MODE A: REKAP TRANSAKSI SETIAP CHANNEL (LEMBAR K-2 DARI BOT 3A & IWM)
+  // =========================================================================
+  if (viewMode === 'transactions' || (isChannelReport && viewMode !== 'tickets' && viewMode !== 'nominal')) {
+    return (
+      <div className="w-full">
+        {/* Toggle Mode & Banner */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-3 bg-indigo-50/70 border-b border-indigo-200">
+          <div className="flex items-center gap-2">
+            <BarChart3 size={18} className="text-indigo-700" />
+            <span className="font-extrabold text-xs text-indigo-950 uppercase tracking-wider">
+              Rekapitulasi Jumlah Transaksi Setiap Channel (Lembar K-2 & Settlement)
+            </span>
+          </div>
+          <div className="inline-flex rounded-lg border border-indigo-200 bg-white p-0.5 shadow-2xs text-xs font-bold">
+            <button
+              onClick={() => setViewMode('transactions')}
+              className={`px-3 py-1 rounded-md transition-all ${
+                viewMode === 'transactions' ? 'bg-indigo-600 text-white shadow-xs' : 'text-gray-600 hover:text-indigo-600'
+              }`}
+            >
+              📊 Jumlah Transaksi (Trx)
+            </button>
+            <button
+              onClick={() => setViewMode('tickets')}
+              className={`px-3 py-1 rounded-md transition-all ${
+                viewMode === 'tickets' ? 'bg-indigo-600 text-white shadow-xs' : 'text-gray-600 hover:text-indigo-600'
+              }`}
+            >
+              🎫 Fisik Karcis / Pengunjung
+            </button>
+            <button
+              onClick={() => setViewMode('nominal')}
+              className={`px-3 py-1 rounded-md transition-all ${
+                viewMode === 'nominal' ? 'bg-indigo-600 text-white shadow-xs' : 'text-gray-600 hover:text-indigo-600'
+              }`}
+            >
+              💰 Nilai Rupiah (Rp)
+            </button>
+          </div>
+        </div>
+
+        {/* KPI Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-gray-50 border-b border-gray-200">
+          <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+              <Layers size={20} />
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold text-gray-500 uppercase">Grand Total Transaksi</div>
+              <div className="text-sm font-black text-gray-800">
+                {(totals.totalTrx || totals.grandTotal || 0).toLocaleString('id-ID')} Trx
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+              <CreditCard size={20} />
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold text-gray-500 uppercase">Transaksi Bot 3A (Gate+TVM+Online)</div>
+              <div className="text-sm font-black text-blue-700">
+                {(totals.subtotal3aTrx || 0).toLocaleString('id-ID')} Trx
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+              <ShieldCheck size={20} />
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold text-gray-500 uppercase">Old Gate IWM (Taping POS)</div>
+              <div className="text-sm font-black text-purple-700">
+                {(totals.oldGateTrx || 0).toLocaleString('id-ID')} Trx
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+              <DollarSign size={20} />
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold text-gray-500 uppercase">Total Omset Nominal</div>
+              <div className="text-sm font-black text-emerald-700">
+                {formatRp(totals.grandTotalNominal || totals.grandTotal || 0)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabel Rekap Transaksi */}
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[11px] whitespace-nowrap">
+            <thead>
+              <tr className="bg-gray-100 text-gray-700">
+                <th className="px-2 py-2 border border-gray-300 text-center font-bold">Tgl</th>
+                <th className="px-3 py-2 border border-gray-300 text-center font-bold">Hari</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold bg-blue-50/60 text-blue-900">New Gate 3A (Trx)</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold bg-blue-50/60 text-blue-900">Vending TVM (Trx)</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold bg-blue-50/60 text-blue-900">Tiket Online (Trx)</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-black bg-blue-100 text-blue-950">Subtotal 3A (Trx)</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold bg-purple-50 text-purple-950">Old Gate IWM (Taping)</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-black bg-indigo-100 text-indigo-950">Total Trx (Semua)</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold text-gray-700">Total Tiket Fisik</th>
+                <th className="px-4 py-2 border border-gray-300 text-right font-black bg-amber-100 text-amber-900">Total Omset (Rp)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
+                  <td className="px-2 py-1.5 border border-gray-300 text-center font-semibold">{r.day}</td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-center text-gray-600">{r.dayName}</td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono bg-blue-50/20">
+                    {r.gateTrx > 0 ? r.gateTrx.toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono bg-blue-50/20">
+                    {r.tvmTrx > 0 ? r.tvmTrx.toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono bg-blue-50/20">
+                    {r.onlineTrx > 0 ? r.onlineTrx.toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono font-bold bg-blue-100/50 text-blue-900">
+                    {r.subtotal3aTrx > 0 ? r.subtotal3aTrx.toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono font-bold bg-purple-50/50 text-purple-900">
+                    {r.oldGateTrx > 0 ? r.oldGateTrx.toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono font-black bg-indigo-100/60 text-indigo-950">
+                    {r.totalTrx > 0 ? r.totalTrx.toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono text-gray-700">
+                    {r.totalTiket > 0 ? r.totalTiket.toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td className="px-4 py-1.5 border border-gray-300 text-right font-bold text-gray-900 font-mono">
+                    {r.totalNominal > 0 ? formatRp(r.totalNominal) : '-'}
+                  </td>
+                </tr>
+              ))}
+              <tr className="bg-emerald-100 font-black text-gray-900 border-t-2 border-emerald-400">
+                <td colSpan={2} className="px-3 py-2 border border-gray-300 text-center font-bold">TOTAL</td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
+                  {totals.gateTrx > 0 ? totals.gateTrx.toLocaleString('id-ID') : '-'}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
+                  {totals.tvmTrx > 0 ? totals.tvmTrx.toLocaleString('id-ID') : '-'}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
+                  {totals.onlineTrx > 0 ? totals.onlineTrx.toLocaleString('id-ID') : '-'}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-black text-blue-950 bg-blue-200/60">
+                  {totals.subtotal3aTrx > 0 ? totals.subtotal3aTrx.toLocaleString('id-ID') : '-'}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-black text-purple-950 bg-purple-200/60">
+                  {totals.oldGateTrx > 0 ? totals.oldGateTrx.toLocaleString('id-ID') : '-'}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-black text-indigo-950 bg-indigo-200/70">
+                  {totals.totalTrx > 0 ? totals.totalTrx.toLocaleString('id-ID') : '-'}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-gray-800">
+                  {totals.totalTiket > 0 ? totals.totalTiket.toLocaleString('id-ID') : '-'}
+                </td>
+                <td className="px-4 py-2 border border-gray-300 text-right text-emerald-950 font-mono font-black text-xs bg-emerald-300/60">
+                  {formatRp(totals.grandTotalNominal || totals.grandTotal || 0)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // VIEW MODE B: REKAP FISIK KARCIS & TIKET TERBIT (SEMUA JENIS TIKET)
+  // =========================================================================
+  if (viewMode === 'tickets') {
+    return (
+      <div className="w-full">
+        {/* Toggle Mode */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-3 bg-teal-50/70 border-b border-teal-200">
+          <div className="flex items-center gap-2">
+            <Ticket size={18} className="text-teal-700" />
+            <span className="font-extrabold text-xs text-teal-950 uppercase tracking-wider">
+              Rekapitulasi Fisik Tiket & Pengunjung Terdaftar (Semua Jenis Tiket)
+            </span>
+          </div>
+          <div className="inline-flex rounded-lg border border-teal-200 bg-white p-0.5 shadow-2xs text-xs font-bold">
+            <button
+              onClick={() => setViewMode('transactions')}
+              className={`px-3 py-1 rounded-md transition-all ${
+                viewMode === 'transactions' ? 'bg-indigo-600 text-white shadow-xs' : 'text-gray-600 hover:text-indigo-600'
+              }`}
+            >
+              📊 Jumlah Transaksi (Trx)
+            </button>
+            <button
+              onClick={() => setViewMode('tickets')}
+              className={`px-3 py-1 rounded-md transition-all ${
+                viewMode === 'tickets' ? 'bg-teal-600 text-white shadow-xs' : 'text-gray-600 hover:text-teal-600'
+              }`}
+            >
+              🎫 Fisik Karcis / Pengunjung
+            </button>
+            <button
+              onClick={() => setViewMode('nominal')}
+              className={`px-3 py-1 rounded-md transition-all ${
+                viewMode === 'nominal' ? 'bg-teal-600 text-white shadow-xs' : 'text-gray-600 hover:text-teal-600'
+              }`}
+            >
+              💰 Nilai Rupiah (Rp)
+            </button>
+          </div>
+        </div>
+
+        {/* KPI Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-gray-50 border-b border-gray-200">
+          <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center font-bold">
+              <Users size={20} />
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold text-gray-500 uppercase">Total Tiket & Pengunjung</div>
+              <div className="text-sm font-black text-gray-800">
+                {(totals.totalTiket || totals.asuransiLembar || 0).toLocaleString('id-ID')} Lembar/Orang
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+              <Ticket size={20} />
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold text-gray-500 uppercase">Tiket Bot 3A (Gate+TVM+Online)</div>
+              <div className="text-sm font-black text-blue-700">
+                {(totals.subtotal3aTiket || 0).toLocaleString('id-ID')} Tiket
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+              <Users size={20} />
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold text-gray-500 uppercase">Pengunjung Old Gate (IWM)</div>
+              <div className="text-sm font-black text-emerald-700">
+                {(totals.oldGatePengunjung || 0).toLocaleString('id-ID')} Orang
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+              <Building size={20} />
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold text-gray-500 uppercase">Kendaraan Masuk (IWM)</div>
+              <div className="text-sm font-black text-purple-700">
+                {(totals.oldGateKendaraan || 0).toLocaleString('id-ID')} Unit
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Table Fisik */}
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[11px] whitespace-nowrap">
+            <thead>
+              <tr className="bg-gray-100 text-gray-700">
+                <th className="px-2 py-2 border border-gray-300 text-center font-bold">Tgl</th>
+                <th className="px-3 py-2 border border-gray-300 text-center font-bold">Hari</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold bg-blue-50 text-blue-900">3A New Gate</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold bg-blue-50 text-blue-900">3A Vending TVM</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold bg-blue-50 text-blue-900">3A Tiket Online</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-black bg-blue-100 text-blue-950">Subtotal 3A (Tiket)</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold bg-emerald-50 text-emerald-900">IWM Anak</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold bg-emerald-50 text-emerald-900">IWM Dewasa</th>
+                <th className="px-3 py-2 border border-gray-300 text-right font-bold bg-purple-50 text-purple-900">IWM Kendaraan</th>
+                <th className="px-4 py-2 border border-gray-300 text-right font-black bg-teal-100 text-teal-950">Total Fisik Tiket & Orang</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="hover:bg-teal-50/30 transition-colors">
+                  <td className="px-2 py-1.5 border border-gray-300 text-center font-semibold">{r.day}</td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-center text-gray-600">{r.dayName}</td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono bg-blue-50/20">
+                    {r.gateTiket > 0 ? r.gateTiket.toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono bg-blue-50/20">
+                    {r.tvmTiket > 0 ? r.tvmTiket.toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono bg-blue-50/20">
+                    {r.onlineTiket > 0 ? r.onlineTiket.toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono font-bold bg-blue-100/50 text-blue-900">
+                    {r.subtotal3aTiket > 0 ? r.subtotal3aTiket.toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono bg-emerald-50/30 text-emerald-900">
+                    {r.oldGateAnak > 0 ? r.oldGateAnak.toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono bg-emerald-50/30 text-emerald-900">
+                    {r.oldGateDewasa > 0 ? r.oldGateDewasa.toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td className="px-3 py-1.5 border border-gray-300 text-right font-mono bg-purple-50/30 text-purple-900">
+                    {r.oldGateKendaraan > 0 ? r.oldGateKendaraan.toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td className="px-4 py-1.5 border border-gray-300 text-right font-black bg-teal-100/50 text-teal-950 font-mono">
+                    {r.totalTiket > 0 ? r.totalTiket.toLocaleString('id-ID') : '-'}
+                  </td>
+                </tr>
+              ))}
+              <tr className="bg-emerald-100 font-black text-gray-900 border-t-2 border-emerald-400">
+                <td colSpan={2} className="px-3 py-2 border border-gray-300 text-center font-bold">TOTAL</td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
+                  {totals.gateTiket > 0 ? totals.gateTiket.toLocaleString('id-ID') : '-'}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
+                  {totals.tvmTiket > 0 ? totals.tvmTiket.toLocaleString('id-ID') : '-'}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-blue-900">
+                  {totals.onlineTiket > 0 ? totals.onlineTiket.toLocaleString('id-ID') : '-'}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-black text-blue-950 bg-blue-200/60">
+                  {totals.subtotal3aTiket > 0 ? totals.subtotal3aTiket.toLocaleString('id-ID') : '-'}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-emerald-900 bg-emerald-200/40">
+                  {rows.reduce((s, r) => s + (r.oldGateAnak || 0), 0).toLocaleString('id-ID')}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-emerald-900 bg-emerald-200/40">
+                  {rows.reduce((s, r) => s + (r.oldGateDewasa || 0), 0).toLocaleString('id-ID')}
+                </td>
+                <td className="px-3 py-2 border border-gray-300 text-right font-mono font-bold text-purple-900 bg-purple-200/40">
+                  {totals.oldGateKendaraan > 0 ? totals.oldGateKendaraan.toLocaleString('id-ID') : '-'}
+                </td>
+                <td className="px-4 py-2 border border-gray-300 text-right text-teal-950 font-mono font-black text-xs bg-teal-300/60">
+                  {totals.totalTiket > 0 ? totals.totalTiket.toLocaleString('id-ID') : '-'}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // VIEW MODE C: E-TICKETING (NILAI NOMINAL RUPIAH)
+  // =========================================================================
   if (reportType === 'eticketing') {
     return (
       <div className="w-full">
+        {/* Toggle Mode */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-3 bg-gray-50 border-b border-gray-200">
+          <div className="text-xs font-bold text-gray-700">Laporan Rekapitulasi E-Ticketing & Asuransi (Rupiah)</div>
+          <div className="inline-flex rounded-lg border border-gray-300 bg-white p-0.5 shadow-2xs text-xs font-bold">
+            <button
+              onClick={() => setViewMode('nominal')}
+              className={`px-3 py-1 rounded-md transition-all ${
+                viewMode === 'nominal' ? 'bg-blue-600 text-white shadow-xs' : 'text-gray-600 hover:text-blue-600'
+              }`}
+            >
+              💰 Nilai Rupiah (Rp)
+            </button>
+            <button
+              onClick={() => setViewMode('transactions')}
+              className={`px-3 py-1 rounded-md transition-all ${
+                viewMode === 'transactions' ? 'bg-indigo-600 text-white shadow-xs' : 'text-gray-600 hover:text-indigo-600'
+              }`}
+            >
+              📊 Jumlah Transaksi (Trx)
+            </button>
+            <button
+              onClick={() => setViewMode('tickets')}
+              className={`px-3 py-1 rounded-md transition-all ${
+                viewMode === 'tickets' ? 'bg-teal-600 text-white shadow-xs' : 'text-gray-600 hover:text-teal-600'
+              }`}
+            >
+              🎫 Fisik Karcis / Pengunjung
+            </button>
+          </div>
+        </div>
+
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-gray-50 border-b border-gray-200">
           <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
@@ -26,7 +413,7 @@ export default function TicketingReportTable({ reportType, data }) {
             </div>
             <div>
               <div className="text-[11px] font-semibold text-gray-500 uppercase">Asuransi Terbit</div>
-              <div className="text-sm font-black text-blue-700">{totals.asuransiLembar.toLocaleString('id-ID')} Lembar</div>
+              <div className="text-sm font-black text-blue-700">{(totals.asuransiLembar || 0).toLocaleString('id-ID')} Lembar</div>
             </div>
           </div>
           <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
@@ -35,7 +422,7 @@ export default function TicketingReportTable({ reportType, data }) {
             </div>
             <div>
               <div className="text-[11px] font-semibold text-gray-500 uppercase">Karcis Masuk (Dewasa+Anak)</div>
-              <div className="text-sm font-black text-amber-700">{formatRp(totals.dewasa + totals.anak)}</div>
+              <div className="text-sm font-black text-amber-700">{formatRp((totals.dewasa || 0) + (totals.anak || 0))}</div>
             </div>
           </div>
           <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
@@ -45,7 +432,7 @@ export default function TicketingReportTable({ reportType, data }) {
             <div>
               <div className="text-[11px] font-semibold text-gray-500 uppercase">Wahana & Parkir</div>
               <div className="text-sm font-black text-purple-700">
-                {formatRp(totals.pps + totals.tsa + totals.wahana + totals.kendaraan)}
+                {formatRp((totals.pps || 0) + (totals.tsa || 0) + (totals.wahana || 0) + (totals.kendaraan || 0))}
               </div>
             </div>
           </div>
@@ -98,7 +485,7 @@ export default function TicketingReportTable({ reportType, data }) {
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono">{formatRp(totals.wahana)}</td>
                 <td className="px-3 py-2 border border-gray-300 text-right font-mono">{formatRp(totals.kendaraan)}</td>
                 <td className="px-3 py-2 border border-gray-300 text-center font-bold text-blue-900 font-mono bg-blue-200/50">
-                  {totals.asuransiLembar.toLocaleString('id-ID')}
+                  {(totals.asuransiLembar || 0).toLocaleString('id-ID')}
                 </td>
                 <td className="px-4 py-2 border border-gray-300 text-right text-emerald-950 font-mono font-black text-xs bg-emerald-300/60">
                   {formatRp(totals.grandTotal)}
@@ -111,9 +498,42 @@ export default function TicketingReportTable({ reportType, data }) {
     );
   }
 
-  // Gate Revenue Report
+  // =========================================================================
+  // VIEW MODE D: PENDAPATAN PER PINTU / GATE (NILAI NOMINAL RUPIAH)
+  // =========================================================================
   return (
     <div className="w-full">
+      {/* Toggle Mode */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-3 bg-gray-50 border-b border-gray-200">
+        <div className="text-xs font-bold text-gray-700">Laporan Pendapatan per Pintu Masuk / Gate (Rupiah)</div>
+        <div className="inline-flex rounded-lg border border-gray-300 bg-white p-0.5 shadow-2xs text-xs font-bold">
+          <button
+            onClick={() => setViewMode('nominal')}
+            className={`px-3 py-1 rounded-md transition-all ${
+              viewMode === 'nominal' ? 'bg-blue-600 text-white shadow-xs' : 'text-gray-600 hover:text-blue-600'
+            }`}
+          >
+            💰 Nilai Rupiah (Rp)
+          </button>
+          <button
+            onClick={() => setViewMode('transactions')}
+            className={`px-3 py-1 rounded-md transition-all ${
+              viewMode === 'transactions' ? 'bg-indigo-600 text-white shadow-xs' : 'text-gray-600 hover:text-indigo-600'
+            }`}
+          >
+            📊 Jumlah Transaksi (Trx)
+          </button>
+          <button
+            onClick={() => setViewMode('tickets')}
+            className={`px-3 py-1 rounded-md transition-all ${
+              viewMode === 'tickets' ? 'bg-teal-600 text-white shadow-xs' : 'text-gray-600 hover:text-teal-600'
+            }`}
+          >
+            🎫 Fisik Karcis / Pengunjung
+          </button>
+        </div>
+      </div>
+
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-gray-50 border-b border-gray-200">
         <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
@@ -131,7 +551,7 @@ export default function TicketingReportTable({ reportType, data }) {
           </div>
           <div>
             <div className="text-[11px] font-semibold text-gray-500 uppercase">Gate Utama & Timur</div>
-            <div className="text-sm font-black text-emerald-700">{formatRp(totals.pintuUtama + totals.pintuTimur)}</div>
+            <div className="text-sm font-black text-emerald-700">{formatRp((totals.pintuUtama || 0) + (totals.pintuTimur || 0))}</div>
           </div>
         </div>
         <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
@@ -140,7 +560,7 @@ export default function TicketingReportTable({ reportType, data }) {
           </div>
           <div>
             <div className="text-[11px] font-semibold text-gray-500 uppercase">Gate Barat & Utara</div>
-            <div className="text-sm font-black text-blue-700">{formatRp(totals.pintuBarat + totals.pintuUtara)}</div>
+            <div className="text-sm font-black text-blue-700">{formatRp((totals.pintuBarat || 0) + (totals.pintuUtara || 0))}</div>
           </div>
         </div>
         <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
@@ -149,7 +569,7 @@ export default function TicketingReportTable({ reportType, data }) {
           </div>
           <div>
             <div className="text-[11px] font-semibold text-gray-500 uppercase">Online & TVM</div>
-            <div className="text-sm font-black text-indigo-700">{formatRp(totals.online + totals.tvm)}</div>
+            <div className="text-sm font-black text-indigo-700">{formatRp((totals.online || 0) + (totals.tvm || 0))}</div>
           </div>
         </div>
       </div>

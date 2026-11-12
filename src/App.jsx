@@ -2766,6 +2766,8 @@ export default function App() {
     try {
       let fetchedData = [];
       let diskonData = [];
+      let channelSummaries = null;
+      let settlement = null;
       const targetDate = transitModal.targetDate;
       const source = transitModal.source;
 
@@ -2773,10 +2775,12 @@ export default function App() {
         const result = await fetchBot3aData(apiIpAddress, targetDate);
         fetchedData = result.fetchedData;
         diskonData = result.diskonData;
+        channelSummaries = result.channelSummaries || null;
       } else if (source === 'iwm') {
         const result = await fetchBotIwmData(apiIpAddress, targetDate);
         fetchedData = result.fetchedData;
         diskonData = result.diskonData;
+        settlement = result.settlement || null;
       }
 
       // MAP DATA dengan targetDate dan categories saat ini
@@ -2785,7 +2789,14 @@ export default function App() {
         return { ...item, mappedCat, mappedItem };
       });
 
-      setTransitModal(prev => ({ ...prev, step: 'mapping', data: mappedData, iwmDiskon: diskonData }));
+      setTransitModal(prev => ({
+        ...prev,
+        step: 'mapping',
+        data: mappedData,
+        iwmDiskon: diskonData,
+        channelSummaries,
+        settlement
+      }));
 
     } catch (err) {
       setTransitModal(prev => ({
@@ -2866,7 +2877,16 @@ export default function App() {
 
     typeData.activeItems = newItems;
     typeData.formData = newFormData;
-    newReports[reportDate] = { ...dayData, [activeTypeKey]: typeData };
+
+    // Simpan ringkasan channel (3A) atau settlement & rombongan (IWM) untuk kebutuhan rekap & cetak
+    const updatedDayData = {
+      ...dayData,
+      [activeTypeKey]: typeData,
+      ...(transitModal.channelSummaries ? { rekon3aSummary: transitModal.channelSummaries } : {}),
+      ...(transitModal.settlement ? { rekonIwmSettlement: transitModal.settlement } : {}),
+      ...(transitModal.iwmDiskon && transitModal.iwmDiskon.length > 0 ? { rekonIwmRombongan: transitModal.iwmDiskon } : {})
+    };
+    newReports[reportDate] = updatedDayData;
 
     setAllReports(newReports);
     saveToFirebaseDirectly(newReports, newBankRows);
