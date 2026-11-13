@@ -424,6 +424,10 @@ def api_tarik_3a():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     local_ip = get_local_ip()
     print("\n" + "="*60)
     print(" 🤖 SERVER API ROBOT 3A V1.6 TELAH MENYALA AKTIF!")
