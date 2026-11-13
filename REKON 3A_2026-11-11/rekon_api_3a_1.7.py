@@ -312,6 +312,7 @@ def proses_tarik_data(tanggal_rekon_str):
             min_cols_needed = max([idx_ticket, idx_qty, idx_nominal] + left_indices) + 1 if thead_list else 4
             
             data_channel = []
+            raw_ticket_rows = []
             for cols in tbody_list:
                 if len(cols) >= min_cols_needed:
                     first_col_text = cols[0] if cols else ""
@@ -322,6 +323,14 @@ def proses_tarik_data(tanggal_rekon_str):
                     ticket_name_str = cols[idx_ticket]
                     qty_val = clean_number(cols[idx_qty])
                     nominal_val = clean_number(cols[idx_nominal])
+                    
+                    raw_ticket_rows.append({
+                        "merchant": cols[0] if len(cols) > 0 else "Taman Margasatwa Ragunan",
+                        "location": cols[1] if len(cols) > 1 else left_info_str,
+                        "ticket": ticket_name_str,
+                        "qty": qty_val,
+                        "nominal": nominal_val
+                    })
                     
                     if qty_val > 0 or nominal_val > 0:
                         data_channel.append({
@@ -374,7 +383,8 @@ def proses_tarik_data(tanggal_rekon_str):
                 "channelName": disp,
                 "transactionQty": trx_qty,
                 "totalTiket": total_tiket,
-                "totalNominal": final_nominal
+                "totalNominal": final_nominal,
+                "ticketRows": raw_ticket_rows
             }
             print(f"   ✅ [{disp}] Transaction Qty: {trx_qty} | Total Tiket: {total_tiket} | Nominal: Rp {final_nominal:,.0f}")
 
