@@ -3273,13 +3273,124 @@ export default function App() {
 
 
   const handlePrint = () => { if (typeof window !== 'undefined') window.print(); };
-  const handleDownloadPDF = (customFilename) => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return; const element = document.getElementById('printable-area'); if (!element) return;
-    if (window.html2pdf) {
-      setPdfLoading(true);
-      const fn = typeof customFilename === 'string' && customFilename ? customFilename : `Laporan_STSU_${activeType.toUpperCase()}${activeType === 'lain' ? `_Dok${activeLainIndex}` : ''}_${reportDate}.pdf`;
-      window.html2pdf().set({ margin: [10, 10, 10, 10], filename: fn, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(element).save().then(() => setPdfLoading(false)).catch(err => { setPdfLoading(false); });
-    } else { showConfirm("Modul pembuat PDF sedang dimuat oleh sistem. Mohon tunggu 3 detik lalu coba tekan lagi.", null); }
+  const handleDownloadPDF = async (customFilename) => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const element = document.getElementById('printable-area');
+    if (!element) return;
+    if (!window.html2pdf) {
+      showConfirm("Modul pembuat PDF sedang dimuat oleh sistem. Mohon tunggu 3 detik lalu coba tekan lagi.", null);
+      return;
+    }
+
+    const fn = typeof customFilename === 'string' && customFilename
+      ? customFilename
+      : `Laporan_STSU_${activeType.toUpperCase()}${activeType === 'lain' ? `_Dok${activeLainIndex}` : ''}_${reportDate}.pdf`;
+
+    setPdfLoading(true);
+    try {
+      const portraitSheet = element.querySelector('.rekon-portrait-sheet');
+      const landscapeSheet = element.querySelector('.print-landscape-lembar2');
+
+      // Khusus Format STSU & Rekon Channel: ekspor tepat 2 halaman (Hal 1 Portrait + Hal 2 Landscape)
+      if (element.classList.contains('rekon-channel-printable') && portraitSheet && landscapeSheet) {
+        const renderSheetCanvas = async (node, captureWidthPx) => {
+          const worker = window.html2pdf()
+            .set({
+              image: { type: 'jpeg', quality: 0.98 },
+              html2canvas: {
+                scale: 2,
+                useCORS: true,
+                windowWidth: captureWidthPx,
+                onclone: (clonedDoc) => {
+                  clonedDoc.querySelectorAll('.rekon-portrait-sheet, .print-landscape-lembar2').forEach((el) => {
+                    el.style.minHeight = '0';
+                    el.style.height = 'auto';
+                    el.style.boxShadow = 'none';
+                    el.style.border = 'none';
+                    el.style.margin = '0';
+                    el.style.padding = '0';
+                    el.style.width = `${captureWidthPx}px`;
+                    el.style.maxWidth = 'none';
+                  });
+                }
+              }
+            })
+            .from(node);
+          const canvas = await worker.toCanvas().get('canvas');
+          return {
+            dataUrl: canvas.toDataURL('image/jpeg', 0.98),
+            width: canvas.width,
+            height: canvas.height
+          };
+        };
+
+        const img1 = await renderSheetCanvas(portraitSheet, 794);
+        const img2 = await renderSheetCanvas(landscapeSheet, 1122);
+
+        const seedEl = document.createElement('div');
+        seedEl.style.cssText = 'position:fixed;left:-9999px;top:0;width:10px;height:10px;background:#fff;';
+        document.body.appendChild(seedEl);
+        let pdf;
+        try {
+          pdf = await window.html2pdf()
+            .set({ jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } })
+            .from(seedEl)
+            .toPdf()
+            .get('pdf');
+        } finally {
+          document.body.removeChild(seedEl);
+        }
+
+        // Halaman 1: Portrait A4
+        const pW = 210;
+        const pH = 297;
+        const mTop1 = 12;
+        const mSide1 = 14;
+        const ratio1 = Math.min((pW - mSide1 * 2) / img1.width, (pH - mTop1 - 10) / img1.height);
+        const w1 = img1.width * ratio1;
+        const h1 = img1.height * ratio1;
+        pdf.addImage(img1.dataUrl, 'JPEG', (pW - w1) / 2, mTop1, w1, h1);
+
+        // Halaman 2: Landscape A4
+        pdf.addPage('a4', 'landscape');
+        const lW = 297;
+        const lH = 210;
+        const mTop2 = 8;
+        const mSide2 = 10;
+        const ratio2 = Math.min((lW - mSide2 * 2) / img2.width, (lH - mTop2 * 2) / img2.height);
+        const w2 = img2.width * ratio2;
+        const h2 = img2.height * ratio2;
+        pdf.addImage(img2.dataUrl, 'JPEG', (lW - w2) / 2, mTop2, w2, h2);
+
+        pdf.save(fn);
+      } else if (element.classList.contains('rekon-rombongan-sheet')) {
+        await window.html2pdf()
+          .set({
+            margin: [8, 10, 8, 10],
+            filename: fn,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+          })
+          .from(element)
+          .save();
+      } else {
+        await window.html2pdf()
+          .set({
+            margin: [10, 10, 10, 10],
+            filename: fn,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+          })
+          .from(element)
+          .save();
+      }
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+    } finally {
+      setPdfLoading(false);
+    }
   };
 
 
@@ -3325,10 +3436,11 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-800 font-sans pb-36 relative print:pb-0 print:min-h-0 print:bg-white">
+    <div className="app-root-shell min-h-screen bg-gray-100 text-gray-800 font-sans pb-36 relative print:pb-0 print:min-h-0 print:bg-white">
       <style>{`
         @media print {
-          html, body { background-color: white !important; margin: 0 !important; padding: 0 !important; }
+          html, body { background-color: white !important; margin: 0 !important; padding: 0 !important; height: auto !important; min-height: 0 !important; }
+          .app-root-shell, .app-route-shell { min-height: 0 !important; height: auto !important; padding-bottom: 0 !important; margin: 0 !important; display: block !important; background-color: white !important; }
           .no-print { display: none !important; }
           ${printMode === 'ncr' ? `
             /* KERTAS A5 LANDSCAPE (MENDATAR) UNTUK DOT MATRIX */
@@ -3430,7 +3542,7 @@ export default function App() {
       )}
 
       {topLevelRoute !== 'home' && (
-        <div className="w-full flex flex-col min-h-screen">
+        <div className="app-route-shell w-full flex flex-col min-h-screen print:min-h-0 print:block">
           {/* Top Bar for Back Navigation */}
           <div className="bg-white border-b border-gray-200 px-4 py-3 flex justify-between items-center sticky top-0 z-[60] no-print shadow-sm">
             <button onClick={() => setTopLevelRoute('home')} className="flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-green-700 bg-gray-50 hover:bg-green-50 border border-gray-200 hover:border-green-200 px-4 py-2 rounded-lg transition-colors">

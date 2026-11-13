@@ -653,19 +653,130 @@ export default function FormatRekonChannelReport({
         </div>
       )}
 
-      {/* PRINT STYLE KHUSUS LEMBAR 2 LANDSCAPE */}
+      {/* PRINT STYLE KHUSUS FORMAT STSU & REKON CHANNEL (TEPAT 2 LEMBAR: PORTRAIT + LANDSCAPE) */}
       <style>{`
         @media print {
-          @page landscape_rekon_sheet {
-            size: A4 landscape;
-            margin: 10mm 12mm 10mm 12mm;
+          ${selectedChannel === 'ROMBONGAN' ? `
+            @page {
+              size: A4 landscape;
+              margin: 8mm 10mm 8mm 10mm;
+            }
+          ` : `
+            @page {
+              size: A4 portrait;
+              margin: 12mm 14mm 10mm 14mm;
+            }
+            @page landscape_rekon_sheet {
+              size: A4 landscape;
+              margin: 7mm 10mm 7mm 10mm;
+            }
+          `}
+          html, body {
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            height: auto !important;
+            min-height: 0 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
-          .print-landscape-sheet {
-            page: landscape_rekon_sheet;
-            page-break-before: always;
-            break-before: page;
+          .print-preview-wrapper {
+            max-width: none !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          #printable-area.rekon-channel-printable {
+            display: block !important;
+            gap: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            height: auto !important;
+            min-height: 0 !important;
+          }
+          .rekon-portrait-sheet {
             width: 100% !important;
             max-width: none !important;
+            min-height: 0 !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          .rekon-portrait-sheet .rekon-stsu-rows > * + * {
+            margin-top: 1px !important;
+          }
+          .rekon-portrait-sheet .rekon-stsu-row {
+            padding-top: 1px !important;
+            padding-bottom: 1px !important;
+            line-height: 1.25 !important;
+          }
+          .rekon-portrait-sheet .rekon-ttd-wrap {
+            margin-top: 20px !important;
+          }
+          .rekon-portrait-sheet .rekon-ttd-space {
+            height: 56px !important;
+          }
+          .rekon-rombongan-sheet {
+            width: 100% !important;
+            max-width: none !important;
+            min-height: 0 !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
+          .rekon-rombongan-sheet .rekon-table-wrap {
+            overflow: visible !important;
+          }
+          .print-landscape-lembar2 {
+            page: landscape_rekon_sheet;
+            page-break-before: always !important;
+            break-before: page !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+            width: 100% !important;
+            max-width: none !important;
+            min-height: 0 !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .print-landscape-lembar2 .rekon-banner {
+            padding: 6px 12px !important;
+          }
+          .print-landscape-lembar2 .rekon-iwm-header {
+            margin-bottom: 8px !important;
+          }
+          .print-landscape-lembar2 .rekon-table-wrap {
+            margin-top: 6px !important;
+            overflow: visible !important;
+          }
+          .print-landscape-lembar2 table {
+            font-size: 10.5px !important;
+          }
+          .print-landscape-lembar2 table th,
+          .print-landscape-lembar2 table td {
+            padding-top: 2.5px !important;
+            padding-bottom: 2.5px !important;
+            line-height: 1.25 !important;
+          }
+          .print-landscape-lembar2 .rekon-summary-wrap {
+            margin-top: 8px !important;
+          }
+          .print-landscape-lembar2 .rekon-footer {
+            margin-top: 6px !important;
+            font-size: 9.5px !important;
           }
         }
       `}</style>
@@ -674,7 +785,7 @@ export default function FormatRekonChannelReport({
       {/* KONDISI 1: JIKA MEMILIH LAPORAN ROMBONGAN IWM (11 KOLOM STANDAR)    */}
       {/* =================================================================== */}
       {selectedChannel === 'ROMBONGAN' ? (
-        <div id="printable-area" className="bg-white p-6 sm:p-10 shadow-lg mx-auto border border-gray-200 text-black max-w-[297mm] w-full print-landscape-sheet print:max-w-none print:p-0 print:border-none print:shadow-none">
+        <div id="printable-area" className="rekon-rombongan-sheet bg-white p-6 sm:p-10 shadow-lg mx-auto border border-gray-200 text-black max-w-[297mm] w-full print:max-w-none print:p-0 print:border-none print:shadow-none">
           <div className="text-center mb-6">
             <h2 className="font-extrabold text-lg uppercase tracking-wide">DATA PENGUNJUNG ROMBONGAN</h2>
             <h3 className="font-bold text-base uppercase">KANTOR PENGELOLA TAMAN MARGASATWA RAGUNAN</h3>
@@ -683,7 +794,7 @@ export default function FormatRekonChannelReport({
             </p>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rekon-table-wrap">
             <table className="w-full border-collapse border border-black text-[11px]">
               <thead className="bg-gray-100 text-black font-bold">
                 <tr>
@@ -757,12 +868,12 @@ export default function FormatRekonChannelReport({
         /* =================================================================== */
         /* KONDISI 2: FORMAT STSU (LEMBAR 1) & BUKTI REKON (LEMBAR 2 LANDSCAPE)*/
         /* =================================================================== */
-        <div id="printable-area" className="flex flex-col gap-10">
+        <div id="printable-area" className="rekon-channel-printable flex flex-col gap-10 print:block print:gap-0">
           
           {/* ================================================================= */}
           {/* 📄 LEMBAR 1: FORM STSU RESMI KEDINASAN (PORTRAIT A4)               */}
           {/* ================================================================= */}
-          <div className="bg-white p-6 sm:p-10 shadow-lg mx-auto border border-gray-200 text-black max-w-[210mm] w-full min-h-[297mm] relative print:max-w-none print:p-0 print:border-none print:shadow-none print:min-h-0 page-break-after">
+          <div className="rekon-portrait-sheet bg-white p-6 sm:p-10 shadow-lg mx-auto border border-gray-200 text-black max-w-[210mm] w-full min-h-[297mm] relative print:max-w-none print:p-0 print:border-none print:shadow-none print:min-h-0">
             {/* Header Dokumen */}
             <div className="flex justify-between items-start text-xs sm:text-sm font-bold tracking-tight">
               <div>
@@ -799,11 +910,11 @@ export default function FormatRekonChannelReport({
               4.1.02.02.009.00001 Retribusi Pelayanan Tempat Rekreasi, Pariwisata, dan Olahraga
             </div>
 
-            <div className="text-xs space-y-1">
+            <div className="text-xs space-y-1 rekon-stsu-rows">
               {STSU_ITEMS_DEF.filter(it => it.group === 'rekreasi').map((it) => {
                 const val = channelStsuData[it.no]?.nominal || 0;
                 return (
-                  <div key={it.no} className="grid grid-cols-12 py-0.5">
+                  <div key={it.no} className="grid grid-cols-12 py-0.5 rekon-stsu-row">
                     <div className="col-span-1 text-center font-mono">{it.no}.</div>
                     <div className="col-span-8 truncate pr-2">{it.name}</div>
                     <div className="col-span-3 flex justify-between font-mono">
@@ -820,11 +931,11 @@ export default function FormatRekonChannelReport({
               4.1.02.02.014.00001 Retribusi Penyediaan Tempat Khusus Parkir Di Luar Badan Jalan
             </div>
 
-            <div className="text-xs space-y-1">
+            <div className="text-xs space-y-1 rekon-stsu-rows">
               {STSU_ITEMS_DEF.filter(it => it.group === 'parkir').map((it) => {
                 const val = channelStsuData[it.no]?.nominal || 0;
                 return (
-                  <div key={it.no} className="grid grid-cols-12 py-0.5">
+                  <div key={it.no} className="grid grid-cols-12 py-0.5 rekon-stsu-row">
                     <div className="col-span-1 text-center font-mono">{it.no}.</div>
                     <div className="col-span-8 truncate pr-2">{it.name}</div>
                     <div className="col-span-3 flex justify-between font-mono">
@@ -857,11 +968,11 @@ export default function FormatRekonChannelReport({
             </div>
 
             {/* Tanda Tangan Resmi */}
-            <div className="mt-10 grid grid-cols-2 text-center text-xs">
+            <div className="mt-10 grid grid-cols-2 text-center text-xs rekon-ttd-wrap">
               <div>
                 <div>Mengetahui,</div>
                 <div className="font-semibold mt-1">Kepala Seksi Pelayanan dan Informasi</div>
-                <div className="h-20"></div>
+                <div className="h-20 rekon-ttd-space"></div>
                 <div className="font-bold underline">Afriana Pulungan, S.Si., M.AP.</div>
                 <div className="text-[11px] text-gray-700">NIP 197304212007012021</div>
               </div>
@@ -869,7 +980,7 @@ export default function FormatRekonChannelReport({
               <div>
                 <div>Jakarta, {formatTanggalCetak(reportDate)}</div>
                 <div className="font-semibold mt-1">Bendahara Penerimaan</div>
-                <div className="h-20"></div>
+                <div className="h-20 rekon-ttd-space"></div>
                 <div className="font-bold underline">Evi Irmawati</div>
                 <div className="text-[11px] text-gray-700">NIP 198101082009042006</div>
               </div>
@@ -881,8 +992,8 @@ export default function FormatRekonChannelReport({
           {/* ================================================================= */}
           {selectedChannel === 'OLD_GATE' ? (
             /* KHUSUS IWM OLD GATE: FORMAT ASLI DATA OLDGATE.PDF (REKAP PENDAPATAN PERLOKASI LANDSCAPE) */
-            <div className="bg-white p-6 sm:p-10 shadow-lg mx-auto border border-gray-200 text-black max-w-[297mm] w-full print-landscape-sheet print:max-w-none print:p-0 print:border-none print:shadow-none">
-              <div className="text-center mb-5">
+            <div className="bg-white p-6 sm:p-10 shadow-lg mx-auto border border-gray-200 text-black max-w-[297mm] w-full print-landscape-sheet print-landscape-lembar2 print:max-w-none print:p-0 print:border-none print:shadow-none">
+              <div className="text-center mb-5 rekon-iwm-header">
                 <h2 className="font-bold text-base sm:text-lg uppercase tracking-wide text-black">
                   DATA PENGUNJUNG
                 </h2>
@@ -894,7 +1005,7 @@ export default function FormatRekonChannelReport({
                 </p>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rekon-table-wrap">
                 <table className="w-full border-collapse border border-black text-[11px] text-black">
                   <thead className="bg-gray-100 font-bold text-black">
                     <tr>
@@ -994,7 +1105,7 @@ export default function FormatRekonChannelReport({
               </div>
 
               {/* TABEL 2: RINGKASAN SETTLEMENT TRANSAKSI BERJALAN DARI DATA IWM */}
-              <div className="mt-5">
+              <div className="mt-5 rekon-summary-wrap">
                 <div className="bg-indigo-700 text-white px-3 py-1.5 text-xs font-black uppercase text-center rounded-t-md">
                   RINGKASAN SETTLEMENT TRANSAKSI BERJALAN (GATE & POS BANK DKI)
                 </div>
@@ -1038,7 +1149,7 @@ export default function FormatRekonChannelReport({
                 </table>
               </div>
 
-              <div className="mt-4 flex flex-col sm:flex-row justify-between items-start sm:items-center text-[10px] text-gray-600 gap-1">
+              <div className="mt-4 flex flex-col sm:flex-row justify-between items-start sm:items-center text-[10px] text-gray-600 gap-1 rekon-footer">
                 <div>
                   Tanggal Cetak : {new Date().toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-')} {new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/\./g, ':')}
                 </div>
@@ -1049,9 +1160,9 @@ export default function FormatRekonChannelReport({
             </div>
           ) : (
             /* KHUSUS 3A (NEW GATE, TVM, TIKET ONLINE): FORMAT ASLI PDF SISTEM 3A (SEMUA 16 BARIS TERMASUK 0) */
-            <div className="bg-white p-6 sm:p-10 shadow-lg mx-auto border border-gray-200 text-black max-w-[297mm] w-full print-landscape-sheet print:max-w-none print:p-0 print:border-none print:shadow-none">
+            <div className="bg-white p-6 sm:p-10 shadow-lg mx-auto border border-gray-200 text-black max-w-[297mm] w-full print-landscape-sheet print-landscape-lembar2 print:max-w-none print:p-0 print:border-none print:shadow-none">
               {/* Header Banner Landscape sesuai PDF 3A */}
-              <div className="bg-[#5B6BE1] text-white px-4 py-2.5 text-center">
+              <div className="bg-[#5B6BE1] text-white px-4 py-2.5 text-center rekon-banner">
                 <h3 className="font-bold text-sm sm:text-base tracking-wide uppercase">
                   BUKTI REKONSILIASI DARI SISTEM 3A
                 </h3>
@@ -1061,7 +1172,7 @@ export default function FormatRekonChannelReport({
               </div>
 
               {/* TABEL 1: MERCHANT | LOCATION | TICKET | TOTAL TICKET | TOTAL NOMINAL */}
-              <div className="mt-2.5 overflow-x-auto">
+              <div className="mt-2.5 overflow-x-auto rekon-table-wrap">
                 <table className="w-full border-collapse border border-black text-[11px] text-black">
                   <thead className="bg-[#E5E7EB] text-black font-bold">
                     <tr>
@@ -1103,7 +1214,7 @@ export default function FormatRekonChannelReport({
               </div>
 
               {/* TABEL 2 (3A): SUMMARY BY CHANNEL ORDER */}
-              <div className="mt-5">
+              <div className="mt-5 rekon-summary-wrap">
                 <div className="bg-[#5B6BE1] text-white px-3 py-1.5 text-xs font-bold uppercase text-center">
                   SUMMARY BY CHANNEL ORDER
                 </div>
@@ -1140,7 +1251,7 @@ export default function FormatRekonChannelReport({
                 </table>
               </div>
 
-              <div className="mt-3 text-[10px] text-gray-600 italic">
+              <div className="mt-3 text-[10px] text-gray-600 italic rekon-footer">
                 *Data diekstrak oleh sistem pada: {new Date().toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-')} {new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/\./g, ':')} WIB | Sumber: 3A Portal ({formatTanggalCetak(reportDate)})
               </div>
             </div>
