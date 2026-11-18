@@ -54,6 +54,26 @@ export default function TransitModal({
       const updatedData = prev.data.map(item => {
         const lower = (item.nameAPI || '').toLowerCase();
         if (!lower.includes('primata') && !lower.includes('schmutzer')) return item;
+
+        // Jika baris memiliki Qty eksplisit (seperti pada 3A) yang sudah pas dengan tarif Rp 6.000 atau Rp 7.500 (tiket H+ lintas hari),
+        // pertahankan tarif asli baris tersebut agar tidak tertimpa.
+        const qtyMatchCheck = lower.match(/\(qty:\s*(\d+)\)/i);
+        const itemQty = Number(item.qty) || (qtyMatchCheck ? parseInt(qtyMatchCheck[1], 10) : 0);
+        const itemAmt = Number(item.amount) || 0;
+        if (itemQty > 0 && itemAmt > 0) {
+          const unitRp = Math.round(itemAmt / itemQty);
+          if (unitRp === 6000 || unitRp === 4500 || unitRp === 7500 || unitRp === 5625) {
+            const rowIsLibur = unitRp === 7500 || unitRp === 5625;
+            const { mappedCat, mappedItem } = smartMappingAI(item.nameAPI, prev.source, prev.targetDate, categories, itemAmt, itemQty);
+            return {
+              ...item,
+              forcePrimataTarif: rowIsLibur ? 'libur' : 'kerja',
+              mappedCat: mappedCat || item.mappedCat,
+              mappedItem: mappedItem || item.mappedItem
+            };
+          }
+        }
+
         const isRomb = /romb/i.test(lower);
         let newNameAPI = item.nameAPI || '';
         if (!isRomb) {
@@ -70,7 +90,7 @@ export default function TransitModal({
           }
         }
         const probeName = `${newNameAPI} ${isLibur ? 'weekend libur besar' : 'hari biasa weekday'}`;
-        const { mappedCat, mappedItem } = smartMappingAI(probeName, prev.source, prev.targetDate, categories);
+        const { mappedCat, mappedItem } = smartMappingAI(probeName, prev.source, prev.targetDate, categories, itemAmt, itemQty);
         return {
           ...item,
           nameAPI: newNameAPI,
@@ -208,36 +228,45 @@ export default function TransitModal({
                         <div className="text-gray-600 text-[11px] mt-0.5">
                           Setiap nominal rupiah dibagi tarif resmi wajib bulat / tidak berkoma (Dewasa: Rp 4rb, Anak: Rp 3rb, Gol I: Rp 15rb, Gol II: Rp 12.5rb, Gol III: Rp 6rb, Motor: Rp 3rb, Sepeda: Rp 1rb, Primata Hari Kerja: Rp 6rb, Primata Sabtu-Minggu/Tgl Merah/Cuti Bersama: Rp 7.5rb, Diskon Rombongan: 25%).
                         </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-gray-700 mr-1">
-                            <Calendar size={12} className="text-indigo-600" />
-                            Tarif Pusat Primata ({holidayInfo.reason}):
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleSwitchPrimataTarifMode('kerja')}
-                            className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold border transition-all ${
-                              !isPrimataLiburActive
-                                ? 'bg-blue-600 text-white border-blue-700 shadow-2xs'
-                                : 'bg-white text-gray-600 border-gray-300 hover:bg-blue-50'
-                            }`}
-                            title="Gunakan tarif Pusat Primata Hari Biasa / Hari Kerja (Rp 6.000)"
-                          >
-                            Hari Biasa / Kerja (Rp 6.000)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleSwitchPrimataTarifMode('libur')}
-                            className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold border transition-all ${
-                              isPrimataLiburActive
-                                ? 'bg-purple-600 text-white border-purple-700 shadow-2xs'
-                                : 'bg-white text-gray-600 border-gray-300 hover:bg-purple-50'
-                            }`}
-                            title="Gunakan tarif Pusat Primata Sabtu-Minggu / Tanggal Merah / Cuti Bersama (Rp 7.500)"
-                          >
-                            Sabtu-Minggu / Tgl Merah / Cuti Bersama (Rp 7.500)
-                          </button>
-                        </div>
+                        {transitModal.source === '3a' ? (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-indigo-900 bg-indigo-50/80 border border-indigo-200 px-2.5 py-1 rounded-lg">
+                            <Calendar size={12} className="text-indigo-600 shrink-0" />
+                            <span>
+                              Deteksi Otomatis H+ (3A): Mendukung pembelian lintas hari pada tanggal yang sama — Tiket Primata Hari Kerja (<strong>Rp 6.000</strong>) &amp; Weekend/Libur (<strong>Rp 7.500</strong>) divalidasi otomatis per baris sesuai Qty &amp; jenis tiket.
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-gray-700 mr-1">
+                              <Calendar size={12} className="text-indigo-600" />
+                              Tarif Pusat Primata ({holidayInfo.reason}):
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleSwitchPrimataTarifMode('kerja')}
+                              className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold border transition-all ${
+                                !isPrimataLiburActive
+                                  ? 'bg-blue-600 text-white border-blue-700 shadow-2xs'
+                                  : 'bg-white text-gray-600 border-gray-300 hover:bg-blue-50'
+                              }`}
+                              title="Gunakan tarif Pusat Primata Hari Biasa / Hari Kerja (Rp 6.000)"
+                            >
+                              Hari Biasa / Kerja (Rp 6.000)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSwitchPrimataTarifMode('libur')}
+                              className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold border transition-all ${
+                                isPrimataLiburActive
+                                  ? 'bg-purple-600 text-white border-purple-700 shadow-2xs'
+                                  : 'bg-white text-gray-600 border-gray-300 hover:bg-purple-50'
+                              }`}
+                              title="Gunakan tarif Pusat Primata Sabtu-Minggu / Tanggal Merah / Cuti Bersama (Rp 7.500)"
+                            >
+                              Sabtu-Minggu / Tgl Merah / Cuti Bersama (Rp 7.500)
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0 font-bold self-end sm:self-center">

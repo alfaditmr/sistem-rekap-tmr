@@ -89,8 +89,8 @@ const matchItemToStsuRowNo = (itemName = '', itemNote = '', isWeekend = false) =
   const isDewasa = /dewasa/i.test(norm);
 
   if (isPrimata) {
-    const isExplicitLibur = /we|weekend|holiday|libur|besar|sabtu|minggu/i.test(norm);
-    const isExplicitBiasa = /wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at/i.test(norm);
+    const isExplicitLibur = /\bwe\b|weekend|holiday|libur|besar|sabtu|minggu/i.test(norm);
+    const isExplicitBiasa = /\bwd\b|weekday|biasa|selasa|rabu|kamis|jumat|jum'at/i.test(norm);
     const libur = isExplicitLibur ? true : isExplicitBiasa ? false : isWeekend;
 
     if (isRomb) {

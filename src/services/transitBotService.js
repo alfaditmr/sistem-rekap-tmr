@@ -27,10 +27,13 @@ export const getPrimataLabel = (amount, targetDate = '') => {
  * Logika AI Smart Matcher: Menentukan Kategori dan Sub-Kategori otomatis
  * berdasarkan kata kunci dan algoritma scoring terbobot.
  */
-export const smartMappingAI = (nameAPI, apiSource, targetDate, categories = []) => {
+export const smartMappingAI = (nameAPI, apiSource, targetDate, categories = [], itemAmount = 0, itemQty = 0) => {
   let guessCat = '';
   let guessItem = '';
   const lowerName = (nameAPI || '').toLowerCase();
+  const qtyMatch = lowerName.match(/\(qty:\s*(\d+)\)/i);
+  const resolvedQty = Number(itemQty) || (qtyMatch ? parseInt(qtyMatch[1], 10) : 0);
+  const resolvedAmount = Number(itemAmount) || 0;
   
   if (apiSource === 'iwm') {
     const cat = categories.find(c => c.name.toLowerCase().includes('old gate') || c.name.toLowerCase().includes('iwm'));
@@ -93,11 +96,25 @@ export const smartMappingAI = (nameAPI, apiSource, targetDate, categories = []) 
            const isSubLibur = liburRe.test(normSubName) && !kerjaRe.test(normSubName);
            const isSubWd = kerjaRe.test(normSubName) && !liburRe.test(normSubName);
 
-           const isTargetLibur = isApiLibur
-             ? true
-             : isApiWd
-             ? false
-             : isHolidayOrWeekend(targetDate);
+           // Jika item memiliki Qty & Nominal eksplisit dari 3A (misal: Qty 6, Rp 36.000 -> Rp 6.000/tiket),
+           // tentukan Hari Biasa vs Hari Besar dari harga satuan aktual tiket tersebut (mendukung pembelian H+ lintas hari).
+           let isTargetLibur;
+           if (resolvedQty > 0 && resolvedAmount > 0) {
+             const unitRp = Math.round(resolvedAmount / resolvedQty);
+             if (unitRp === 6000 || unitRp === 4500) {
+               isTargetLibur = false;
+             } else if (unitRp === 7500 || unitRp === 5625) {
+               isTargetLibur = true;
+             }
+           }
+
+           if (typeof isTargetLibur !== 'boolean') {
+             isTargetLibur = isApiLibur
+               ? true
+               : isApiWd
+               ? false
+               : isHolidayOrWeekend(targetDate);
+           }
            
            if (isTargetLibur && isSubLibur) score += 100;
            else if (!isTargetLibur && isSubWd) score += 100;
@@ -203,17 +220,22 @@ export const process3aData = (rekonData, targetDate) => {
           groupName = `[${channel}] Taman Satwa Anak (Total)`;
         } 
         else if (isPrimata && !isRombongan) {
-          const isExplicitHoliday = /holiday|libur|besar/i.test(lowerName);
-          const isExplicitWeekend = /we|weekend|sabtu|minggu/i.test(lowerName);
-          const isExplicitWeekday = /wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at/i.test(lowerName);
+          const isExplicitHoliday = /holiday|libur|besar|tanggal\s*merah|cuti\s*bersama/i.test(lowerName);
+          const isExplicitWeekend = /\bwe\b|weekend|sabtu|minggu/i.test(lowerName);
+          const isExplicitWeekday = /\bwd\b|weekday|biasa|hari\s*kerja|selasa|rabu|kamis|jumat|jum'at/i.test(lowerName);
           const isIdWeekend = ['13', '13_2', '14', '14_2'].includes(idStr);
           const isIdWeekday = ['9', '10'].includes(idStr);
+          const unitRp = qty > 0 && nominal > 0 ? Math.round(nominal / qty) : 0;
 
           let libur = false;
-          if (isIdWeekend || isExplicitHoliday || isExplicitWeekend) {
-            libur = true;
-          } else if (isIdWeekday || isExplicitWeekday) {
+          if (unitRp === 6000) {
             libur = false;
+          } else if (unitRp === 7500) {
+            libur = true;
+          } else if (isIdWeekday || (isExplicitWeekday && !isExplicitWeekend && !isExplicitHoliday)) {
+            libur = false;
+          } else if (isIdWeekend || isExplicitHoliday || isExplicitWeekend) {
+            libur = true;
           } else {
             libur = isCalendarWeekend; 
           }
@@ -261,7 +283,8 @@ export const process3aData = (rekonData, targetDate) => {
     fetchedData.push({
       id: g.id,
       nameAPI: g.nameAPI.includes('(Qty:') || g.qty === 0 ? g.nameAPI : `${g.nameAPI} (Qty: ${g.qty})`,
-      amount: g.amount
+      amount: g.amount,
+      qty: g.qty
     });
   });
 
@@ -321,7 +344,8 @@ export const fetchBot3aData = async (ipAddress, targetDate) => {
             channelName: s.channelName || chKey,
             transactionQty: Number(s.transactionQty) || 0,
             totalTiket: Number(s.totalTiket) || 0,
-            totalNominal: Number(s.totalNominal) || 0
+            totalNominal: Number(s.totalNominal) || 0,
+            ...(Array.isArray(s.ticketRows) ? { ticketRows: s.ticketRows } : {})
           };
         }
       });

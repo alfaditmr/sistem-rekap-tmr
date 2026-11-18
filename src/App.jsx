@@ -2937,7 +2937,7 @@ export default function App() {
 
       // MAP DATA dengan targetDate dan categories saat ini
       const mappedData = fetchedData.map(item => {
-        const { mappedCat, mappedItem } = smartMappingAI(item.nameAPI, source, targetDate, categories);
+        const { mappedCat, mappedItem } = smartMappingAI(item.nameAPI, source, targetDate, categories, item.amount, item.qty);
         return { ...item, mappedCat, mappedItem };
       });
 

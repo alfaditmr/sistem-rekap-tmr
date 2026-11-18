@@ -188,6 +188,24 @@ const PRIMATA_KERJA_REGEX = /\bwd\b|weekday|biasa|hari\s*kerja|selasa|rabu|kamis
  * atau tarif Hari Biasa/Kerja (Rp 6.000 / Romb Rp 4.500).
  */
 const resolveIsPrimataLibur = ({ item, subName = '', apiName = '', targetDate = '', amount = 0, isRombongan = false }) => {
+  const rateWd = isRombongan ? TARIF_STANDAR.ROMB_PRIMATA_WD : TARIF_STANDAR.PRIMATA_WD;
+  const rateWe = isRombongan ? TARIF_STANDAR.ROMB_PRIMATA_WE : TARIF_STANDAR.PRIMATA_WE;
+
+  // 1. Jika data berasal dari 3A yang memiliki Qty eksplisit (contoh: "(Qty: 6)" dengan Rp 36.000),
+  //    gunakan kecocokan persis (amount === apiQty * tarif) sebagai penentu utama.
+  //    Hal ini mendukung pembelian tiket online/3A H+1 s/d H+3 lintas hari (misal beli hari Minggu untuk kunjungan Selasa @ Rp 6.000).
+  const qtyMatch = String(apiName || '').match(/\(qty:\s*(\d+)\)/i);
+  const apiQty = Number(item?.qty) || (qtyMatch ? parseInt(qtyMatch[1], 10) : 0);
+  if (apiQty > 0 && amount > 0) {
+    if (amount === apiQty * rateWd) return false;
+    if (amount === apiQty * rateWe) return true;
+  }
+
+  // 2. Cek apakah item memiliki id eksplisit dari 3A (prm_wd vs prm_we)
+  const itemId = String(item?.id || '').toLowerCase();
+  if (itemId.includes('_prm_wd_')) return false;
+  if (itemId.includes('_prm_we_')) return true;
+
   if (item?.forcePrimataTarif === 'libur') return true;
   if (item?.forcePrimataTarif === 'kerja') return false;
 
@@ -201,22 +219,20 @@ const resolveIsPrimataLibur = ({ item, subName = '', apiName = '', targetDate = 
   const apiOnlyWeekend = apiIsWe && !apiIsWd;
   const apiOnlyWeekday = apiIsWd && !apiIsWe;
 
-  // Prioritaskan sub-kategori yang dipilih pada dropdown (jika sudah terpetakan secara spesifik)
+  // 3. Prioritaskan sub-kategori yang dipilih pada dropdown (jika sudah terpetakan secara spesifik)
   if (subOnlyWeekend) return true;
   if (subOnlyWeekday) return false;
 
-  // Jika label API menyebutkan secara spesifik (bukan gabungan "(Hari Biasa / Weekend)")
+  // 4. Jika label API menyebutkan secara spesifik (bukan gabungan "(Hari Biasa / Weekend)")
   if (apiOnlyWeekend) return true;
   if (apiOnlyWeekday) return false;
 
-  // Jika ada tanggal transaksi/targetDate, cek apakah Sabtu/Minggu/Tanggal Merah/Cuti Bersama
+  // 5. Jika ada tanggal transaksi/targetDate, cek apakah Sabtu/Minggu/Tanggal Merah/Cuti Bersama
   if (targetDate && String(targetDate).trim()) {
     return isHolidayOrWeekend(targetDate);
   }
 
-  // Fallback terakhir bila tidak ada tanggal maupun label spesifik
-  const rateWd = isRombongan ? TARIF_STANDAR.ROMB_PRIMATA_WD : TARIF_STANDAR.PRIMATA_WD;
-  const rateWe = isRombongan ? TARIF_STANDAR.ROMB_PRIMATA_WE : TARIF_STANDAR.PRIMATA_WE;
+  // 6. Fallback terakhir bila tidak ada tanggal maupun label spesifik
   if (amount > 0) {
     if (amount % rateWd === 0 && amount % rateWe !== 0) return false;
     if (amount % rateWe === 0 && amount % rateWd !== 0) return true;
@@ -386,9 +402,29 @@ export const checkTransitItemTarif = (item, categories = [], targetDate = '') =>
 
   // Cek apakah ada Qty bawaan API pada nameAPI (contoh: `(Qty: 1276)`)
   const qtyMatch = apiName.match(/\(qty:\s*(\d+)\)/i);
+  const apiQty = Number(item?.qty) || (qtyMatch ? parseInt(qtyMatch[1], 10) : 0);
+
+  // Khusus Pusat Primata di 3A: jika terdapat penggabungan tiket H+ (campuran Rp 6.000 & Rp 7.500 dalam 1 baris dengan total Qty pas)
+  if (isPrimata && !isRombongan && apiQty > 0 && !isInteger) {
+    const diffFromWd = amount - (apiQty * TARIF_STANDAR.PRIMATA_WD);
+    const step = TARIF_STANDAR.PRIMATA_WE - TARIF_STANDAR.PRIMATA_WD; // 1.500
+    if (diffFromWd > 0 && diffFromWd % step === 0) {
+      const qtyWe = diffFromWd / step;
+      const qtyWd = apiQty - qtyWe;
+      if (qtyWd > 0 && qtyWe > 0) {
+        return {
+          isValid: true,
+          unitPrice,
+          qty: apiQty,
+          unitLabel: 'Primata Campuran (Hari Kerja + Weekend/H+)',
+          label: `${qtyWd.toLocaleString('id-ID')} org @ Rp 6.000 + ${qtyWe.toLocaleString('id-ID')} org @ Rp 7.500 (H+)`
+        };
+      }
+    }
+  }
+
   if (qtyMatch && isInteger) {
-    const apiQty = parseInt(qtyMatch[1], 10);
-    if (!isNaN(apiQty) && apiQty !== roundedQty) {
+    if (!isNaN(apiQty) && apiQty > 0 && apiQty !== roundedQty) {
       return {
         isValid: false,
         unitPrice,
@@ -403,12 +439,24 @@ export const checkTransitItemTarif = (item, categories = [], targetDate = '') =>
     const unitText = (isMotor || isSepeda || isGol1 || isGol2 || isGol3)
       ? 'kendaraan'
       : (isPerahu || isKereta ? 'keliling' : (isRombongan ? 'org (Diskon 25%)' : 'orang'));
+
+    let hPlusSuffix = '';
+    if (isPrimata && targetDate && String(targetDate).trim()) {
+      const dateIsLibur = isHolidayOrWeekend(targetDate);
+      const rateIsLibur = unitPrice === TARIF_STANDAR.PRIMATA_WE || unitPrice === TARIF_STANDAR.ROMB_PRIMATA_WE;
+      if (dateIsLibur && !rateIsLibur) {
+        hPlusSuffix = ' (Tiket Hari Kerja / H+)';
+      } else if (!dateIsLibur && rateIsLibur && apiQty > 0) {
+        hPlusSuffix = ' (Tiket Weekend / H+)';
+      }
+    }
+
     return {
       isValid: true,
       unitPrice,
       qty: roundedQty,
       unitLabel,
-      label: `${roundedQty.toLocaleString('id-ID')} ${unitText} @ Rp ${unitPrice.toLocaleString('id-ID')}`
+      label: `${roundedQty.toLocaleString('id-ID')} ${unitText} @ Rp ${unitPrice.toLocaleString('id-ID')}${hPlusSuffix}`
     };
   } else {
     const formattedQty = (amount / unitPrice).toFixed(2).replace('.', ',');
