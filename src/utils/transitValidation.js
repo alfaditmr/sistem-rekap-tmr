@@ -46,6 +46,185 @@ export const TARIF_STANDAR = {
 };
 
 /**
+ * Daftar Hari Libur Nasional (Tanggal Merah) & Cuti Bersama Resmi (SKB 3 Menteri)
+ * Pada tanggal-tanggal ini (serta setiap hari Sabtu & Minggu), tarif Pusat Primata Schmutzer
+ * menggunakan tarif Hari Libur / Besar yaitu Rp 7.500 / orang (Rombongan Diskon 25%: Rp 5.625).
+ * Pada hari biasa / hari kerja (Selasa - Jumat di luar daftar ini), tarif adalah Rp 6.000 / orang.
+ */
+export const TANGGAL_MERAH_DAN_CUTI_BERSAMA = {
+  // === 2025 ===
+  '2025-01-01': 'Tahun Baru 2025 Masehi',
+  '2025-01-27': 'Isra Mikraj Nabi Muhammad SAW',
+  '2025-01-28': 'Cuti Bersama Tahun Baru Imlek',
+  '2025-01-29': 'Tahun Baru Imlek 2576 Kongzili',
+  '2025-03-28': 'Cuti Bersama Hari Suci Nyepi',
+  '2025-03-29': 'Hari Suci Nyepi',
+  '2025-03-31': 'Hari Raya Idul Fitri 1446 H',
+  '2025-04-01': 'Hari Raya Idul Fitri 1446 H',
+  '2025-04-02': 'Cuti Bersama Idul Fitri 1446 H',
+  '2025-04-03': 'Cuti Bersama Idul Fitri 1446 H',
+  '2025-04-04': 'Cuti Bersama Idul Fitri 1446 H',
+  '2025-04-07': 'Cuti Bersama Idul Fitri 1446 H',
+  '2025-04-18': 'Wafat Yesus Kristus',
+  '2025-04-20': 'Kebangkitan Yesus Kristus (Paskah)',
+  '2025-05-01': 'Hari Buruh Internasional',
+  '2025-05-12': 'Hari Raya Waisak 2569 BE',
+  '2025-05-13': 'Cuti Bersama Hari Raya Waisak',
+  '2025-05-29': 'Kenaikan Yesus Kristus',
+  '2025-05-30': 'Cuti Bersama Kenaikan Yesus Kristus',
+  '2025-06-01': 'Hari Lahir Pancasila',
+  '2025-06-06': 'Hari Raya Idul Adha 1446 H',
+  '2025-06-09': 'Cuti Bersama Idul Adha 1446 H',
+  '2025-06-27': '1 Muharam Tahun Baru Islam 1447 H',
+  '2025-08-17': 'Proklamasi Kemerdekaan RI',
+  '2025-08-18': 'Cuti Bersama Kemerdekaan RI',
+  '2025-09-05': 'Maulid Nabi Muhammad SAW',
+  '2025-12-25': 'Hari Raya Natal',
+  '2025-12-26': 'Cuti Bersama Hari Raya Natal',
+
+  // === 2026 ===
+  '2026-01-01': 'Tahun Baru 2026 Masehi',
+  '2026-01-16': 'Isra Mikraj Nabi Muhammad SAW',
+  '2026-02-16': 'Cuti Bersama Tahun Baru Imlek',
+  '2026-02-17': 'Tahun Baru Imlek 2577 Kongzili',
+  '2026-03-18': 'Cuti Bersama Hari Suci Nyepi',
+  '2026-03-19': 'Hari Suci Nyepi (Tahun Baru Saka 1948)',
+  '2026-03-20': 'Cuti Bersama Idul Fitri 1447 H',
+  '2026-03-21': 'Hari Raya Idul Fitri 1447 H',
+  '2026-03-22': 'Hari Raya Idul Fitri 1447 H',
+  '2026-03-23': 'Cuti Bersama Idul Fitri 1447 H',
+  '2026-03-24': 'Cuti Bersama Idul Fitri 1447 H',
+  '2026-04-03': 'Wafat Yesus Kristus',
+  '2026-04-05': 'Kebangkitan Yesus Kristus (Paskah)',
+  '2026-05-01': 'Hari Buruh Internasional',
+  '2026-05-14': 'Kenaikan Yesus Kristus',
+  '2026-05-15': 'Cuti Bersama Kenaikan Yesus Kristus',
+  '2026-05-27': 'Hari Raya Idul Adha 1447 H',
+  '2026-05-28': 'Cuti Bersama Hari Raya Idul Adha 1447 H',
+  '2026-05-31': 'Hari Raya Waisak 2570 BE',
+  '2026-06-01': 'Hari Lahir Pancasila',
+  '2026-06-16': '1 Muharam Tahun Baru Islam 1448 H',
+  '2026-08-17': 'Proklamasi Kemerdekaan RI',
+  '2026-08-25': 'Maulid Nabi Muhammad SAW',
+  '2026-12-24': 'Cuti Bersama Hari Raya Natal',
+  '2026-12-25': 'Hari Raya Natal',
+
+  // === 2027 ===
+  '2027-01-01': 'Tahun Baru 2027 Masehi',
+  '2027-01-06': 'Isra Mikraj Nabi Muhammad SAW',
+  '2027-02-05': 'Cuti Bersama Tahun Baru Imlek',
+  '2027-02-06': 'Tahun Baru Imlek 2578 Kongzili',
+  '2027-03-08': 'Cuti Bersama Idul Fitri 1448 H',
+  '2027-03-09': 'Cuti Bersama Idul Fitri 1448 H',
+  '2027-03-10': 'Hari Raya Idul Fitri 1448 H',
+  '2027-03-11': 'Hari Raya Idul Fitri 1448 H',
+  '2027-03-12': 'Cuti Bersama Idul Fitri 1448 H',
+  '2027-03-26': 'Wafat Yesus Kristus',
+  '2027-03-28': 'Hari Suci Nyepi / Paskah',
+  '2027-05-01': 'Hari Buruh Internasional',
+  '2027-05-06': 'Kenaikan Yesus Kristus',
+  '2027-05-07': 'Cuti Bersama Kenaikan Yesus Kristus',
+  '2027-05-16': 'Hari Raya Idul Adha 1448 H',
+  '2027-05-17': 'Cuti Bersama Idul Adha 1448 H',
+  '2027-05-20': 'Hari Raya Waisak 2571 BE',
+  '2027-06-01': 'Hari Lahir Pancasila',
+  '2027-06-06': '1 Muharam Tahun Baru Islam 1449 H',
+  '2027-08-14': 'Maulid Nabi Muhammad SAW',
+  '2027-08-17': 'Proklamasi Kemerdekaan RI',
+  '2027-12-24': 'Cuti Bersama Hari Raya Natal',
+  '2027-12-25': 'Hari Raya Natal'
+};
+
+/**
+ * Mem-parsing string tanggal YYYY-MM-DD secara lokal tanpa pergeseran zona waktu UTC.
+ */
+export const parseLocalYMD = (dateStr) => {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  const m = dateStr.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+/**
+ * Mengecek apakah suatu tanggal merupakan Sabtu, Minggu, Tanggal Merah (Libur Nasional), atau Cuti Bersama.
+ * Jika true -> tarif Pusat Primata Schmutzer adalah Rp 7.500 (Rombongan 25%: Rp 5.625).
+ * Jika false (Hari Biasa / Hari Kerja) -> tarif Pusat Primata Schmutzer adalah Rp 6.000 (Rombongan 25%: Rp 4.500).
+ */
+export const isHolidayOrWeekend = (dateStr) => {
+  if (!dateStr) return false;
+  const clean = String(dateStr).trim().slice(0, 10);
+  if (TANGGAL_MERAH_DAN_CUTI_BERSAMA[clean]) return true;
+  const dt = parseLocalYMD(clean);
+  if (!dt) return false;
+  const day = dt.getDay();
+  return day === 0 || day === 6;
+};
+
+/**
+ * Mengembalikan detail status hari (apakah Hari Kerja Rp 6.000 atau Sabtu/Minggu/Tanggal Merah/Cuti Bersama Rp 7.500).
+ */
+export const getHolidayOrWeekendInfo = (dateStr) => {
+  if (!dateStr) return { isLibur: false, reason: 'Hari Biasa / Hari Kerja' };
+  const clean = String(dateStr).trim().slice(0, 10);
+  if (TANGGAL_MERAH_DAN_CUTI_BERSAMA[clean]) {
+    return { isLibur: true, reason: TANGGAL_MERAH_DAN_CUTI_BERSAMA[clean] };
+  }
+  const dt = parseLocalYMD(clean);
+  if (!dt) return { isLibur: false, reason: 'Hari Biasa / Hari Kerja' };
+  const day = dt.getDay();
+  if (day === 0) return { isLibur: true, reason: 'Hari Minggu (Weekend)' };
+  if (day === 6) return { isLibur: true, reason: 'Hari Sabtu (Weekend)' };
+  return { isLibur: false, reason: 'Hari Biasa / Hari Kerja' };
+};
+
+const PRIMATA_LIBUR_REGEX = /\bwe\b|weekend|holiday|libur|besar|sabtu|minggu|tanggal\s*merah|cuti\s*bersama/i;
+const PRIMATA_KERJA_REGEX = /\bwd\b|weekday|biasa|hari\s*kerja|selasa|rabu|kamis|jumat|jum'at/i;
+
+/**
+ * Menentukan apakah item Pusat Primata menggunakan tarif Hari Libur/Weekend/Cuti Bersama (Rp 7.500 / Romb Rp 5.625)
+ * atau tarif Hari Biasa/Kerja (Rp 6.000 / Romb Rp 4.500).
+ */
+const resolveIsPrimataLibur = ({ item, subName = '', apiName = '', targetDate = '', amount = 0, isRombongan = false }) => {
+  if (item?.forcePrimataTarif === 'libur') return true;
+  if (item?.forcePrimataTarif === 'kerja') return false;
+
+  const subIsWe = PRIMATA_LIBUR_REGEX.test(subName);
+  const subIsWd = PRIMATA_KERJA_REGEX.test(subName);
+  const subOnlyWeekend = subIsWe && !subIsWd;
+  const subOnlyWeekday = subIsWd && !subIsWe;
+
+  const apiIsWe = PRIMATA_LIBUR_REGEX.test(apiName);
+  const apiIsWd = PRIMATA_KERJA_REGEX.test(apiName);
+  const apiOnlyWeekend = apiIsWe && !apiIsWd;
+  const apiOnlyWeekday = apiIsWd && !apiIsWe;
+
+  // Prioritaskan sub-kategori yang dipilih pada dropdown (jika sudah terpetakan secara spesifik)
+  if (subOnlyWeekend) return true;
+  if (subOnlyWeekday) return false;
+
+  // Jika label API menyebutkan secara spesifik (bukan gabungan "(Hari Biasa / Weekend)")
+  if (apiOnlyWeekend) return true;
+  if (apiOnlyWeekday) return false;
+
+  // Jika ada tanggal transaksi/targetDate, cek apakah Sabtu/Minggu/Tanggal Merah/Cuti Bersama
+  if (targetDate && String(targetDate).trim()) {
+    return isHolidayOrWeekend(targetDate);
+  }
+
+  // Fallback terakhir bila tidak ada tanggal maupun label spesifik
+  const rateWd = isRombongan ? TARIF_STANDAR.ROMB_PRIMATA_WD : TARIF_STANDAR.PRIMATA_WD;
+  const rateWe = isRombongan ? TARIF_STANDAR.ROMB_PRIMATA_WE : TARIF_STANDAR.PRIMATA_WE;
+  if (amount > 0) {
+    if (amount % rateWd === 0 && amount % rateWe !== 0) return false;
+    if (amount % rateWe === 0 && amount % rateWd !== 0) return true;
+  }
+  return false;
+};
+
+/**
  * Mengecek keabsahan nominal rupiah terhadap tarif resmi untuk baris item di Ruang Transit (3A / IWM).
  * Menghasilkan status valid (Hijau) jika nominal habis dibagi tarif (nilai bulat / tidak berkoma).
  * Menghasilkan status invalid (Merah) jika nominal berkoma atau ada sisa pembagian.
@@ -103,27 +282,20 @@ export const checkTransitItemTarif = (item, categories = [], targetDate = '') =>
 
   if (isRombongan) {
     if (isPrimata) {
-      const isWeekend = /we|weekend|holiday|libur|besar|sabtu|minggu/i.test(apiName) || /we|weekend|holiday|libur|besar|sabtu|minggu/i.test(subName);
-      const isWeekday = /wd|weekday|biasa|selasa|rabu|kamis|jumat/i.test(apiName) || /wd|weekday|biasa|selasa|rabu|kamis|jumat/i.test(subName);
-      if (isWeekend) {
+      const isLibur = resolveIsPrimataLibur({
+        item,
+        subName,
+        apiName,
+        targetDate,
+        amount,
+        isRombongan: true
+      });
+      if (isLibur) {
         unitPrice = TARIF_STANDAR.ROMB_PRIMATA_WE;
-        unitLabel = 'Romb. Primata Weekend (Diskon 25%)';
-      } else if (isWeekday) {
+        unitLabel = 'Romb. Primata Weekend/Libur (Diskon 25%)';
+      } else {
         unitPrice = TARIF_STANDAR.ROMB_PRIMATA_WD;
         unitLabel = 'Romb. Primata Hari Biasa (Diskon 25%)';
-      } else {
-        if (amount % TARIF_STANDAR.ROMB_PRIMATA_WD === 0 && amount % TARIF_STANDAR.ROMB_PRIMATA_WE !== 0) {
-          unitPrice = TARIF_STANDAR.ROMB_PRIMATA_WD;
-          unitLabel = 'Romb. Primata Hari Biasa (Diskon 25%)';
-        } else if (amount % TARIF_STANDAR.ROMB_PRIMATA_WE === 0 && amount % TARIF_STANDAR.ROMB_PRIMATA_WD !== 0) {
-          unitPrice = TARIF_STANDAR.ROMB_PRIMATA_WE;
-          unitLabel = 'Romb. Primata Weekend (Diskon 25%)';
-        } else {
-          const tgl = targetDate ? new Date(targetDate) : null;
-          const isCalWeekend = tgl ? (tgl.getDay() === 0 || tgl.getDay() === 6) : false;
-          unitPrice = isCalWeekend ? TARIF_STANDAR.ROMB_PRIMATA_WE : TARIF_STANDAR.ROMB_PRIMATA_WD;
-          unitLabel = `Romb. Primata ${isCalWeekend ? 'Weekend' : 'Hari Biasa'} (Diskon 25%)`;
-        }
       }
     } else if (isDewasa) {
       unitPrice = TARIF_STANDAR.ROMB_DEWASA;
@@ -144,27 +316,20 @@ export const checkTransitItemTarif = (item, categories = [], targetDate = '') =>
       }
     }
   } else if (isPrimata) {
-    const isWeekend = /we|weekend|holiday|libur|besar|sabtu|minggu/i.test(apiName) || /we|weekend|holiday|libur|besar|sabtu|minggu/i.test(subName);
-    const isWeekday = /wd|weekday|biasa|selasa|rabu|kamis|jumat/i.test(apiName) || /wd|weekday|biasa|selasa|rabu|kamis|jumat/i.test(subName);
-    if (isWeekend) {
+    const isLibur = resolveIsPrimataLibur({
+      item,
+      subName,
+      apiName,
+      targetDate,
+      amount,
+      isRombongan: false
+    });
+    if (isLibur) {
       unitPrice = TARIF_STANDAR.PRIMATA_WE;
       unitLabel = 'Primata Weekend/Libur';
-    } else if (isWeekday) {
+    } else {
       unitPrice = TARIF_STANDAR.PRIMATA_WD;
       unitLabel = 'Primata Hari Biasa';
-    } else {
-      if (amount % TARIF_STANDAR.PRIMATA_WD === 0 && amount % TARIF_STANDAR.PRIMATA_WE !== 0) {
-        unitPrice = TARIF_STANDAR.PRIMATA_WD;
-        unitLabel = 'Primata Hari Biasa';
-      } else if (amount % TARIF_STANDAR.PRIMATA_WE === 0 && amount % TARIF_STANDAR.PRIMATA_WD !== 0) {
-        unitPrice = TARIF_STANDAR.PRIMATA_WE;
-        unitLabel = 'Primata Weekend/Libur';
-      } else {
-        const tgl = targetDate ? new Date(targetDate) : null;
-        const isCalWeekend = tgl ? (tgl.getDay() === 0 || tgl.getDay() === 6) : false;
-        unitPrice = isCalWeekend ? TARIF_STANDAR.PRIMATA_WE : TARIF_STANDAR.PRIMATA_WD;
-        unitLabel = isCalWeekend ? 'Primata Weekend/Libur' : 'Primata Hari Biasa';
-      }
     }
   } else if (isTSA) {
     unitPrice = TARIF_STANDAR.TSA;
@@ -292,15 +457,14 @@ export const validateIwmDiskonRow = (d, targetDate = '') => {
       };
     }
 
-    const tgl = targetDate ? new Date(targetDate) : null;
-    const isCalWeekend = tgl ? (tgl.getDay() === 0 || tgl.getDay() === 6) : false;
+    const isCalWeekend = isHolidayOrWeekend(targetDate);
     const expected = isCalWeekend ? expectedWe : expectedWd;
     const rate = isCalWeekend ? TARIF_STANDAR.ROMB_PRIMATA_WE : TARIF_STANDAR.ROMB_PRIMATA_WD;
     const diff = totalRp - expected;
 
     return {
       isValid: false,
-      label: `Primata ${isCalWeekend ? 'Weekend' : 'Hari Biasa'}`,
+      label: `Primata ${isCalWeekend ? 'Weekend/Libur' : 'Hari Biasa'}`,
       rate,
       expected,
       diff,
@@ -424,27 +588,21 @@ export const checkTicketItemTarif = (item, group = {}, rawAmount = 0, targetDate
 
   if (isRombongan) {
     if (isPrimata) {
-      const isWeekend = /we\b|weekend|holiday|libur|besar|sabtu|minggu/i.test(combined);
-      const isWeekday = /wd\b|weekday|biasa|selasa|rabu|kamis|jumat/i.test(combined);
-      if (isWeekend) {
+      const effectiveDate = targetDate || group.validDate || group.itemDate || '';
+      const isLibur = resolveIsPrimataLibur({
+        item,
+        subName: itemName,
+        apiName: combined,
+        targetDate: effectiveDate,
+        amount,
+        isRombongan: true
+      });
+      if (isLibur) {
         unitPrice = TARIF_STANDAR.ROMB_PRIMATA_WE; // 5.625
-        unitLabel = 'Romb. Primata Weekend (Diskon 25%)';
-      } else if (isWeekday) {
+        unitLabel = 'Romb. Primata Weekend/Libur (Diskon 25%)';
+      } else {
         unitPrice = TARIF_STANDAR.ROMB_PRIMATA_WD; // 4.500
         unitLabel = 'Romb. Primata Hari Biasa (Diskon 25%)';
-      } else {
-        if (amount % TARIF_STANDAR.ROMB_PRIMATA_WD === 0 && amount % TARIF_STANDAR.ROMB_PRIMATA_WE !== 0) {
-          unitPrice = TARIF_STANDAR.ROMB_PRIMATA_WD;
-          unitLabel = 'Romb. Primata Hari Biasa (Diskon 25%)';
-        } else if (amount % TARIF_STANDAR.ROMB_PRIMATA_WE === 0 && amount % TARIF_STANDAR.ROMB_PRIMATA_WD !== 0) {
-          unitPrice = TARIF_STANDAR.ROMB_PRIMATA_WE;
-          unitLabel = 'Romb. Primata Weekend (Diskon 25%)';
-        } else {
-          const tgl = targetDate || group.validDate || group.itemDate ? new Date(targetDate || group.validDate || group.itemDate) : null;
-          const isCalWeekend = tgl && !isNaN(tgl) ? (tgl.getDay() === 0 || tgl.getDay() === 6) : false;
-          unitPrice = isCalWeekend ? TARIF_STANDAR.ROMB_PRIMATA_WE : TARIF_STANDAR.ROMB_PRIMATA_WD;
-          unitLabel = `Romb. Primata ${isCalWeekend ? 'Weekend' : 'Hari Biasa'} (Diskon 25%)`;
-        }
       }
     } else if (isDewasa && !isAnak) {
       unitPrice = TARIF_STANDAR.ROMB_DEWASA; // 3.000
@@ -466,27 +624,21 @@ export const checkTicketItemTarif = (item, group = {}, rawAmount = 0, targetDate
       }
     }
   } else if (isPrimata) {
-    const isWeekend = /we\b|weekend|holiday|libur|besar|sabtu|minggu/i.test(combined);
-    const isWeekday = /wd\b|weekday|biasa|selasa|rabu|kamis|jumat/i.test(combined);
-    if (isWeekend) {
+    const effectiveDate = targetDate || group.validDate || group.itemDate || '';
+    const isLibur = resolveIsPrimataLibur({
+      item,
+      subName: itemName,
+      apiName: combined,
+      targetDate: effectiveDate,
+      amount,
+      isRombongan: false
+    });
+    if (isLibur) {
       unitPrice = TARIF_STANDAR.PRIMATA_WE; // 7.500
       unitLabel = 'Primata Weekend/Libur';
-    } else if (isWeekday) {
+    } else {
       unitPrice = TARIF_STANDAR.PRIMATA_WD; // 6.000
       unitLabel = 'Primata Hari Biasa';
-    } else {
-      if (amount % TARIF_STANDAR.PRIMATA_WD === 0 && amount % TARIF_STANDAR.PRIMATA_WE !== 0) {
-        unitPrice = TARIF_STANDAR.PRIMATA_WD;
-        unitLabel = 'Primata Hari Biasa';
-      } else if (amount % TARIF_STANDAR.PRIMATA_WE === 0 && amount % TARIF_STANDAR.PRIMATA_WD !== 0) {
-        unitPrice = TARIF_STANDAR.PRIMATA_WE;
-        unitLabel = 'Primata Weekend/Libur';
-      } else {
-        const tgl = targetDate || group.validDate || group.itemDate ? new Date(targetDate || group.validDate || group.itemDate) : null;
-        const isCalWeekend = tgl && !isNaN(tgl) ? (tgl.getDay() === 0 || tgl.getDay() === 6) : false;
-        unitPrice = isCalWeekend ? TARIF_STANDAR.PRIMATA_WE : TARIF_STANDAR.PRIMATA_WD;
-        unitLabel = isCalWeekend ? 'Primata Weekend/Libur' : 'Primata Hari Biasa';
-      }
     }
   } else if (isTSA) {
     unitPrice = TARIF_STANDAR.TSA; // 2.500

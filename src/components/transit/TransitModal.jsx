@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { Trash, Database, AlertCircle, RefreshCw, Tag, Save, CheckCircle2, AlertTriangle, ShieldCheck, Layers, BarChart3, Users, Ticket } from 'lucide-react';
-import { checkTransitItemTarif, validateIwmDiskonRow } from '../../utils/transitValidation';
+import { Trash, Database, AlertCircle, RefreshCw, Tag, Save, CheckCircle2, AlertTriangle, ShieldCheck, Layers, BarChart3, Users, Ticket, Calendar } from 'lucide-react';
+import { checkTransitItemTarif, validateIwmDiskonRow, getHolidayOrWeekendInfo } from '../../utils/transitValidation';
+import { smartMappingAI } from '../../services/transitBotService';
 
 /**
  * Komponen Modal Ruang Transit 3A & IWM
@@ -34,6 +35,53 @@ export default function TransitModal({
   const validCount = useMemo(() => {
     return itemChecks.filter(ic => ic.check.isValid).length;
   }, [itemChecks]);
+
+  const holidayInfo = useMemo(() => {
+    return getHolidayOrWeekendInfo(transitModal?.targetDate);
+  }, [transitModal?.targetDate]);
+
+  const isPrimataLiburActive = useMemo(() => {
+    const prmItem = (transitModal?.data || []).find(it => /primata|schmutzer/i.test(it.nameAPI || ''));
+    if (prmItem?.forcePrimataTarif === 'libur') return true;
+    if (prmItem?.forcePrimataTarif === 'kerja') return false;
+    return holidayInfo.isLibur;
+  }, [transitModal?.data, holidayInfo.isLibur]);
+
+  const handleSwitchPrimataTarifMode = (mode) => {
+    const isLibur = mode === 'libur';
+    setTransitModal(prev => {
+      if (!prev || !Array.isArray(prev.data)) return prev;
+      const updatedData = prev.data.map(item => {
+        const lower = (item.nameAPI || '').toLowerCase();
+        if (!lower.includes('primata') && !lower.includes('schmutzer')) return item;
+        const isRomb = /romb/i.test(lower);
+        let newNameAPI = item.nameAPI || '';
+        if (!isRomb) {
+          newNameAPI = newNameAPI
+            .replace(/\s*\(Hari Biasa \/ Weekend\)/gi, '')
+            .replace(/\s*\(Hari Biasa\)/gi, '')
+            .replace(/\s*\(Weekend \/ Hari Besar\)/gi, '')
+            .replace(/\s*\(Weekend \/ Holiday\)/gi, '');
+          const qtyMatch = newNameAPI.match(/\s*(\(Qty:\s*\d+\))$/i);
+          if (qtyMatch) {
+            newNameAPI = newNameAPI.replace(/\s*\(Qty:\s*\d+\)$/i, '') + (isLibur ? ' (Weekend / Hari Besar) ' : ' (Hari Biasa) ') + qtyMatch[1];
+          } else {
+            newNameAPI = `${newNameAPI}${isLibur ? ' (Weekend / Hari Besar)' : ' (Hari Biasa)'}`;
+          }
+        }
+        const probeName = `${newNameAPI} ${isLibur ? 'weekend libur besar' : 'hari biasa weekday'}`;
+        const { mappedCat, mappedItem } = smartMappingAI(probeName, prev.source, prev.targetDate, categories);
+        return {
+          ...item,
+          nameAPI: newNameAPI,
+          forcePrimataTarif: mode,
+          mappedCat: mappedCat || item.mappedCat,
+          mappedItem: mappedItem || item.mappedItem
+        };
+      });
+      return { ...prev, data: updatedData };
+    });
+  };
 
   if (!transitModal || !transitModal.isOpen) return null;
 
@@ -158,7 +206,37 @@ export default function TransitModal({
                           <span>{invalidCount > 0 ? `Perhatian: Ada ${invalidCount} nominal yang perlu dicek kembali!` : 'Parameter Pengecekan Tarif: Semua Nominal Valid & Bulat'}</span>
                         </div>
                         <div className="text-gray-600 text-[11px] mt-0.5">
-                          Setiap nominal rupiah dibagi tarif resmi wajib bulat / tidak berkoma (Dewasa: Rp 4rb, Anak: Rp 3rb, Gol I: Rp 15rb, Gol II: Rp 12.5rb, Gol III: Rp 6rb, Motor: Rp 3rb, Sepeda: Rp 1rb, Primata: Rp 6rb/7.5rb, Diskon Rombongan: 25%).
+                          Setiap nominal rupiah dibagi tarif resmi wajib bulat / tidak berkoma (Dewasa: Rp 4rb, Anak: Rp 3rb, Gol I: Rp 15rb, Gol II: Rp 12.5rb, Gol III: Rp 6rb, Motor: Rp 3rb, Sepeda: Rp 1rb, Primata Hari Kerja: Rp 6rb, Primata Sabtu-Minggu/Tgl Merah/Cuti Bersama: Rp 7.5rb, Diskon Rombongan: 25%).
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-gray-700 mr-1">
+                            <Calendar size={12} className="text-indigo-600" />
+                            Tarif Pusat Primata ({holidayInfo.reason}):
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleSwitchPrimataTarifMode('kerja')}
+                            className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold border transition-all ${
+                              !isPrimataLiburActive
+                                ? 'bg-blue-600 text-white border-blue-700 shadow-2xs'
+                                : 'bg-white text-gray-600 border-gray-300 hover:bg-blue-50'
+                            }`}
+                            title="Gunakan tarif Pusat Primata Hari Biasa / Hari Kerja (Rp 6.000)"
+                          >
+                            Hari Biasa / Kerja (Rp 6.000)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSwitchPrimataTarifMode('libur')}
+                            className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold border transition-all ${
+                              isPrimataLiburActive
+                                ? 'bg-purple-600 text-white border-purple-700 shadow-2xs'
+                                : 'bg-white text-gray-600 border-gray-300 hover:bg-purple-50'
+                            }`}
+                            title="Gunakan tarif Pusat Primata Sabtu-Minggu / Tanggal Merah / Cuti Bersama (Rp 7.500)"
+                          >
+                            Sabtu-Minggu / Tgl Merah / Cuti Bersama (Rp 7.500)
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -224,7 +302,13 @@ export default function TransitModal({
                       
                       <select 
                         value={item.mappedItem || ''} 
-                        onChange={(e) => updateTransitMapping(item.id, 'mappedItem', e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setTransitModal(prev => ({
+                            ...prev,
+                            data: prev.data.map(d => d.id === item.id ? { ...d, mappedItem: val, forcePrimataTarif: undefined } : d)
+                          }));
+                        }}
                         disabled={!item.mappedCat}
                         className={`w-full sm:w-48 border rounded-lg p-2 text-xs outline-none focus:ring-2 font-medium ${!item.mappedCat ? 'bg-gray-100 text-gray-400' : item.mappedItem ? 'bg-green-50 border-green-300' : 'bg-white border-gray-300'} ${transitModal.source === 'iwm' ? 'focus:ring-purple-500' : 'focus:ring-blue-500'}`}
                       >

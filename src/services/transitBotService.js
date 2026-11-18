@@ -1,3 +1,5 @@
+import { isHolidayOrWeekend } from '../utils/transitValidation.js';
+
 // =======================================================================
 // SERVICE ISOLASI LOGIKA BOT 3A & IWM
 // UP TAMAN MARGASATWA RAGUNAN (SEKSI PELAYANAN & INFORMASI)
@@ -5,15 +7,19 @@
 // =======================================================================
 
 /**
- * Deteksi label Hari Biasa / Weekend untuk tiket Pusat Primata Schmutzer
+ * Deteksi label Hari Biasa / Weekend untuk tiket Pusat Primata Schmutzer.
+ * Mengutamakan status tanggal (Hari Kerja Rp 6.000 vs Sabtu/Minggu/Tanggal Merah/Cuti Bersama Rp 7.500).
  */
-export const getPrimataLabel = (amount) => {
+export const getPrimataLabel = (amount, targetDate = '') => {
   if (!amount || amount <= 0) return "";
+  if (targetDate && String(targetDate).trim()) {
+    return isHolidayOrWeekend(targetDate) ? " (Weekend / Hari Besar)" : " (Hari Biasa)";
+  }
   const isHariBiasa = amount % 6000 === 0;
   const isWeekend = amount % 7500 === 0;
   if (isHariBiasa && !isWeekend) return " (Hari Biasa)";
   if (isWeekend && !isHariBiasa) return " (Weekend / Hari Besar)";
-  if (isHariBiasa && isWeekend) return " (Hari Biasa / Weekend)";
+  if (isHariBiasa && isWeekend) return " (Hari Biasa)";
   return "";
 };
 
@@ -76,15 +82,27 @@ export const smartMappingAI = (nameAPI, apiSource, targetDate, categories = []) 
         if (normApiName.includes('primata') || normApiName.includes('schmutzer')) {
            if (normSubName.includes('primata') || normSubName.includes('schmutzer')) score += 10;
            
-           const isApiLibur = /we|weekend|holiday|libur|besar|sabtu|minggu/i.test(normApiName);
-           const isSubLibur = /we|weekend|holiday|libur|besar|sabtu|minggu/i.test(normSubName);
-           const isApiWd = /wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at/i.test(normApiName);
-           const isSubWd = /wd|weekday|biasa|selasa|rabu|kamis|jumat|jum'at/i.test(normSubName);
+           const liburRe = /\bwe\b|weekend|holiday|libur|besar|sabtu|minggu|tanggal\s*merah|cuti\s*bersama/i;
+           const kerjaRe = /\bwd\b|weekday|biasa|hari\s*kerja|selasa|rabu|kamis|jumat|jum'at/i;
+
+           const rawApiLibur = liburRe.test(normApiName);
+           const rawApiWd = kerjaRe.test(normApiName);
+           const isApiLibur = rawApiLibur && !rawApiWd;
+           const isApiWd = rawApiWd && !rawApiLibur;
+
+           const isSubLibur = liburRe.test(normSubName) && !kerjaRe.test(normSubName);
+           const isSubWd = kerjaRe.test(normSubName) && !liburRe.test(normSubName);
+
+           const isTargetLibur = isApiLibur
+             ? true
+             : isApiWd
+             ? false
+             : isHolidayOrWeekend(targetDate);
            
-           if (isApiLibur && isSubLibur) score += 100;
-           else if (isApiWd && isSubWd) score += 100;
-           else if (isApiLibur && isSubWd) score -= 100;
-           else if (isApiWd && isSubLibur) score -= 100;
+           if (isTargetLibur && isSubLibur) score += 100;
+           else if (!isTargetLibur && isSubWd) score += 100;
+           else if (isTargetLibur && isSubWd) score -= 100;
+           else if (!isTargetLibur && isSubLibur) score -= 100;
         }
 
         if (normApiName.includes('sepeda') && normSubName.includes('sepeda')) score += 30;
@@ -141,9 +159,8 @@ export const process3aData = (rekonData, targetDate) => {
   const grouped3A = {};
   const fetchedData = [];
   
-  // CEK TANGGAL KALENDER
-  const tgl = new Date(targetDate);
-  const isCalendarWeekend = tgl.getDay() === 0 || tgl.getDay() === 6;
+  // CEK TANGGAL KALENDER (TERMASUK SABTU, MINGGU, TANGGAL MERAH & CUTI BERSAMA)
+  const isCalendarWeekend = isHolidayOrWeekend(targetDate);
 
   Object.keys(rekonData).forEach(channel => {
     const channelData = rekonData[channel];
@@ -430,8 +447,8 @@ export const fetchBotIwmData = async (ipAddress, targetDate) => {
   if (iData.pusat_primata) {
     const netPrmDewasa = Math.max(0, (iData.pusat_primata.dewasa || 0) - deductPrmDewasa);
     const netPrmAnak = Math.max(0, (iData.pusat_primata.anak || 0) - deductPrmAnak);
-    if (netPrmDewasa > 0) fetchedData.push({ id: 'prm_dws', nameAPI: `[IWM] Pusat Primata - Dewasa (Reguler)${getPrimataLabel(netPrmDewasa)}`, amount: netPrmDewasa });
-    if (netPrmAnak > 0) fetchedData.push({ id: 'prm_ank', nameAPI: `[IWM] Pusat Primata - Anak (Reguler)${getPrimataLabel(netPrmAnak)}`, amount: netPrmAnak });
+    if (netPrmDewasa > 0) fetchedData.push({ id: 'prm_dws', nameAPI: `[IWM] Pusat Primata - Dewasa (Reguler)${getPrimataLabel(netPrmDewasa, targetDate)}`, amount: netPrmDewasa });
+    if (netPrmAnak > 0) fetchedData.push({ id: 'prm_ank', nameAPI: `[IWM] Pusat Primata - Anak (Reguler)${getPrimataLabel(netPrmAnak, targetDate)}`, amount: netPrmAnak });
   }
   
   if (iData.children_zoo && iData.children_zoo.total > 0) {
