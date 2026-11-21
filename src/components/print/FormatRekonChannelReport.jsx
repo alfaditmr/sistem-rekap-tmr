@@ -9,6 +9,7 @@ import {
   Info
 } from 'lucide-react';
 import {
+  safeString,
   formatRp,
   terbilang,
   formatTanggalCetak,
@@ -267,6 +268,14 @@ export default function FormatRekonChannelReport({
   const [y, m, d] = (reportDate || '').split('-');
   const seqStr = currentReport?.sequence ? `${currentReport.sequence}` : '      ';
   const computedStsuNo = d && m && y ? `${seqStr}/${d}/${m}/SU/${y}` : '';
+
+  // Format Tanggal Tanda Tangan (DD/MM/YYYY) seperti Format Pemasaran
+  const signatureDateStr = currentReport?.signatureDate || reportDate || '';
+  const formattedSignatureDate = useMemo(() => {
+    if (!signatureDateStr) return '';
+    const [sy, sm, sd] = signatureDateStr.split('-');
+    return sd && sm && sy ? `${sd}/${sm}/${sy}` : signatureDateStr;
+  }, [signatureDateStr]);
 
   // Detail Baris Rekonsiliasi 16 Baris Standar untuk Tabel Lembar 2 (Khusus 3A: NEW GATE, TVM, TIKET ONLINE)
   // Semua 16 baris tetap ditampilkan meskipun bernilai 0 sesuai format asli PDF Sistem 3A
@@ -967,22 +976,40 @@ export default function FormatRekonChannelReport({
               {channelTotalNominal > 0 ? `${terbilang(channelTotalNominal)} rupiah.-` : 'Nol rupiah.-'}
             </div>
 
-            {/* Tanda Tangan Resmi */}
-            <div className="mt-10 grid grid-cols-2 text-center text-xs rekon-ttd-wrap">
-              <div>
-                <div>Mengetahui,</div>
-                <div className="font-semibold mt-1">Kepala Seksi Pelayanan dan Informasi</div>
+            {/* Tanda Tangan Resmi (Tanpa tulisan Mengetahui, format tanggal DD/MM/YYYY) */}
+            <div className="mt-10 grid grid-cols-2 gap-4 text-center text-xs text-black rekon-ttd-wrap">
+              <div className="flex flex-col items-center">
+                <div className="leading-normal text-transparent select-none">&nbsp;</div>
+                <div className="font-normal leading-normal">
+                  {safeString(signatures?.leftRole || 'Kepala Seksi Pelayanan dan Informasi')}
+                </div>
                 <div className="h-20 rekon-ttd-space"></div>
-                <div className="font-bold underline">Afriana Pulungan, S.Si., M.AP.</div>
-                <div className="text-[11px] text-gray-700">NIP 197304212007012021</div>
+                <div className="leading-normal">
+                  <div className="font-normal">
+                    {safeString(signatures?.leftName || 'Afriana Pulungan S.Si. MAP')}
+                  </div>
+                  <div>
+                    NIP {safeString(signatures?.leftNip || '197304212007012021')}
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <div>Jakarta, {formatTanggalCetak(reportDate)}</div>
-                <div className="font-semibold mt-1">Bendahara Penerimaan</div>
+              <div className="flex flex-col items-center">
+                <div className="font-normal leading-normal">
+                  {safeString(signatures?.location || 'Jakarta')}, {formattedSignatureDate}
+                </div>
+                <div className="font-normal leading-normal">
+                  {safeString(signatures?.rightRole || 'Bendahara Penerimaan')}
+                </div>
                 <div className="h-20 rekon-ttd-space"></div>
-                <div className="font-bold underline">Evi Irmawati</div>
-                <div className="text-[11px] text-gray-700">NIP 198101082009042006</div>
+                <div className="leading-normal">
+                  <div className="font-normal">
+                    {safeString(signatures?.rightName || 'Evi Irmawati')}
+                  </div>
+                  <div>
+                    NIP {safeString(signatures?.rightNip || '198101082009042006')}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
