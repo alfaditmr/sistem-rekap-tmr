@@ -518,6 +518,60 @@ export const fetchBotIwmData = async (ipAddress, targetDate) => {
     d._isPrimata = isPrimata;
   });
 
+  // Pemulihan otomatis Rombongan Pintu Masuk yang belum terpisah dari Rekap Pendapatan Perlokasi (area_lainnya):
+  // Apabila sebuah rombongan tercatat di Pusat Primata (misal SDN Pabuaran 03: 113 anak @ Rp 4.500 = Rp 508.500),
+  // namun baris Pintu Masuk-nya (113 anak @ Rp 2.250 = Rp 254.250) masih tergabung di dalam Pintu Masuk - Anak (Reguler)
+  // sehingga menyebabkan sisa pembagian Rp 3.000 (contoh: Rp 1.247.250 - Rp 254.250 = Rp 993.000 = 331 org @ Rp 3.000),
+  // pisahkan secara otomatis ke dalam baris Rombongan Pintu Masuk.
+  if (iData.area_lainnya) {
+    const rawAlAnak = Number(iData.area_lainnya.anak) || 0;
+    const rawAlDewasa = Number(iData.area_lainnya.dewasa) || 0;
+    let remAnak = rawAlAnak - deductAlAnak;
+    let remDewasa = rawAlDewasa - deductAlDewasa;
+
+    if ((remAnak > 0 && remAnak % 3000 !== 0) || (remDewasa > 0 && remDewasa % 4000 !== 0)) {
+      const normKey = (row) => `${String(row.kode_rombongan || '').trim().toLowerCase()}|${String(row.nama_rombongan || '').trim().toLowerCase().replace(/\s*\(primata\)\s*/gi, '')}`;
+      const gateKeys = new Set(diskonData.filter(r => !r._isPrimata).map(normKey));
+      const primataOnlyRows = diskonData.filter(r => r._isPrimata && !gateKeys.has(normKey(r)));
+
+      primataOnlyRows.forEach(prmRow => {
+        const pAnak = Number(prmRow.masuk_anak) || 0;
+        const pDewasa = Number(prmRow.masuk_dewasa) || 0;
+        const gateAnakRp = pAnak * 2250;
+        const gateDewasaRp = pDewasa * 3000;
+
+        const matchAnak = pAnak > 0 && remAnak % 3000 !== 0 && remAnak >= gateAnakRp && ((remAnak - gateAnakRp) % 3000 === 0);
+        const matchDewasa = pDewasa > 0 && remDewasa % 4000 !== 0 && remDewasa >= gateDewasaRp && ((remDewasa - gateDewasaRp) % 4000 === 0);
+
+        if (matchAnak || matchDewasa) {
+          const recAnakRp = matchAnak ? gateAnakRp : 0;
+          const recDewasaRp = matchDewasa ? gateDewasaRp : 0;
+          if (recAnakRp > 0) {
+            deductAlAnak += recAnakRp;
+            remAnak -= recAnakRp;
+          }
+          if (recDewasaRp > 0) {
+            deductAlDewasa += recDewasaRp;
+            remDewasa -= recDewasaRp;
+          }
+          diskonData.push({
+            ...prmRow,
+            no: String(diskonData.length + 1),
+            lokasi: 'Pintu Masuk',
+            pos: 'POS 1 Utama',
+            masuk_anak: matchAnak ? pAnak : 0,
+            masuk_dewasa: matchDewasa ? pDewasa : 0,
+            pendapatan_rp: recAnakRp + recDewasaRp,
+            _calcAnak: recAnakRp,
+            _calcDewasa: recDewasaRp,
+            _isPrimata: false,
+            _recoveredGateFromPrimata: true
+          });
+        }
+      });
+    }
+  }
+
   if (iData.pusat_primata) {
     const netPrmDewasa = Math.max(0, (iData.pusat_primata.dewasa || 0) - deductPrmDewasa);
     const netPrmAnak = Math.max(0, (iData.pusat_primata.anak || 0) - deductPrmAnak);

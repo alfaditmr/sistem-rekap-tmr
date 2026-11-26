@@ -98,18 +98,58 @@ export function ensureStandardFacilityCategories(categoriesList) {
     ? currentCat.name
     : 'Pemakaian Fasilitas TMR';
 
-  if (!modified && currentCat.name === targetName) {
-    return categoriesList;
+  const updatedCategories = [...categoriesList];
+  if (modified || currentCat.name !== targetName) {
+    updatedCategories[catIdx] = {
+      ...currentCat,
+      name: targetName,
+      items: newItems
+    };
   }
 
-  const updatedCat = {
-    ...currentCat,
-    name: targetName,
-    items: newItems
-  };
+  // Pastikan kategori E-Ticketing Old Gate (cat_6) memiliki sub-kategori Rombongan lengkap:
+  // 1. Rombongan Dewasa (Pintu Masuk)
+  // 2. Rombongan Anak (Pintu Masuk)
+  // 3. Rombongan Dewasa Pusat Primata
+  // 4. Rombongan Anak Pusat Primata
+  const oldGateIdx = updatedCategories.findIndex(
+    c => c && (c.id === 'cat_6' || /old\s*gate|iwm/i.test(c.name || ''))
+  );
+  if (oldGateIdx !== -1) {
+    const ogCat = updatedCategories[oldGateIdx];
+    const ogItems = Array.isArray(ogCat.items) ? [...ogCat.items] : [];
+    let ogModified = false;
 
-  const updatedCategories = [...categoriesList];
-  updatedCategories[catIdx] = updatedCat;
+    const hasGateRombDws = ogItems.some(it => /romb/i.test(it.name || '') && /dewasa/i.test(it.name || '') && !/primata|schmutzer/i.test(it.name || ''));
+    const hasGateRombAnk = ogItems.some(it => /romb/i.test(it.name || '') && /anak/i.test(it.name || '') && !/primata|schmutzer/i.test(it.name || ''));
+    const hasPrmRombDws = ogItems.some(it => /romb/i.test(it.name || '') && /dewasa/i.test(it.name || '') && /primata|schmutzer/i.test(it.name || ''));
+    const hasPrmRombAnk = ogItems.some(it => /romb/i.test(it.name || '') && /anak/i.test(it.name || '') && /primata|schmutzer/i.test(it.name || ''));
+
+    if (!hasGateRombDws) {
+      ogItems.push({ id: 'item_6m', name: 'Rombongan Dewasa' });
+      ogModified = true;
+    }
+    if (!hasGateRombAnk) {
+      ogItems.push({ id: 'item_6n', name: 'Rombongan Anak' });
+      ogModified = true;
+    }
+    if (!hasPrmRombDws) {
+      ogItems.push({ id: 'item_6_romb_prm_dws', name: 'Rombongan Dewasa Pusat Primata' });
+      ogModified = true;
+    }
+    if (!hasPrmRombAnk) {
+      ogItems.push({ id: 'item_6_romb_prm_ank', name: 'Rombongan Anak Pusat Primata' });
+      ogModified = true;
+    }
+
+    if (ogModified) {
+      updatedCategories[oldGateIdx] = {
+        ...ogCat,
+        items: ogItems
+      };
+    }
+  }
+
   return updatedCategories;
 }
 

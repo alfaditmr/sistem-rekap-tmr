@@ -273,40 +273,78 @@ def proses_tarik_data_iwm(tanggal_target):
         time.sleep(6)
 
         try:
-            driver.execute_script("""
+            changed_size = driver.execute_script("""
+                let changed = false;
                 let selects = document.querySelectorAll('select');
                 for(let s of selects) {
-                    if(s.innerHTML.includes('100 data per halaman') || s.innerHTML.includes('100')) {
-                        s.value = '100';
-                        s.dispatchEvent(new Event('change'));
+                    let opts = Array.from(s.options || []);
+                    let maxOpt = opts.find(o => o.value === '100' || o.text.includes('100') || o.value === 'all' || o.text.toLowerCase().includes('semua'));
+                    if(maxOpt && s.value !== maxOpt.value) {
+                        s.value = maxOpt.value;
+                        if (typeof window.jQuery !== 'undefined') {
+                            window.jQuery(s).trigger('change');
+                        } else {
+                            s.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                        if (typeof s.onchange === 'function') s.onchange();
+                        changed = true;
                     }
                 }
+                return changed;
             """)
-            time.sleep(4)
+            if changed_size:
+                time.sleep(4)
         except: pass
 
-        matrix_rombongan = driver.execute_script("""
-            const tables = document.querySelectorAll('table');
-            let targetTable = null;
-            for (let t of tables) {
-                if (t.textContent.includes('Kode Rombongan') && t.textContent.includes('Nama Rombongan')) {
-                    targetTable = t;
-                    break;
+        matrix_rombongan = []
+        visited_page_sigs = set()
+        for page_idx in range(1, 15):
+            page_rows = driver.execute_script("""
+                const tables = document.querySelectorAll('table');
+                let targetTable = null;
+                for (let t of tables) {
+                    if (t.textContent.includes('Kode Rombongan') && t.textContent.includes('Nama Rombongan')) {
+                        targetTable = t;
+                        break;
+                    }
                 }
-            }
-            if (!targetTable) return [];
-            
-            const rows = Array.from(targetTable.querySelectorAll('tbody tr'));
-            return rows.map(r => Array.from(r.querySelectorAll('td')).map(td => td.textContent.trim()));
-        """)
+                if (!targetTable) return [];
+                
+                const rows = Array.from(targetTable.querySelectorAll('tbody tr'));
+                return rows.map(r => Array.from(r.querySelectorAll('td')).map(td => td.textContent.trim()));
+            """)
+            sig = str(page_rows)
+            if not page_rows or sig in visited_page_sigs:
+                break
+            visited_page_sigs.add(sig)
+            matrix_rombongan.extend(page_rows)
+
+            next_page_str = str(page_idx + 1)
+            clicked_next = driver.execute_script(f"""
+                const links = Array.from(document.querySelectorAll('a, button'));
+                let nextEl = links.find(el => {{
+                    const t = (el.textContent || '').trim();
+                    return t === '{next_page_str}' || t.toLowerCase() === 'next' || t === '>' || t === '›';
+                }});
+                if (nextEl && !nextEl.classList.contains('disabled') && !nextEl.hasAttribute('disabled')) {{
+                    nextEl.click();
+                    return true;
+                }}
+                return false;
+            """)
+            if not clicked_next:
+                break
+            time.sleep(3)
 
         print(f"🚌 [IWM] Ditemukan {len(matrix_rombongan)} baris data rombongan...")
+        seen_romb_keys = set()
         for raw_row in matrix_rombongan:
             cells = [c.strip() for c in raw_row]
             if len(cells) < 11: continue
-            if "total" in cells[0].lower() or "total" in cells[1].lower() or not cells[0].isdigit(): continue
+            first_digit = re.sub(r"[^\d]", "", cells[0])
+            if "total" in cells[0].lower() or "total" in cells[1].lower() or not first_digit: continue
             
-            no_str = cells[0]
+            no_str = first_digit
             lokasi = cells[1]
             pos = cells[2]
             kode = cells[3]
@@ -318,6 +356,11 @@ def proses_tarik_data_iwm(tanggal_target):
             masuk_dewasa = clean_number(cells[9])
             pendapatan = clean_number(cells[10])
             
+            dedup_key = f"{lokasi}|{pos}|{kode}|{nama}|{tgl_kunj}|{masuk_anak}|{masuk_dewasa}|{pendapatan}"
+            if dedup_key in seen_romb_keys:
+                continue
+            seen_romb_keys.add(dedup_key)
+
             if pendapatan > 0:
                 hasil_scraping["laporan_diskon"].append({
                     "no": no_str,
