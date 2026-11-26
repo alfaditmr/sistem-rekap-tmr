@@ -271,12 +271,15 @@ export const checkTransitItemTarif = (item, categories = [], targetDate = '') =>
   const cat = Array.isArray(categories) ? categories.find(c => c.id === item.mappedCat) : null;
   const sub = cat?.items?.find(i => i.id === item.mappedItem);
   const subName = (sub?.name || '').toLowerCase();
-  const apiName = (item.nameAPI || '').toLowerCase();
+  const rawApiName = (item.nameAPI || '').toLowerCase();
+  // Bersihkan nama sekolah/instansi pada baris Rombongan IWM (misal "KB TKI AL KAUTSAR" yang memuat huruf "tsa")
+  const rombHeaderMatch = rawApiName.match(/^(\[[^\]]+\]\s*rombongan\s+(?:anak|dewasa))\s*-\s*.+?(\s*\((?:primata|pusat\s*primata|schmutzer)[^)]*\))?$/i);
+  const apiName = rombHeaderMatch ? `${rombHeaderMatch[1]}${rombHeaderMatch[2] || ''}` : rawApiName;
 
   // 1. Deteksi Identitas Item
-  const isRombongan = apiName.includes('rombongan') || apiName.includes('romb') || subName.includes('rombongan') || subName.includes('reduksi 25%');
-  const isPrimata = apiName.includes('primata') || apiName.includes('schmutzer') || subName.includes('primata') || subName.includes('schmutzer');
-  const isTSA = apiName.includes('taman satwa') || apiName.includes('children') || apiName.includes('tsa') || subName.includes('taman satwa') || subName.includes('satwa anak');
+  const isRombongan = /\brombongan\b|\bromb\b/i.test(apiName) || /\brombongan\b|\bromb\b|reduksi\s*25%/i.test(subName);
+  const isPrimata = /primata|schmutzer/i.test(apiName) || /primata|schmutzer/i.test(subName);
+  const isTSA = /taman\s*satwa|satwa\s*anak|\bchildren\b|\btsa\b/i.test(apiName) || /taman\s*satwa|satwa\s*anak|\bchildren\b|\btsa\b/i.test(subName);
   
   const isGol1 = /gol\s*(1|i\b)|bus\s*besar|truk\s*besar/i.test(apiName) || /gol\s*(1|i\b)|bus\s*besar/i.test(subName);
   const isGol2 = /gol\s*(2|ii\b)|bus\s*kecil|truk\s*kecil/i.test(apiName) || /gol\s*(2|ii\b)|bus\s*kecil/i.test(subName);
@@ -289,8 +292,13 @@ export const checkTransitItemTarif = (item, categories = [], targetDate = '') =>
   const isSepedaTunggal = apiName.includes('sepeda tunggal') || subName.includes('sepeda tunggal');
   const isSepedaGanda = apiName.includes('sepeda ganda') || subName.includes('sepeda ganda');
 
-  const isDewasa = apiName.includes('dewasa') || subName.includes('dewasa');
-  const isAnak = apiName.includes('anak') || apiName.includes('3-12') || subName.includes('anak');
+  const subIsDewasa = /\bdewasa\b|\bdws\b/i.test(subName);
+  const subIsAnak = (/\banak\b|3-12/i.test(subName)) && !isTSA;
+  const apiIsDewasa = /\bdewasa\b|\bdws\b/i.test(apiName);
+  const apiIsAnak = (/\banak\b|3-12/i.test(apiName)) && !isTSA;
+
+  const isDewasa = subIsDewasa && !subIsAnak ? true : subIsAnak && !subIsDewasa ? false : apiIsDewasa;
+  const isAnak = subIsAnak && !subIsDewasa ? true : subIsDewasa && !subIsAnak ? false : apiIsAnak;
 
   // 2. Tentukan Tarif Satuan Berdasarkan Aturan Resmi
   let unitPrice = null;

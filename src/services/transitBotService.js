@@ -24,6 +24,21 @@ export const getPrimataLabel = (amount, targetDate = '') => {
 };
 
 /**
+ * Membersihkan nama bebas sekolah/instansi pada baris Rombongan IWM
+ * (contoh: "[IWM] Rombongan Anak - KB TKI AL KAUTSAR" -> "[IWM] Rombongan Anak")
+ * agar suku kata di dalam nama sekolah (seperti "kautsar" yang memuat "tsa", atau "TK Anak" pada baris Dewasa)
+ * tidak mengganggu pencocokan kategori/sub-kategori tiket.
+ */
+export const extractCleanTicketHeader = (rawName = '') => {
+  const str = String(rawName || '').trim();
+  const rombMatch = str.match(/^(\[[^\]]+\]\s*rombongan\s+(?:anak|dewasa))\s*-\s*.+?(\s*\((?:primata|pusat\s*primata|schmutzer)[^)]*\))?$/i);
+  if (rombMatch) {
+    return `${rombMatch[1]}${rombMatch[2] || ''}`;
+  }
+  return str;
+};
+
+/**
  * Logika AI Smart Matcher: Menentukan Kategori dan Sub-Kategori otomatis
  * berdasarkan kata kunci dan algoritma scoring terbobot.
  */
@@ -31,6 +46,7 @@ export const smartMappingAI = (nameAPI, apiSource, targetDate, categories = [], 
   let guessCat = '';
   let guessItem = '';
   const lowerName = (nameAPI || '').toLowerCase();
+  const cleanHeaderLower = extractCleanTicketHeader(nameAPI).toLowerCase();
   const qtyMatch = lowerName.match(/\(qty:\s*(\d+)\)/i);
   const resolvedQty = Number(itemQty) || (qtyMatch ? parseInt(qtyMatch[1], 10) : 0);
   const resolvedAmount = Number(itemAmount) || 0;
@@ -60,7 +76,7 @@ export const smartMappingAI = (nameAPI, apiSource, targetDate, categories = [], 
         const subName = sub.name.toLowerCase();
         let score = 0;
         
-        const normApiName = lowerName
+        const normApiName = cleanHeaderLower
           .replace(/sepededa/g, 'sepeda')
           .replace(/gol iii/g, 'gol 3')
           .replace(/gol ii/g, 'gol 2')
@@ -72,18 +88,50 @@ export const smartMappingAI = (nameAPI, apiSource, targetDate, categories = [], 
           .replace(/gol ii/g, 'gol 2')
           .replace(/gol i\b/g, 'gol 1');
         
-        const isDewasa = normApiName.includes('dewasa');
-        const isAnak = normApiName.includes('anak') || normApiName.includes('3-12');
-        const isTSA = normApiName.includes('satwa') || normApiName.includes('tsa') || normApiName.includes('children');
-        const isRombongan = normApiName.includes('rombongan') || normApiName.includes('romb');
-        
-        if (isDewasa && normSubName.includes('dewasa')) score += 10;
-        if (isAnak && normSubName.includes('anak') && !isTSA && !normSubName.includes('satwa')) score += 10; 
-        if (isTSA && (normSubName.includes('satwa') || normSubName.includes('children'))) score += 15;
-        if (isRombongan && normSubName.includes('rombongan')) score += 15;
-        
-        if (normApiName.includes('primata') || normApiName.includes('schmutzer')) {
-           if (normSubName.includes('primata') || normSubName.includes('schmutzer')) score += 10;
+        const isTSA = /taman\s*satwa|satwa\s*anak|\bchildren\b|\btsa\b/i.test(normApiName);
+        const isSubTSA = /taman\s*satwa|satwa\s*anak|\bchildren\b|\btsa\b/i.test(normSubName);
+        const isRombongan = /\brombongan\b|\bromb\b|reduksi\s*25%/i.test(normApiName);
+        const isSubRombongan = /\brombongan\b|\bromb\b|reduksi\s*25%/i.test(normSubName);
+        const isPrimata = /primata|schmutzer/i.test(normApiName);
+        const isSubPrimata = /primata|schmutzer/i.test(normSubName);
+
+        const isDewasa = /\bdewasa\b|\bdws\b/i.test(normApiName);
+        const isSubDewasa = /\bdewasa\b|\bdws\b/i.test(normSubName);
+        const isAnak = (/\banak\b|3-12/i.test(normApiName)) && !isTSA;
+        const isSubAnak = (/\banak\b|3-12/i.test(normSubName)) && !isSubTSA;
+
+        // 1. Kesesuaian Rombongan vs Reguler (prioritas mutlak agar Rombongan tidak pernah masuk ke Reguler dan sebaliknya)
+        if (isRombongan) {
+          if (isSubRombongan) score += 150;
+          else score -= 150;
+        } else {
+          if (isSubRombongan) score -= 150;
+        }
+
+        // 2. Kesesuaian Taman Satwa Anak (TSA)
+        if (isTSA) {
+          if (isSubTSA) score += 50;
+          else score -= 50;
+        } else {
+          if (isSubTSA) score -= 50;
+        }
+
+        // 3. Kesesuaian Dewasa vs Anak (beri penalti jika berlawanan agar Rombongan Anak tidak pernah masuk ke Rombongan Dewasa)
+        if (isDewasa && !isAnak) {
+          if (isSubDewasa) score += 30;
+          if (isSubAnak) score -= 30;
+        } else if (isAnak && !isDewasa) {
+          if (isSubAnak) score += 30;
+          if (isSubDewasa) score -= 30;
+        } else {
+          if (isDewasa && isSubDewasa) score += 10;
+          if (isAnak && isSubAnak) score += 10;
+        }
+
+        // 4. Kesesuaian Pusat Primata Schmutzer vs Pintu Masuk / Area Lain
+        if (isPrimata) {
+           if (isSubPrimata) score += 40;
+           else score -= 40;
            
            const liburRe = /\bwe\b|weekend|holiday|libur|besar|sabtu|minggu|tanggal\s*merah|cuti\s*bersama/i;
            const kerjaRe = /\bwd\b|weekday|biasa|hari\s*kerja|selasa|rabu|kamis|jumat|jum'at/i;
@@ -120,6 +168,8 @@ export const smartMappingAI = (nameAPI, apiSource, targetDate, categories = [], 
            else if (!isTargetLibur && isSubWd) score += 100;
            else if (isTargetLibur && isSubWd) score -= 100;
            else if (!isTargetLibur && isSubLibur) score -= 100;
+        } else {
+           if (isSubPrimata) score -= 40;
         }
 
         if (normApiName.includes('sepeda') && normSubName.includes('sepeda')) score += 30;
@@ -202,7 +252,7 @@ export const process3aData = (rekonData, targetDate) => {
         // IDENTIFIKASI VARIABEL
         const isPrimata = /schmutzer|primata/i.test(lowerName) || ['9', '10', '11', '12', '13', '13_2', '14', '14_2', '15', '16'].includes(idStr);
         const isRombongan = /romb/i.test(lowerName) || ['3', '4', '11', '12', '15', '16'].includes(idStr);
-        const isTsa = /taman satwa|tsa/i.test(lowerName) || ['8', '8_2'].includes(idStr);
+        const isTsa = /taman\s*satwa|\btsa\b/i.test(lowerName) || ['8', '8_2'].includes(idStr);
         const isPintuMasuk = /tiket masuk|pintu masuk/i.test(lowerName) || ['1', '2'].includes(idStr);
         
         const isDewasa = /dewasa/i.test(lowerName) || ['1', '3', '9', '11', '13', '13_2', '16'].includes(idStr);
