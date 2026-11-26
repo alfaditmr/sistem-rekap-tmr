@@ -22,7 +22,16 @@ from selenium.webdriver.support import expected_conditions as EC
 # ==============================================================================
 
 app = Flask(__name__)
-CORS(app) # Mengizinkan Tab Android / Web React mengakses API ini
+CORS(app, resources={r"/*": {"origins": "*"}}) # Mengizinkan PC lain / Tab Android / Web React di 1 jaringan mengakses API ini
+
+
+@app.after_request
+def add_lan_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
 
 IWM_LOGIN_URL = "https://202.129.187.146:6997/ragunan_iwm/index.php"
 IWM_PERLOKASI_URL = "https://202.129.187.146:6997/ragunan_iwm/index.php?mod=laporan.rekap.perlokasi&sub=rekapPerlokasi&act=view&typ=html"
@@ -513,15 +522,31 @@ def api_tarik_iwm():
 
 
 if __name__ == '__main__':
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+    # Buka akses port 5001 pada Windows Firewall secara otomatis (jika dijalankan sebagai Administrator)
+    try:
+        import subprocess
+        subprocess.run(
+            ["netsh", "advfirewall", "firewall", "add", "rule", "name=Server_Robot_IWM_5001", "dir=in", "action=allow", "protocol=TCP", "localport=5001"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+    except Exception:
+        pass
+
     local_ip = get_local_ip()
     print("\n" + "="*60)
     print(" 🤖 SERVER API ROBOT IWM (OLD GATE) TELAH MENYALA AKTIF!")
     print("="*60)
-    print(f" 👉 Buka Aplikasi React di Tablet Anda.")
+    print(f" 👉 Buka Aplikasi React di PC Lain / Tablet dalam 1 Jaringan.")
     print(f" 👉 Pastikan IP Address ini sudah dimasukkan di Menu Master/Settings:")
     print(f"    {local_ip}")
-    print(f" 👉 API ini berjalan di PORT 5001")
+    print(f" 👉 API ini berjalan di PORT 5001 (http://{local_ip}:5001)")
     print("="*60)
     print(" (Biarkan layar hitam ini terbuka selama Anda merekap IWM)\n")
     
-    app.run(host='0.0.0.0', port=5001)
+    app.run(host='0.0.0.0', port=5001, threaded=True)
