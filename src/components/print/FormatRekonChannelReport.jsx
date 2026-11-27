@@ -299,15 +299,60 @@ export default function FormatRekonChannelReport({
       { merchant: 'Taman Margasatwa Ragunan', location: 'Kawasan Parkir, MPOS, Pintu Barat - TV..', ticket: 'Sepeda' }
     ];
 
-    // 1. Prioritaskan data mentah langsung dari #summary-ticket-table hasil tarik Bot 3A jika tersedia
+    // 1. Prioritaskan data mentah langsung dari #summary-ticket-table hasil tarik Bot 3A jika tersedia,
+    //    dan selalu tampilkan penuh ke-16 baris standar (termasuk yang bernilai 0) sesuai format PDF 3A
     if (Array.isArray(channelSummaryData?.ticketRows) && channelSummaryData.ticketRows.length > 0) {
-      return channelSummaryData.ticketRows.map((r, idx) => ({
-        merchant: r.merchant || STANDARD_3A_ROWS[idx]?.merchant || 'Taman Margasatwa Ragunan',
-        location: r.location || STANDARD_3A_ROWS[idx]?.location || '-',
-        ticket: r.ticket || STANDARD_3A_ROWS[idx]?.ticket || '-',
-        qty: Number(r.qty || 0),
-        nominal: Number(r.nominal || 0)
+      const mergedRows = STANDARD_3A_ROWS.map((base) => ({
+        ...base,
+        qty: 0,
+        nominal: 0
       }));
+
+      const matchTicketToStdIndex = (ticketStr = '') => {
+        const t = String(ticketStr || '').trim().toLowerCase();
+        if (!t) return -1;
+
+        const exactIdx = STANDARD_3A_ROWS.findIndex(
+          (std) => std.ticket.toLowerCase() === t
+        );
+        if (exactIdx !== -1) return exactIdx;
+
+        if (t.includes('difabel')) return 2;
+
+        if (t.includes('primata') || t.includes('schmutzer')) {
+          const isAnak = t.includes('anak') || t.includes('3-12');
+          if (t.includes('holiday')) return isAnak ? 6 : 3;
+          if (t.includes('weekday')) return isAnak ? 7 : 4;
+          if (t.includes('weekend')) return isAnak ? 8 : 5;
+          return isAnak ? (isWeekend ? 8 : 7) : (isWeekend ? 5 : 4);
+        }
+
+        if (t.includes('taman satwa anak') || /\btsa\b/.test(t)) {
+          const isAnak = t.includes('(anak') || t.includes('3-12');
+          return isAnak ? 10 : 9;
+        }
+
+        if (/\bgol(?:ongan)?\s*iii\b/.test(t) || t.includes('mobil sedan') || t.includes('mini bus')) return 13;
+        if (/\bgol(?:ongan)?\s*ii\b/.test(t) || t.includes('bus kecil')) return 12;
+        if (/\bgol(?:ongan)?\s*i\b/.test(t) || t.includes('bus besar')) return 11;
+        if (t.includes('motor') || t.includes('roda tiga')) return 14;
+        if (t.includes('sepeda') && !t.includes('motor')) return 15;
+
+        if (t.includes('anak') || t.includes('3-12')) return 1;
+        if (t.includes('dewasa')) return 0;
+
+        return -1;
+      };
+
+      channelSummaryData.ticketRows.forEach((r) => {
+        const idx = matchTicketToStdIndex(r?.ticket);
+        if (idx >= 0 && idx < mergedRows.length) {
+          mergedRows[idx].qty += Number(r?.qty || 0);
+          mergedRows[idx].nominal += Number(r?.nominal || 0);
+        }
+      });
+
+      return mergedRows;
     }
 
     // 2. Dataset autentik sesuai file PDF contoh di folder REKON 3A_2026-11-11 untuk tanggal 2026-11-11
@@ -369,7 +414,7 @@ export default function FormatRekonChannelReport({
       qty: vals[i][0],
       nominal: vals[i][1]
     }));
-  }, [channelSummaryData, reportDate, selectedChannel, channelTotalNominal, channelStsuData]);
+  }, [channelSummaryData, reportDate, selectedChannel, channelTotalNominal, channelStsuData, isWeekend]);
 
   const rekon3aTotals = useMemo(() => {
     return rekon3aRows.reduce(
@@ -594,11 +639,10 @@ export default function FormatRekonChannelReport({
         <button
           type="button"
           onClick={() => setSelectedChannel('GATE')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all ${
-            selectedChannel === 'GATE'
-              ? 'bg-blue-600 text-white shadow-md scale-102'
-              : 'bg-white text-gray-700 border border-gray-200 hover:bg-blue-50'
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all ${selectedChannel === 'GATE'
+            ? 'bg-blue-600 text-white shadow-md scale-102'
+            : 'bg-white text-gray-700 border border-gray-200 hover:bg-blue-50'
+            }`}
         >
           <CreditCard size={15} /> 3A: NEW GATE (2 Lembar)
         </button>
@@ -606,11 +650,10 @@ export default function FormatRekonChannelReport({
         <button
           type="button"
           onClick={() => setSelectedChannel('TVM')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all ${
-            selectedChannel === 'TVM'
-              ? 'bg-indigo-600 text-white shadow-md scale-102'
-              : 'bg-white text-gray-700 border border-gray-200 hover:bg-indigo-50'
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all ${selectedChannel === 'TVM'
+            ? 'bg-indigo-600 text-white shadow-md scale-102'
+            : 'bg-white text-gray-700 border border-gray-200 hover:bg-indigo-50'
+            }`}
         >
           <Ticket size={15} /> 3A: VENDING TVM (2 Lembar)
         </button>
@@ -618,11 +661,10 @@ export default function FormatRekonChannelReport({
         <button
           type="button"
           onClick={() => setSelectedChannel('MERCHANT_PAGE')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all ${
-            selectedChannel === 'MERCHANT_PAGE'
-              ? 'bg-cyan-600 text-white shadow-md scale-102'
-              : 'bg-white text-gray-700 border border-gray-200 hover:bg-cyan-50'
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all ${selectedChannel === 'MERCHANT_PAGE'
+            ? 'bg-cyan-600 text-white shadow-md scale-102'
+            : 'bg-white text-gray-700 border border-gray-200 hover:bg-cyan-50'
+            }`}
         >
           <Layers size={15} /> 3A: TIKET ONLINE (2 Lembar)
         </button>
@@ -630,11 +672,10 @@ export default function FormatRekonChannelReport({
         <button
           type="button"
           onClick={() => setSelectedChannel('OLD_GATE')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all ${
-            selectedChannel === 'OLD_GATE'
-              ? 'bg-purple-600 text-white shadow-md scale-102'
-              : 'bg-white text-gray-700 border border-gray-200 hover:bg-purple-50'
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all ${selectedChannel === 'OLD_GATE'
+            ? 'bg-purple-600 text-white shadow-md scale-102'
+            : 'bg-white text-gray-700 border border-gray-200 hover:bg-purple-50'
+            }`}
         >
           <Building size={15} /> IWM: OLD GATE (2 Lembar)
         </button>
@@ -642,11 +683,10 @@ export default function FormatRekonChannelReport({
         <button
           type="button"
           onClick={() => setSelectedChannel('ROMBONGAN')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all ${
-            selectedChannel === 'ROMBONGAN'
-              ? 'bg-amber-600 text-white shadow-md scale-102'
-              : 'bg-white text-gray-700 border border-gray-200 hover:bg-amber-50'
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all ${selectedChannel === 'ROMBONGAN'
+            ? 'bg-amber-600 text-white shadow-md scale-102'
+            : 'bg-white text-gray-700 border border-gray-200 hover:bg-amber-50'
+            }`}
         >
           <Tag size={15} /> IWM: LAPORAN ROMBONGAN (11 Kolom)
         </button>
@@ -878,7 +918,7 @@ export default function FormatRekonChannelReport({
         /* KONDISI 2: FORMAT STSU (LEMBAR 1) & BUKTI REKON (LEMBAR 2 LANDSCAPE)*/
         /* =================================================================== */
         <div id="printable-area" className="rekon-channel-printable flex flex-col gap-10 print:block print:gap-0">
-          
+
           {/* ================================================================= */}
           {/* 📄 LEMBAR 1: FORM STSU RESMI KEDINASAN (PORTRAIT A4)               */}
           {/* ================================================================= */}

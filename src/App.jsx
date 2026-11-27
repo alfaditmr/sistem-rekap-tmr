@@ -2673,10 +2673,10 @@ export default function App() {
         const isTarget = hasValidTargetRowId
           ? (r.id === targetRowId)
           : (
-              (targetApiRefId && String(r.apiRefId) === targetApiRefId) ||
-              (targetProofUrl && (r.proofUrl === targetProofUrl || r.linkedTo?.proofUrl === targetProofUrl)) ||
-              (r.date === (allocToRemove.bankDate || reportDate) && Number(r.amount) === targetAmount && (r.description || '').trim() === (allocToRemove.desc || '').trim())
-            );
+            (targetApiRefId && String(r.apiRefId) === targetApiRefId) ||
+            (targetProofUrl && (r.proofUrl === targetProofUrl || r.linkedTo?.proofUrl === targetProofUrl)) ||
+            (r.date === (allocToRemove.bankDate || reportDate) && Number(r.amount) === targetAmount && (r.description || '').trim() === (allocToRemove.desc || '').trim())
+          );
         if (isTarget) {
           const updated = { ...r, status: 'pending' };
           delete updated.linkedTo;
@@ -2727,14 +2727,14 @@ export default function App() {
 
             const remainingAllocations = Array.isArray(activeItem.bankAllocations)
               ? activeItem.bankAllocations.filter((ba, idx) => {
-                  if (hasValidTargetRowId && ba.bankRowId && ba.bankRowId !== 'prior_0') {
-                    return ba.bankRowId !== targetRowId;
-                  }
-                  if (isCurrentReportDoc && allocIndex !== undefined && allocIndex !== null && idx === allocIndex) return false;
-                  if (hasValidTargetRowId && ba.bankRowId === targetRowId) return false;
-                  if (isCurrentReportDoc && targetApiRefId && String(ba.apiRefId) === targetApiRefId) return false;
-                  return true;
-                })
+                if (hasValidTargetRowId && ba.bankRowId && ba.bankRowId !== 'prior_0') {
+                  return ba.bankRowId !== targetRowId;
+                }
+                if (isCurrentReportDoc && allocIndex !== undefined && allocIndex !== null && idx === allocIndex) return false;
+                if (hasValidTargetRowId && ba.bankRowId === targetRowId) return false;
+                if (isCurrentReportDoc && targetApiRefId && String(ba.apiRefId) === targetApiRefId) return false;
+                return true;
+              })
               : [];
 
             const hasOtherAllocations = remainingAllocations.length > 0;
@@ -3923,10 +3923,10 @@ export default function App() {
                           const isTarget = targetIndex >= 0
                             ? idx === targetIndex
                             : (
-                                (bankRow.id && r.id && r.id === bankRow.id) ||
-                                (r.id && r.id === effectiveRowId) ||
-                                (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && (r.description || '').trim() === (bankRow.description || '').trim())
-                              );
+                              (bankRow.id && r.id && r.id === bankRow.id) ||
+                              (r.id && r.id === effectiveRowId) ||
+                              (r.date === bankRow.date && Number(r.amount) === Number(bankRow.amount) && (r.description || '').trim() === (bankRow.description || '').trim())
+                            );
                           if (isTarget) {
                             const finalProofUrl = matchedProofUrl || r.proofUrl || bankRow.proofUrl || '';
                             return {

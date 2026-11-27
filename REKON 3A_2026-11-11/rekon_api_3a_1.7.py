@@ -278,7 +278,6 @@ def proses_tarik_data(tanggal_rekon_str):
                 
                 let thead = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
                 let tbody = Array.from(table.querySelectorAll('tbody tr'))
-                    .filter(tr => window.getComputedStyle(tr).display !== 'none')
                     .map(tr => Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim()));
                 let tfoot = Array.from(table.querySelectorAll('tfoot th, tfoot td')).map(td => td.textContent.trim());
                 return { 'thead': thead, 'tbody': tbody, 'tfoot': tfoot };
